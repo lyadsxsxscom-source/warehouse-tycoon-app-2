@@ -614,6 +614,7 @@ function updateProfileUI(user){
   }
 }
 
+let saveErrorAlerted = false;
 async function saveProgress(){
   if(!currentUser) return;
   try{
@@ -622,7 +623,10 @@ async function saveProgress(){
       shelves: shelves.map(s => ({id:s.id, unlocked:s.unlocked, worker:s.worker})),
       updatedAt: Date.now()
     });
-  }catch(e){ console.error('save failed', e); }
+  }catch(e){
+    console.error('save failed', e);
+    if(!saveErrorAlerted){ saveErrorAlerted = true; alert('فشل الحفظ: ' + (e.code || e.message || e)); }
+  }
 }
 
 async function loadProgress(uid){
@@ -642,7 +646,7 @@ async function loadProgress(uid){
       saveProgress();
     }
     renderAll();
-  }catch(e){ console.error('load failed', e); }
+  }catch(e){ console.error('load failed', e); alert('فشل التحميل: ' + (e.code || e.message || e)); }
 }
 
 fbAuth.onAuthStateChanged(user => {
