@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1054454384493",
+    "project_id": "warehouse-tycoon-a3f83",
+    "storage_bucket": "warehouse-tycoon-a3f83.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1054454384493:android:e4c6318277d5d43ae33c64",
+        "android_client_info": {
+          "package_name": "com.warehousetycoon.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1054454384493-36a8dd8l2qs63mk5717eqog4fuisv8p4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.warehousetycoon.app",
+            "certificate_hash": "a81b319c65d475884836b18d71b9db196d2d77e2"
+          }
+        },
+        {
+          "client_id": "1054454384493-6keq998f5he3gsi80036q58vttspsc00.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDurasldsjqfZJfcXcvQPrqO3Eg088Y2Gw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1054454384493-6keq998f5he3gsi80036q58vttspsc00.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
