@@ -35,3 +35,9 @@ if ! grep -q "signingConfigs" android/app/build.gradle; then
 fi
 
 echo "تجهيز android/ خلص بنجاح."
+
+# 6) إضافة مكتبات Credential Manager (سبب الانهيار الفوري بدونها)
+if ! grep -q "androidx.credentials:credentials" android/app/build.gradle; then
+  sed -i "/dependencies {/a\\    implementation 'androidx.credentials:credentials:1.2.2'\\n    implementation 'androidx.credentials:credentials-play-services-auth:1.2.2'\\n    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'\\n    implementation 'com.google.android.gms:play-services-auth:21.2.0'" android/app/build.gradle
+  echo "✓ مكتبات Credential Manager أُضيفت"
+fi
