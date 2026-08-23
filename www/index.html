@@ -568,13 +568,33 @@ btnETH.onclick = () => setCoin('eth');
 document.getElementById('wdBtnBTC').onclick = () => setCoin('btc');
 document.getElementById('wdBtnETH').onclick = () => setCoin('eth');
 document.getElementById('btnWithdraw').onclick = () => alert('نموذج شكلي فقط — ربط باينانس الحقيقي غير مفعّل بعد.');
-document.getElementById('btnGoogleLogin').onclick = () => {
-  if(currentUser){ fbAuth.signOut(); return; }
-  const provider = new firebase.auth.GoogleAuthProvider();
-  fbAuth.signInWithPopup(provider).catch(err => {
-    alert('تعذّر تسجيل الدخول: ' + err.message + '\n(هذا النطاق التجريبي غير مصرّح به بإعدادات Firebase — جرّبها بعد رفع التطبيق على نطاقه الحقيقي أو localhost)');
-  });
+document.getElementById('btnGoogleLogin').onclick = async () => {
+  const nativeAuth = window.Capacitor?.Plugins?.FirebaseAuthentication;
+  if(currentUser){
+    if(nativeAuth) await nativeAuth.signOut().catch(()=>{});
+    fbAuth.signOut();
+    return;
+  }
+  if(nativeAuth){
+    // داخل تطبيق أندرويد الحقيقي: نستخدم تسجيل الدخول الأصلي (مطلوب لأن popup ما يشتغل جوّه WebView)
+    try{
+      const result = await nativeAuth.signInWithGoogle();
+      const idToken = result?.credential?.idToken;
+      if(!idToken) throw new Error('ما وصل token من تسجيل الدخول الأصلي');
+      const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
+      await fbAuth.signInWithCredential(credential); // نربطه بنفس جلسة Firestore
+    }catch(err){
+      alert('تعذّر تسجيل الدخول: ' + (err.message || err));
+    }
+  } else {
+    // معاينة بمتصفح عادي (خارج التطبيق): نستخدم popup كخطة بديلة للاختبار فقط
+    const provider = new firebase.auth.GoogleAuthProvider();
+    fbAuth.signInWithPopup(provider).catch(err => {
+      alert('تعذّر تسجيل الدخول: ' + err.message + '\n(هذا النطاق التجريبي غير مصرّح به بإعدادات Firebase)');
+    });
+  }
 };
+
 
 function updateProfileUI(user){
   const nameEl = document.querySelector('.profile-head .name');

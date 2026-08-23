@@ -27,6 +27,11 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Setup Google Sign-In (google-services + stable keystore)
+        run: |
+          chmod +x setup-android.sh
+          ./setup-android.sh
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
