@@ -1,0 +1,15 @@
+{
+  "name": "warehouse-tycoon",
+  "version": "1.0.0",
+  "description": "مستودع الأرباح - تطبيق idle tycoon",
+  "scripts": {
+    "sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

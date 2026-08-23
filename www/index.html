@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مستودع الأرباح</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14110D; --panel:#1F1B14; --panel2:#262117;
+    --amber:#E3A83B; --steel:#5B7B99; --ember:#E4572E;
+    --btc:#F7931A; --eth:#8A9BFF;
+    --text:#EFE6D2; --dim:#948A72; --border:#332C1F;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(227,168,59,0.10), transparent 40%),
+      radial-gradient(circle at 90% 90%, rgba(91,123,153,0.10), transparent 45%),
+      var(--bg);
+    font-family:'Cairo', sans-serif; color:var(--text);
+    padding:16px 16px 88px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1{text-align:center; font-size:22px; margin:4px 0 2px; color:#fff;}
+  .subtitle{text-align:center; color:var(--dim); font-size:12px; margin-bottom:14px;}
+  h3{font-size:13px; color:var(--dim); margin:14px 4px 8px; font-weight:600;}
+  .screen{display:none;}
+  .screen.active{display:block; animation:fadeSlide .35s ease;}
+  @keyframes fadeSlide{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+
+  .stat-num.bump{animation:bump .4s ease;}
+  @keyframes bump{0%{transform:scale(1);} 35%{transform:scale(1.18); color:var(--amber);} 100%{transform:scale(1);}}
+
+  .coin-ic{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%;
+    font-size:12px; font-weight:800; color:#241a05;
+    background:linear-gradient(135deg, var(--amber), #ffd27a);
+    box-shadow:0 0 8px rgba(227,168,59,0.5);
+    animation:coinSpin 3.5s linear infinite;
+  }
+  @keyframes coinSpin{
+    0%{transform:rotateY(0deg);} 45%{transform:rotateY(180deg);} 55%{transform:rotateY(180deg);} 100%{transform:rotateY(360deg);}
+  }
+  .icon-wrap{font-size:22px; display:inline-block;}
+  .icon-wrap.pulse{animation:iconPulse 2s ease-in-out infinite;}
+  @keyframes iconPulse{0%,100%{filter:drop-shadow(0 0 2px rgba(227,168,59,0.3));} 50%{filter:drop-shadow(0 0 9px rgba(227,168,59,0.75));}}
+
+  .navbtn{transition:transform .15s ease, color .15s ease;}
+  .navbtn:active{transform:scale(0.88);}
+  .navbtn.active .ic{animation:navPop .35s ease;}
+  @keyframes navPop{0%{transform:scale(1);} 40%{transform:scale(1.3);} 100%{transform:scale(1);}}
+
+  .shelf .emoji{transition:transform .2s ease;}
+  .shelf.working .emoji{animation:workBob 1.4s ease-in-out infinite;}
+  @keyframes workBob{0%,100%{transform:translateY(0);} 50%{transform:translateY(-3px);}}
+
+  .price, .btn-main, .navbtn, .option, .wallet-toggle button{transition:transform .12s ease, filter .12s ease;}
+  .price:active, .btn-main:active, .option:active{transform:scale(0.95); filter:brightness(1.1);}
+
+  .toprow{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;}
+  .card{
+    background:linear-gradient(180deg, var(--panel), var(--panel2));
+    border:1px solid var(--border); border-radius:14px; padding:12px 14px;
+    position:relative; overflow:hidden;
+  }
+  .stat-label{font-size:10px; color:var(--dim); margin-bottom:4px;}
+  .stat-num{font-size:19px; font-weight:800; color:#fff;}
+  .stat-sub{font-size:10px; color:var(--amber); margin-top:2px;}
+  .wallet-toggle{display:flex; gap:6px; margin-top:8px;}
+  .wallet-toggle button{
+    flex:1; border:1px solid var(--border); background:#00000030; color:var(--dim);
+    border-radius:8px; padding:5px 4px; font-size:11px; font-weight:800; cursor:pointer;
+    font-family:'Cairo', sans-serif;
+  }
+  .wallet-toggle button.active.btc{background:linear-gradient(135deg, var(--btc), #ffb95c); color:#2a1500; border-color:var(--btc); box-shadow:0 0 12px rgba(247,147,26,0.5);}
+  .wallet-toggle button.active.eth{background:linear-gradient(135deg, var(--eth), #c2ccff); color:#131a3d; border-color:var(--eth); box-shadow:0 0 12px rgba(138,155,255,0.5);}
+  .float-plus{position:absolute; top:8px; left:12px; font-size:11px; font-weight:800; color:var(--amber); opacity:0; pointer-events:none;}
+  @keyframes floatUp{0%{opacity:0; transform:translateY(6px);} 20%{opacity:1; transform:translateY(0);} 100%{opacity:0; transform:translateY(-16px);}}
+  .float-plus.show{animation:floatUp 1.1s ease-out;}
+
+  .grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:8px;}
+  .shelf{
+    aspect-ratio:1/1; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    padding:4px; cursor:pointer; position:relative; transition:transform .15s ease;
+  }
+  .shelf:active{transform:scale(0.95);}
+  .shelf.locked{opacity:.5; border-style:dashed;}
+  .shelf.working{box-shadow:0 0 16px rgba(227,168,59,0.35); animation:workPulse 1.6s infinite;}
+  @keyframes workPulse{0%,100%{box-shadow:0 0 8px rgba(227,168,59,0.25);} 50%{box-shadow:0 0 20px rgba(227,168,59,0.55);}}
+  .shelf .emoji{font-size:26px;}
+  .shelf .label{font-size:9px; color:var(--dim); margin-top:3px;}
+  .shelf .name{font-size:10px; font-weight:700; margin-top:2px;}
+  .shelf .timer{font-size:9px; color:var(--amber); margin-top:2px;}
+  .shelf.expired{border-color:var(--ember);}
+  .shelf.expired .name{color:var(--ember);}
+
+  .tasks .task{display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid var(--border); font-size:12px;}
+  .tasks .task:last-child{border-bottom:none;}
+  .task .claim{background:var(--steel); color:#fff; border:none; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; cursor:pointer;}
+  .task .claim:disabled{background:#333; color:var(--dim);}
+
+  .btn-main{
+    width:100%; border:none; border-radius:14px; padding:16px;
+    font-family:'Cairo', sans-serif; font-weight:800; font-size:15px;
+    background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;
+    cursor:pointer; margin-top:6px; box-shadow:0 6px 20px rgba(228,87,46,0.35);
+  }
+  .hint{text-align:center; font-size:11px; color:var(--dim); margin:8px 0; min-height:14px;}
+
+  .overlay{position:fixed; inset:0; background:rgba(5,4,2,0.94); display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px; z-index:20; padding:20px;}
+  .overlay.show{display:flex;}
+  .modal{background:var(--panel2); border:1px solid var(--border); border-radius:16px; padding:18px; width:100%; max-width:340px;}
+  .modal h4{margin:0 0 10px; font-size:15px; color:#fff;}
+  .option{display:flex; justify-content:space-between; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; cursor:pointer;}
+  .option:hover{border-color:var(--amber);}
+  .option .name{font-size:13px; font-weight:700;}
+  .option .desc{font-size:10px; color:var(--dim);}
+  .option .cost{font-size:12px; color:var(--amber); font-weight:800;}
+  .close{text-align:center; font-size:12px; color:var(--dim); margin-top:8px; cursor:pointer;}
+  .adcount{font-size:32px; font-weight:800; color:var(--amber);}
+  .note{margin-top:16px; font-size:10px; color:var(--dim); text-align:center; line-height:1.7;}
+
+  /* Store screen */
+  .store-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .store-item{
+    background:linear-gradient(180deg, var(--panel), var(--panel2)); border:1px solid var(--border);
+    border-radius:14px; padding:12px; text-align:center; position:relative;
+  }
+  .store-item .badge{
+    position:absolute; top:6px; left:6px; background:var(--ember); color:#fff; font-size:9px;
+    padding:2px 6px; border-radius:8px; font-weight:800;
+  }
+  .store-item .amt{font-size:16px; font-weight:800; color:#fff; margin:6px 0 2px;}
+  .store-item .price{
+    margin-top:6px; background:var(--amber); color:#241a05; border:none; border-radius:8px;
+    padding:7px; font-size:12px; font-weight:800; width:100%; cursor:pointer;
+  }
+
+  /* Withdraw screen */
+  .wd-balance{text-align:center; padding:18px 0;}
+  .wd-balance .amt{font-size:28px; font-weight:800; color:#fff;}
+  .wd-balance .lbl{font-size:11px; color:var(--dim); margin-top:2px;}
+  .field{margin-bottom:10px;}
+  .field label{font-size:11px; color:var(--dim); display:block; margin-bottom:5px;}
+  .field input{
+    width:100%; background:#00000030; border:1px solid var(--border); border-radius:10px;
+    padding:11px; color:var(--text); font-family:'Cairo', sans-serif; font-size:13px;
+  }
+  .min-note{font-size:10px; color:var(--dim); text-align:center; margin-top:6px;}
+  .history-item{display:flex; justify-content:space-between; font-size:11px; padding:8px 4px; border-bottom:1px solid var(--border); color:var(--dim);}
+
+  /* Profile screen */
+  .profile-head{display:flex; align-items:center; gap:12px; padding:6px 4px 14px;}
+  .avatar{
+    width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, var(--amber), var(--ember));
+    display:flex; align-items:center; justify-content:center; font-size:26px;
+  }
+  .profile-head .name{font-size:16px; font-weight:800; color:#fff;}
+  .vip-badge{
+    display:inline-block; margin-top:3px; background:rgba(227,168,59,0.15); border:1px solid var(--amber);
+    color:var(--amber); font-size:10px; padding:2px 8px; border-radius:10px;
+  }
+  .stat-row{display:flex; justify-content:space-between; font-size:12px; padding:9px 4px; border-bottom:1px solid var(--border);}
+  .stat-row span:last-child{color:#fff; font-weight:700;}
+
+  /* Bottom nav */
+  .bottomnav{
+    position:fixed; bottom:0; left:0; right:0;
+    background:linear-gradient(180deg, #1b170fee, #0f0c08);
+    border-top:1px solid var(--border);
+    display:flex;
+    padding:8px 6px calc(8px + env(safe-area-inset-bottom));
+    z-index:15;
+  }
+  .navbtn{
+    flex:1; background:none; border:none; color:var(--dim); font-family:'Cairo', sans-serif;
+    display:flex; flex-direction:column; align-items:center; gap:2px; font-size:10px; cursor:pointer; padding:4px;
+  }
+  .navbtn .ic{font-size:19px;}
+  .navbtn.active{color:var(--amber);}
+</style>
+</head>
+<body>
+
+<h1>مستودع الأرباح</h1>
+<div class="subtitle" id="screenSubtitle">برومبتايب تجريبي — المدد مصغّرة للعرض فقط</div>
+
+<!-- ===== HOME ===== -->
+<div class="screen active" id="screen-home">
+  <div class="toprow">
+    <div class="card">
+      <div class="stat-label"><span class="coin-ic">ت</span> النقاط</div>
+      <div class="stat-num" id="pointsNum">0</div>
+      <div class="stat-sub">لشراء الرفوف والعمال</div>
+    </div>
+    <div class="card">
+      <div class="float-plus" id="floatPlus">+0.0</div>
+      <div class="stat-label"><span class="icon-wrap pulse">👛</span> المحفظة</div>
+      <div class="stat-num" id="walletNum">0.00000000</div>
+      <div class="stat-sub" id="walletRate">+0/ثانية</div>
+      <div class="wallet-toggle">
+        <button class="active btc" id="btnBTC">₿ BTC</button>
+        <button class="eth" id="btnETH">Ξ ETH</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>الرفوف والعمال</h3>
+  <div class="grid" id="grid"></div>
+  <div class="hint" id="hint">اضغط رف فارغ لاستئجار عامل · العملة تتجمّع تلقائياً بالمحفظة</div>
+
+  <button class="btn-main" id="btnEarn">💰 كسب نقاط</button>
+
+  <h3>مهام اليوم</h3>
+  <div class="card tasks" id="tasks"></div>
+</div>
+
+<!-- ===== STORE ===== -->
+<div class="screen" id="screen-store">
+  <h3>شراء نقاط</h3>
+  <div class="store-grid" id="storeGrid"></div>
+
+  <h3>شراء رفوف مباشرة</h3>
+  <div class="store-grid" id="storeShelvesGrid"></div>
+
+  <h3>استئجار عمال مباشرة</h3>
+  <div class="store-grid" id="storeWorkersGrid"></div>
+
+  <div class="note">هذي أسعار عرض توضيحي فقط. القيمة النهائية وطرق الدفع الفعلية تُحسم بعد مرحلة حساب الاقتصاد.</div>
+</div>
+
+<!-- ===== WITHDRAW ===== -->
+<div class="screen" id="screen-withdraw">
+  <div class="card">
+    <div class="wallet-toggle" style="margin-top:0;">
+      <button class="active btc" id="wdBtnBTC">₿ BTC</button>
+      <button class="eth" id="wdBtnETH">Ξ ETH</button>
+    </div>
+    <div class="wd-balance">
+      <div class="amt" id="wdBalance">0.00000000</div>
+      <div class="lbl">الرصيد القابل للسحب</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="field">
+      <label>عنوان محفظة باينانس</label>
+      <input type="text" placeholder="مثال: bnb1... (نموذج تجريبي، غير مفعّل)">
+    </div>
+    <div class="field">
+      <label>المبلغ</label>
+      <input type="text" placeholder="0.00000000">
+    </div>
+    <button class="btn-main" id="btnWithdraw" style="margin-top:2px;">📤 طلب سحب</button>
+    <div class="min-note">الحد الأدنى للسحب وربط باينانس الحقيقي لسه ما اتفعّل بهذا البرومبتايب — هذي واجهة فقط لتصميم التدفق.</div>
+  </div>
+  <h3>سجل السحوبات</h3>
+  <div class="card">
+    <div class="history-item"><span>لا يوجد سحوبات سابقة</span><span>—</span></div>
+  </div>
+</div>
+
+<!-- ===== PROFILE ===== -->
+<div class="screen" id="screen-profile">
+  <div class="card">
+    <button class="btn-main" id="btnGoogleLogin" style="background:linear-gradient(135deg, #4285F4, #34A853); color:#fff; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span style="background:#fff; color:#4285F4; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">G</span>
+      تسجيل الدخول عبر Google لحفظ التقدم
+    </button>
+    <div class="min-note">مربوط بمشروع Firebase الحقيقي. ما راح يشتغل بمعاينة هذا الملف هنا لأن النطاق غير مصرّح به — بس جاهز يشتغل فور ما تركّبه بالتطبيق الفعلي أو تفتحه محلياً.</div>
+  </div>
+  <div class="card">
+    <div class="profile-head">
+      <div class="avatar">👤</div>
+      <div>
+        <div class="name">لاعب مجهول (بدون تسجيل)</div>
+        <div class="vip-badge">VIP 0</div>
+      </div>
+    </div>
+    <div class="stat-row"><span>إجمالي النقاط المكتسبة</span><span id="pfPoints">0</span></div>
+    <div class="stat-row"><span>عدد العمال المستأجرين</span><span id="pfWorkers">0</span></div>
+    <div class="stat-row"><span>الرفوف المفتوحة</span><span id="pfShelves">0/6</span></div>
+    <div class="stat-row"><span>الإعلانات المشاهدة</span><span id="pfAds">0</span></div>
+  </div>
+  <h3>الإعدادات</h3>
+  <div class="card">
+    <div class="stat-row"><span>🔔 الإشعارات</span><span>—</span></div>
+    <div class="stat-row"><span>🌐 اللغة</span><span>العربية</span></div>
+    <div class="stat-row" style="border-bottom:none;"><span>🔗 ربط محفظة باينانس</span><span>غير مفعّل</span></div>
+  </div>
+</div>
+
+<div class="note">
+  عرض توضيحي: النقاط تُكسب من الإعلان/الاستبيان/جدار المهام خلف زر واحد، وتُصرف على الرفوف والعمال.
+  العملة ينتجها العمال تلقائياً وتتراكم مباشرة بالمحفظة، وتقدر تختار BTC أو ETH.
+</div>
+
+<!-- Bottom nav -->
+<div class="bottomnav">
+  <button class="navbtn active" data-screen="home"><span class="ic">🏠</span>الرئيسية</button>
+  <button class="navbtn" data-screen="store"><span class="ic">🛒</span>المتجر</button>
+  <button class="navbtn" data-screen="withdraw"><span class="ic">💸</span>السحب</button>
+  <button class="navbtn" data-screen="profile"><span class="ic">👤</span>الملف</button>
+</div>
+
+<!-- Overlays -->
+<div class="overlay" id="rentOverlay">
+  <div class="modal">
+    <h4>استئجار عامل — رف <span id="rentSlotLabel"></span></h4>
+    <div class="option" data-dur="day"><div><div class="name">يوم واحد</div><div class="desc">إنتاج +1 عملة/ث</div></div><div class="cost">50 نقطة</div></div>
+    <div class="option" data-dur="week"><div><div class="name">أسبوع</div><div class="desc">إنتاج +1.5 عملة/ث</div></div><div class="cost">280 نقطة</div></div>
+    <div class="option" data-dur="month"><div><div class="name">شهر</div><div class="desc">إنتاج +2.2 عملة/ث</div></div><div class="cost">900 نقطة</div></div>
+    <div class="close" id="closeRent">إلغاء</div>
+  </div>
+</div>
+
+<div class="overlay" id="earnOverlay">
+  <div class="modal">
+    <h4>كسب نقاط</h4>
+    <div class="option" id="optAd"><div><div class="name">🎬 مشاهدة إعلان</div><div class="desc">فوري + مضاعفة إنتاج 60 ثانية</div></div><div class="cost">+2</div></div>
+    <div class="option" id="optSurvey"><div><div class="name">📋 إكمال استبيان</div><div class="desc">نموذج شكلي حالياً</div></div><div class="cost">+80</div></div>
+    <div class="option" id="optOfferwall"><div><div class="name">🎯 جدار المهام</div><div class="desc">نموذج شكلي حالياً</div></div><div class="cost">+150</div></div>
+    <div class="close" id="closeEarn">إغلاق</div>
+  </div>
+</div>
+
+<div class="overlay" id="adOverlay">
+  <div style="font-size:44px;">📺</div>
+  <div style="font-size:13px; color:var(--dim);">جاري التحميل...</div>
+  <div class="adcount" id="adCount">3</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAP7sXXQeNCmdgwqUo6meC2Uv6_zM7jxwA",
+  authDomain: "warehouse-tycoon-a3f83.firebaseapp.com",
+  projectId: "warehouse-tycoon-a3f83",
+  storageBucket: "warehouse-tycoon-a3f83.firebasestorage.app",
+  messagingSenderId: "1054454384493",
+  appId: "1:1054454384493:web:3003d8c766739e75e33c64",
+  measurementId: "G-HPXL5HHFNL"
+};
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbDb = firebase.firestore();
+let currentUser = null;
+</script>
+<script>
+const WORKERS = {
+  day:   {label:'عامل يومي',   rate:1,   cost:50,  demoSeconds:20},
+  week:  {label:'عامل أسبوعي', rate:1.5, cost:280, demoSeconds:40},
+  month: {label:'عامل شهري',   rate:2.2, cost:900, demoSeconds:65},
+};
+const SHELF_COUNT = 12;
+// index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط | index 6-11: حصرية من المتجر فقط (null = ما تُفتح بالنقاط)
+const SHELF_UNLOCK_COST = [0, 0, 120, 350, 800, 1600, null, null, null, null, null, null];
+const STORE_ITEMS = [
+  {amt:'500 نقطة', price:'$0.99'},
+  {amt:'2,800 نقطة', price:'$4.99', badge:'+12%'},
+  {amt:'6,500 نقطة', price:'$9.99', badge:'الأفضل'},
+  {amt:'15,000 نقطة', price:'$19.99', badge:'+30%'},
+];
+const SHELF_PRICE_USD = [null, null, 1.99, 4.99, 9.99, 19.99, 3.99, 6.99, 11.99, 17.99, 26.99, 39.99]; // matches shelf indices
+const WORKER_PRICE_USD = { day: 0.99, week: 2.99, month: 6.99 };
+
+let points = 260;
+let totalPointsEarned = 260;
+let wallet = { btc: 0, eth: 0 };
+let activeCoin = 'btc';
+let boostUntil = 0;
+let pendingSlot = null;
+let adsWatched = 0;
+let workersRented = 0;
+
+let shelves = Array.from({length: SHELF_COUNT}, (_, i) => ({ id:i, unlocked: i < 2, worker: null }));
+let tasks = [
+  {id:'login', label:'تسجيل الدخول اليوم', reward:20, done:true, claimed:false},
+  {id:'watch3', label:'شاهد 3 إعلانات', reward:40, progress:0, target:3, claimed:false},
+  {id:'rent1', label:'استأجر عامل واحد', reward:60, progress:0, target:1, claimed:false},
+];
+
+const grid = document.getElementById('grid');
+const pointsNum = document.getElementById('pointsNum');
+const walletNum = document.getElementById('walletNum');
+const walletRate = document.getElementById('walletRate');
+const hint = document.getElementById('hint');
+const rentOverlay = document.getElementById('rentOverlay');
+const rentSlotLabel = document.getElementById('rentSlotLabel');
+const tasksEl = document.getElementById('tasks');
+const floatPlus = document.getElementById('floatPlus');
+const btnBTC = document.getElementById('btnBTC');
+const btnETH = document.getElementById('btnETH');
+
+function currentRate(){
+  const now = Date.now();
+  return shelves.reduce((sum, s) => (s.worker && s.worker.expiresAt > now) ? sum + s.worker.rate : sum, 0);
+}
+
+function renderTasks(){
+  tasksEl.innerHTML = '';
+  tasks.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'task';
+    let doneNow = t.target ? (t.progress >= t.target) : t.done;
+    div.innerHTML = `<span>${t.label} ${t.target ? `(${Math.min(t.progress||0, t.target)}/${t.target})` : ''}</span>
+      <button class="claim" ${(!doneNow || t.claimed) ? 'disabled' : ''}>${t.claimed ? 'تم ✓' : `+${t.reward}`}</button>`;
+    div.querySelector('.claim').onclick = () => {
+      if(doneNow && !t.claimed){ t.claimed = true; points += t.reward; totalPointsEarned += t.reward; renderAll(); }
+    };
+    tasksEl.appendChild(div);
+  });
+}
+
+function renderStore(){
+  const g = document.getElementById('storeGrid');
+  g.innerHTML = '';
+  STORE_ITEMS.forEach(it => {
+    const d = document.createElement('div');
+    d.className = 'store-item';
+    d.innerHTML = `${it.badge ? `<div class="badge">${it.badge}</div>` : ''}
+      <div style="font-size:26px;">🎫</div>
+      <div class="amt">${it.amt}</div>
+      <button class="price">${it.price}</button>`;
+    d.querySelector('.price').onclick = () => { alert('نموذج شكلي فقط — الدفع الفعلي غير مفعّل بعد.'); };
+    g.appendChild(d);
+  });
+
+  const sg = document.getElementById('storeShelvesGrid');
+  sg.innerHTML = '';
+  const lockedShelves = shelves.filter(s => !s.unlocked);
+  if(lockedShelves.length === 0){
+    sg.innerHTML = `<div class="store-item" style="grid-column:1/-1;"><div class="amt">كل الرفوف مفتوحة 🎉</div></div>`;
+  } else {
+    lockedShelves.forEach(s => {
+      const d = document.createElement('div');
+      d.className = 'store-item';
+      d.innerHTML = `<div style="font-size:26px;">🗄️</div>
+        <div class="amt">رف ${s.id + 1}</div>
+        <button class="price">$${SHELF_PRICE_USD[s.id].toFixed(2)}</button>`;
+      d.querySelector('.price').onclick = () => {
+        alert('نموذج شكلي فقط — الدفع الفعلي غير مفعّل بعد. (سيفتح هذا الرف فوراً بدون نقاط عند التفعيل الحقيقي)');
+        s.unlocked = true;
+        renderAll();
+      };
+      sg.appendChild(d);
+    });
+  }
+
+  const wg = document.getElementById('storeWorkersGrid');
+  wg.innerHTML = '';
+  Object.keys(WORKERS).forEach(key => {
+    const w = WORKERS[key];
+    const d = document.createElement('div');
+    d.className = 'store-item';
+    d.innerHTML = `<div style="font-size:26px;">👷</div>
+      <div class="amt">${w.label}</div>
+      <div class="stat-sub" style="margin-bottom:4px;">+${w.rate} عملة/ث</div>
+      <button class="price">$${WORKER_PRICE_USD[key].toFixed(2)}</button>`;
+    d.querySelector('.price').onclick = () => {
+      const target = shelves.find(s => s.unlocked && (!s.worker || s.worker.expiresAt <= Date.now()));
+      if(!target){ alert('لازم رف مفتوح وفاضي أول — افتح رف من فوق أو من الرفوف بالنقاط.'); return; }
+      alert('نموذج شكلي فقط — الدفع الفعلي غير مفعّل بعد.');
+      target.worker = {kind:key, rate:w.rate, expiresAt: Date.now() + w.demoSeconds*1000};
+      workersRented += 1;
+      tasks.find(t=>t.id==='rent1').progress = Math.min(1, workersRented);
+      renderAll();
+    };
+    wg.appendChild(d);
+  });
+}
+
+function renderProfile(){
+  document.getElementById('pfPoints').textContent = Math.floor(totalPointsEarned).toLocaleString('en-US');
+  document.getElementById('pfWorkers').textContent = workersRented;
+  document.getElementById('pfShelves').textContent = shelves.filter(s=>s.unlocked).length + '/' + SHELF_COUNT;
+  document.getElementById('pfAds').textContent = adsWatched;
+}
+
+function renderWithdraw(){
+  document.getElementById('wdBalance').textContent = wallet[activeCoin].toFixed(8);
+  document.getElementById('wdBtnBTC').classList.toggle('active', activeCoin==='btc');
+  document.getElementById('wdBtnETH').classList.toggle('active', activeCoin==='eth');
+}
+
+function bumpEl(el){
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+}
+
+let lastPointsShown = points;
+let lastWalletShown = wallet[activeCoin];
+
+function render(){
+  const now = Date.now();
+  grid.innerHTML = '';
+  shelves.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'shelf';
+    if(!s.unlocked){
+      div.classList.add('locked');
+      const cost = SHELF_UNLOCK_COST[s.id];
+      if(cost === null){
+        div.innerHTML = `<div class="emoji">🛒</div><div class="label">حصري بالمتجر ($${SHELF_PRICE_USD[s.id].toFixed(2)})</div>`;
+        div.onclick = () => { hint.textContent = 'هذا الرف يُفتح من المتجر فقط، مو بالنقاط.'; };
+      } else {
+        div.innerHTML = `<div class="emoji">🔒</div><div class="label">فتح: ${cost} نقطة</div>`;
+        div.onclick = () => {
+          if(points >= cost){ points -= cost; s.unlocked = true; hint.textContent = 'تم فتح رف جديد!'; renderAll(); }
+          else { hint.textContent = 'نقاط غير كافية لفتح هذا الرف.'; }
+        };
+      }
+    } else if(s.worker && s.worker.expiresAt > now){
+      div.classList.add('working');
+      const remain = Math.max(0, s.worker.expiresAt - now);
+      div.innerHTML = `<div class="emoji">👷</div><div class="name">${WORKERS[s.worker.kind].label}</div><div class="timer">${Math.ceil(remain/1000)} ث متبقية</div>`;
+      div.onclick = () => { hint.textContent = 'هذا العامل شغّال حالياً.'; };
+    } else if(s.worker && s.worker.expiresAt <= now){
+      div.classList.add('expired');
+      div.innerHTML = `<div class="emoji">😴</div><div class="name">انتهت المدة</div><div class="label">اضغط للتجديد</div>`;
+      div.onclick = () => openRent(s.id);
+    } else {
+      div.innerHTML = `<div class="emoji">➕</div><div class="label">استأجر عامل</div>`;
+      div.onclick = () => openRent(s.id);
+    }
+    grid.appendChild(div);
+  });
+
+  const boosted = now < boostUntil;
+  const rate = currentRate() * (boosted ? 2 : 1);
+  walletRate.textContent = `+${rate.toFixed(2)}/ثانية ${activeCoin.toUpperCase()} ${boosted ? '×2' : ''}`;
+  if(Math.floor(points) !== lastPointsShown){ bumpEl(pointsNum); lastPointsShown = Math.floor(points); }
+  pointsNum.textContent = Math.floor(points).toLocaleString('en-US');
+  if(wallet[activeCoin] > lastWalletShown + 0.0000005){ bumpEl(walletNum); lastWalletShown = wallet[activeCoin]; }
+  walletNum.textContent = wallet[activeCoin].toFixed(8);
+  btnBTC.classList.toggle('active', activeCoin==='btc');
+  btnETH.classList.toggle('active', activeCoin==='eth');
+  renderWithdraw();
+  renderProfile();
+}
+function renderAll(){ render(); renderTasks(); renderStore(); }
+
+function openRent(slotId){ pendingSlot = slotId; rentSlotLabel.textContent = slotId + 1; rentOverlay.classList.add('show'); }
+document.getElementById('closeRent').onclick = () => rentOverlay.classList.remove('show');
+document.querySelectorAll('#rentOverlay .option').forEach(opt => {
+  opt.onclick = () => {
+    const dur = opt.dataset.dur; const w = WORKERS[dur];
+    if(points < w.cost){ hint.textContent = 'نقاط غير كافية.'; rentOverlay.classList.remove('show'); return; }
+    points -= w.cost;
+    const s = shelves.find(x => x.id === pendingSlot);
+    s.worker = {kind:dur, rate:w.rate, expiresAt: Date.now() + w.demoSeconds*1000};
+    workersRented += 1;
+    tasks.find(t=>t.id==='rent1').progress = Math.min(1, workersRented);
+    rentOverlay.classList.remove('show');
+    hint.textContent = `تم استئجار ${w.label}!`;
+    renderAll();
+  };
+});
+
+function setCoin(c){ activeCoin = c; render(); }
+btnBTC.onclick = () => setCoin('btc');
+btnETH.onclick = () => setCoin('eth');
+document.getElementById('wdBtnBTC').onclick = () => setCoin('btc');
+document.getElementById('wdBtnETH').onclick = () => setCoin('eth');
+document.getElementById('btnWithdraw').onclick = () => alert('نموذج شكلي فقط — ربط باينانس الحقيقي غير مفعّل بعد.');
+document.getElementById('btnGoogleLogin').onclick = () => {
+  if(currentUser){ fbAuth.signOut(); return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  fbAuth.signInWithPopup(provider).catch(err => {
+    alert('تعذّر تسجيل الدخول: ' + err.message + '\n(هذا النطاق التجريبي غير مصرّح به بإعدادات Firebase — جرّبها بعد رفع التطبيق على نطاقه الحقيقي أو localhost)');
+  });
+};
+
+function updateProfileUI(user){
+  const nameEl = document.querySelector('.profile-head .name');
+  const avatarEl = document.querySelector('.avatar');
+  const btn = document.getElementById('btnGoogleLogin');
+  if(user){
+    nameEl.textContent = user.displayName || user.email;
+    if(user.photoURL){ avatarEl.style.backgroundImage = `url(${user.photoURL})`; avatarEl.style.backgroundSize = 'cover'; avatarEl.textContent = ''; }
+    btn.textContent = '🚪 تسجيل الخروج';
+  } else {
+    nameEl.textContent = 'لاعب مجهول (بدون تسجيل)';
+    avatarEl.style.backgroundImage = ''; avatarEl.textContent = '👤';
+    btn.innerHTML = `<span style="background:#fff; color:#4285F4; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">G</span> تسجيل الدخول عبر Google لحفظ التقدم`;
+  }
+}
+
+async function saveProgress(){
+  if(!currentUser) return;
+  try{
+    await fbDb.collection('players').doc(currentUser.uid).set({
+      points, wallet, totalPointsEarned, workersRented, adsWatched,
+      shelves: shelves.map(s => ({id:s.id, unlocked:s.unlocked, worker:s.worker})),
+      updatedAt: Date.now()
+    });
+  }catch(e){ console.error('save failed', e); }
+}
+
+async function loadProgress(uid){
+  try{
+    const doc = await fbDb.collection('players').doc(uid).get();
+    if(doc.exists){
+      const d = doc.data();
+      points = d.points ?? points;
+      wallet = d.wallet ?? wallet;
+      totalPointsEarned = d.totalPointsEarned ?? totalPointsEarned;
+      workersRented = d.workersRented ?? workersRented;
+      adsWatched = d.adsWatched ?? adsWatched;
+      if(d.shelves){ d.shelves.forEach(sd => { const s = shelves.find(x => x.id === sd.id); if(s){ s.unlocked = sd.unlocked; s.worker = sd.worker; } }); }
+      hint.textContent = 'تم تحميل تقدمك المحفوظ!';
+    } else {
+      hint.textContent = 'أهلاً! هذا أول تسجيل دخول، بدأنا لك تقدم جديد.';
+      saveProgress();
+    }
+    renderAll();
+  }catch(e){ console.error('load failed', e); }
+}
+
+fbAuth.onAuthStateChanged(user => {
+  currentUser = user;
+  updateProfileUI(user);
+  if(user) loadProgress(user.uid);
+});
+
+setInterval(saveProgress, 8000); // حفظ تلقائي كل 8 ثواني إذا مسجّل دخول
+
+const earnOverlay = document.getElementById('earnOverlay');
+document.getElementById('btnEarn').onclick = () => earnOverlay.classList.add('show');
+document.getElementById('closeEarn').onclick = () => earnOverlay.classList.remove('show');
+
+function runAdOverlay(onDone){
+  const adOverlay = document.getElementById('adOverlay'); const adCount = document.getElementById('adCount');
+  earnOverlay.classList.remove('show'); adOverlay.classList.add('show');
+  let c = 3; adCount.textContent = c;
+  const iv = setInterval(() => { c -= 1; adCount.textContent = c; if(c <= 0){ clearInterval(iv); adOverlay.classList.remove('show'); onDone(); } }, 1000);
+}
+document.getElementById('optAd').onclick = () => runAdOverlay(() => {
+  boostUntil = Date.now() + 60000; points += 2; totalPointsEarned += 2; adsWatched += 1;
+  tasks.find(t=>t.id==='watch3').progress = Math.min(3, adsWatched);
+  hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!'; renderAll();
+});
+document.getElementById('optSurvey').onclick = () => runAdOverlay(() => {
+  points += 80; totalPointsEarned += 80; hint.textContent = '+80 نقطة من الاستبيان (نموذج شكلي فقط حالياً).'; renderAll();
+});
+document.getElementById('optOfferwall').onclick = () => runAdOverlay(() => {
+  points += 150; totalPointsEarned += 150; hint.textContent = '+150 نقطة من جدار المهام (نموذج شكلي فقط حالياً).'; renderAll();
+});
+
+// Bottom nav
+const SCREEN_ORDER = ['home','store','withdraw','profile'];
+function goToScreen(name){
+  document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.screen === name));
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+document.querySelectorAll('.navbtn').forEach(btn => {
+  btn.onclick = () => goToScreen(btn.dataset.screen);
+});
+
+// Swipe navigation (يمين/يسار) — إضافي جنب التابات
+let touchStartX = 0, touchStartY = 0;
+document.body.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+}, {passive:true});
+document.body.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // تجاهل السحب الرأسي أو الصغير
+  const activeBtn = document.querySelector('.navbtn.active');
+  const idx = SCREEN_ORDER.indexOf(activeBtn.dataset.screen);
+  // سحب لليمين (dx>0) = تقدّم للأمام، سحب لليسار (dx<0) = رجوع للخلف
+  let newIdx = dx > 0 ? idx + 1 : idx - 1;
+  newIdx = Math.max(0, Math.min(SCREEN_ORDER.length - 1, newIdx));
+  if(newIdx !== idx) goToScreen(SCREEN_ORDER[newIdx]);
+}, {passive:true});
+
+// idle tick
+setInterval(() => {
+  const now = Date.now();
+  const boosted = now < boostUntil;
+  const rate = currentRate() * (boosted ? 2 : 1);
+  const gain = rate / 10 / 1000;
+  if(gain > 0){
+    wallet[activeCoin] += gain;
+    floatPlus.textContent = `+${gain.toFixed(6)}`;
+    floatPlus.classList.remove('show'); void floatPlus.offsetWidth; floatPlus.classList.add('show');
+  }
+  render();
+}, 900);
+
+renderAll();
+</script>
+</body>
+</html>

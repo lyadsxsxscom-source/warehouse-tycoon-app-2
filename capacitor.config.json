@@ -1,0 +1,8 @@
+{
+  "appId": "com.warehousetycoon.app",
+  "appName": "مستودع الأرباح",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
