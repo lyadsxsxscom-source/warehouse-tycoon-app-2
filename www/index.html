@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<script>
+window.onerror = function(msg, url, line, col, err){
+  alert('⚠️ خطأ برمجي:\n' + msg + '\nسطر: ' + line + '\n' + (err?.stack || ''));
+};
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>مستودع الأرباح</title>
@@ -334,6 +339,90 @@
   <div class="adcount" id="adCount">3</div>
 </div>
 
+<div id="debugPanel" style="position:fixed; bottom:0; left:0; right:0; max-height:35vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:10px; padding:8px; z-index:9999; direction:ltr; text-align:left; display:none;"></div>
+<script>
+(function(){
+  const panel = document.getElementById('debugPanel');
+  function logToPanel(type, msg){
+    panel.style.display = 'block';
+    const line = document.createElement('div');
+    line.style.color = type === 'error' ? '#ff5555' : (type === 'warn' ? '#ffaa00' : '#0f0');
+    line.style.borderBottom = '1px solid #333';
+    line.style.padding = '3px 0';
+    line.textContent = '[' + type.toUpperCase() + '] ' + msg;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
+  }
+  window.addEventListener('error', (e) => {
+    logToPanel('error', (e.message || 'Unknown error') + ' — ' + (e.filename || '') + ':' + (e.lineno || ''));
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    logToPanel('error', 'Promise rejection: ' + (e.reason?.message || e.reason?.code || e.reason || 'unknown'));
+  });
+  const origError = console.error;
+  console.error = function(...args){ logToPanel('error', args.map(a => a?.message || a?.code || String(a)).join(' ')); origError.apply(console, args); };
+  const origWarn = console.warn;
+  console.warn = function(...args){ logToPanel('warn', args.map(String).join(' ')); origWarn.apply(console, args); };
+  window.debugLog = (msg) => logToPanel('log', msg);
+})();
+</script>
+
+<div id="debugPanel" style="position:fixed; bottom:0; left:0; right:0; max-height:35vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:10px; padding:8px; z-index:9999; direction:ltr; text-align:left; display:none;"></div>
+<script>
+(function(){
+  const panel = document.getElementById('debugPanel');
+  function logToPanel(type, msg){
+    panel.style.display = 'block';
+    const line = document.createElement('div');
+    line.style.color = type === 'error' ? '#ff5555' : (type === 'warn' ? '#ffaa00' : '#0f0');
+    line.style.borderBottom = '1px solid #333';
+    line.style.padding = '3px 0';
+    line.textContent = '[' + type.toUpperCase() + '] ' + msg;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
+  }
+  window.addEventListener('error', (e) => {
+    logToPanel('error', (e.message || 'Unknown error') + ' — ' + (e.filename || '') + ':' + (e.lineno || ''));
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    logToPanel('error', 'Promise rejection: ' + (e.reason?.message || e.reason?.code || e.reason || 'unknown'));
+  });
+  const origError = console.error;
+  console.error = function(...args){ logToPanel('error', args.map(a => a?.message || a?.code || String(a)).join(' ')); origError.apply(console, args); };
+  const origWarn = console.warn;
+  console.warn = function(...args){ logToPanel('warn', args.map(String).join(' ')); origWarn.apply(console, args); };
+  window.debugLog = (msg) => logToPanel('log', msg);
+})();
+</script>
+
+<div id="debugPanel" style="position:fixed; bottom:0; left:0; right:0; max-height:35vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:10px; padding:8px; z-index:9999; direction:ltr; text-align:left; display:none;"></div>
+<script>
+(function(){
+  const panel = document.getElementById('debugPanel');
+  function logToPanel(type, msg){
+    panel.style.display = 'block';
+    const line = document.createElement('div');
+    line.style.color = type === 'error' ? '#ff5555' : (type === 'warn' ? '#ffaa00' : '#0f0');
+    line.style.borderBottom = '1px solid #333';
+    line.style.padding = '3px 0';
+    line.textContent = '[' + type.toUpperCase() + '] ' + msg;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
+  }
+  window.addEventListener('error', (e) => {
+    logToPanel('error', (e.message || 'Unknown error') + ' — ' + (e.filename || '') + ':' + (e.lineno || ''));
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    logToPanel('error', 'Promise rejection: ' + (e.reason?.message || e.reason?.code || e.reason || 'unknown'));
+  });
+  const origError = console.error;
+  console.error = function(...args){ logToPanel('error', args.map(a => a?.message || a?.code || String(a)).join(' ')); origError.apply(console, args); };
+  const origWarn = console.warn;
+  console.warn = function(...args){ logToPanel('warn', args.map(String).join(' ')); origWarn.apply(console, args); };
+  window.debugLog = (msg) => logToPanel('log', msg);
+})();
+</script>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -614,7 +703,10 @@ function updateProfileUI(user){
 
 let saveErrorAlerted = false;
 let saveSuccessAlerted = false;
+let saveCallCount = 0;
 async function saveProgress(){
+  saveCallCount++;
+  if(window.debugLog) window.debugLog('saveProgress() استُدعيت #' + saveCallCount + ' — currentUser: ' + (currentUser ? currentUser.uid : 'null'));
   if(!currentUser) return;
   try{
     await fbDb.collection('players').doc(currentUser.uid).set({
@@ -734,6 +826,7 @@ setInterval(() => {
 }, 900);
 
 renderAll();
+window.debugLog && window.debugLog('السكربت الرئيسي نفّذ كامل بدون توقف ✓');
 </script>
 </body>
 </html>
