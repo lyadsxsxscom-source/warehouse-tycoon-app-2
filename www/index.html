@@ -350,9 +350,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
 const fbDb = firebase.firestore();
-fbDb.enablePersistence({ synchronizeTabs: true }).catch(err => {
-  console.warn('Firestore offline persistence not enabled:', err.code);
-});
+// (تم تعطيل enablePersistence مؤقتاً للتشخيص — كانت تخفي أخطاء الحفظ الحقيقية)
 let currentUser = null;
 </script>
 <script>
@@ -615,6 +613,7 @@ function updateProfileUI(user){
 }
 
 let saveErrorAlerted = false;
+let saveSuccessAlerted = false;
 async function saveProgress(){
   if(!currentUser) return;
   try{
@@ -623,6 +622,7 @@ async function saveProgress(){
       shelves: shelves.map(s => ({id:s.id, unlocked:s.unlocked, worker:s.worker})),
       updatedAt: Date.now()
     });
+    if(!saveSuccessAlerted){ saveSuccessAlerted = true; alert('✓ الحفظ وصل السيرفر بنجاح'); }
   }catch(e){
     console.error('save failed', e);
     if(!saveErrorAlerted){ saveErrorAlerted = true; alert('فشل الحفظ: ' + (e.code || e.message || e)); }
