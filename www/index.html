@@ -350,6 +350,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
 const fbDb = firebase.firestore();
+fbDb.enablePersistence({ synchronizeTabs: true }).catch(err => {
+  console.warn('Firestore offline persistence not enabled:', err.code);
+});
 let currentUser = null;
 </script>
 <script>
@@ -648,7 +651,7 @@ fbAuth.onAuthStateChanged(user => {
   if(user) loadProgress(user.uid);
 });
 
-setInterval(saveProgress, 8000); // حفظ تلقائي كل 8 ثواني إذا مسجّل دخول
+setInterval(saveProgress, 4000); // حفظ تلقائي كل 4 ثواني إذا مسجّل دخول
 
 // حفظ فوري لحظة ما التطبيق يروح للخلفية (يمنع فقدان آخر ثواني قبل ما نظام التشغيل يقفله)
 const nativeApp = window.Capacitor?.Plugins?.App;
