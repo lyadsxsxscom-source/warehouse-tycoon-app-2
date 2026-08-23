@@ -650,6 +650,18 @@ fbAuth.onAuthStateChanged(user => {
 
 setInterval(saveProgress, 8000); // حفظ تلقائي كل 8 ثواني إذا مسجّل دخول
 
+// حفظ فوري لحظة ما التطبيق يروح للخلفية (يمنع فقدان آخر ثواني قبل ما نظام التشغيل يقفله)
+const nativeApp = window.Capacitor?.Plugins?.App;
+if(nativeApp){
+  nativeApp.addListener('appStateChange', ({ isActive }) => {
+    if(!isActive) saveProgress();
+  });
+} else {
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden) saveProgress();
+  });
+}
+
 const earnOverlay = document.getElementById('earnOverlay');
 document.getElementById('btnEarn').onclick = () => earnOverlay.classList.add('show');
 document.getElementById('closeEarn').onclick = () => earnOverlay.classList.remove('show');
