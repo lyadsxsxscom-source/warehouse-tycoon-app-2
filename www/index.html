@@ -742,12 +742,15 @@ setInterval(saveProgress, 4000); // حفظ تلقائي كل 4 ثواني إذا
 
 // حفظ فوري لحظة ما التطبيق يروح للخلفية (يمنع فقدان آخر ثواني قبل ما نظام التشغيل يقفله)
 const nativeApp = window.Capacitor?.Plugins?.App;
+if(window.debugLog) window.debugLog('مكوّن App الأصلي متوفر: ' + (nativeApp ? 'نعم ✓' : 'لا ✗ (سيُستخدم fallback)'));
 if(nativeApp){
   nativeApp.addListener('appStateChange', ({ isActive }) => {
+    if(window.debugLog) window.debugLog('appStateChange: isActive=' + isActive + (isActive ? '' : ' → حفظ فوري الآن'));
     if(!isActive) saveProgress();
   });
 } else {
   document.addEventListener('visibilitychange', () => {
+    if(window.debugLog) window.debugLog('visibilitychange: hidden=' + document.hidden + (document.hidden ? ' → حفظ فوري الآن' : ''));
     if(document.hidden) saveProgress();
   });
 }
