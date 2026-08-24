@@ -714,7 +714,14 @@ async function saveProgress(){
 
 async function loadProgress(uid){
   try{
-    const doc = await fbDb.collection('players').doc(uid).get();
+    let doc;
+    try{
+      doc = await fbDb.collection('players').doc(uid).get({ source: 'server' });
+    }catch(serverErr){
+      if(window.debugLog) window.debugLog('قراءة السيرفر فشلت، رجعنا للكاش: ' + serverErr.message);
+      doc = await fbDb.collection('players').doc(uid).get();
+    }
+    if(window.debugLog) window.debugLog('loadProgress: doc.exists=' + doc.exists + ' — points بالمستند: ' + (doc.data()?.points ?? 'n/a'));
     if(doc.exists){
       const d = doc.data();
       points = d.points ?? points;
