@@ -192,6 +192,16 @@ window.onerror = function(msg, url, line, col, err){
 </head>
 <body>
 
+<div id="loginGate" class="overlay show" style="z-index:50; background:radial-gradient(circle at 50% 20%, rgba(227,168,59,0.12), transparent 50%), var(--bg);">
+  <div style="font-size:52px; margin-bottom:6px;">📦</div>
+  <h1 style="margin:0 0 4px;">مستودع الأرباح</h1>
+  <div class="subtitle" style="margin-bottom:26px;">سجّل دخولك عشان تبدأ وتحفظ تقدمك</div>
+  <button class="btn-main" id="btnGoogleLoginGate" style="max-width:320px; background:linear-gradient(135deg, #4285F4, #34A853); color:#fff; display:flex; align-items:center; justify-content:center; gap:8px;">
+    <span style="background:#fff; color:#4285F4; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">G</span>
+    تسجيل الدخول عبر Google
+  </button>
+</div>
+
 <h1>مستودع الأرباح</h1>
 <div class="subtitle" id="screenSubtitle">برومبتايب تجريبي — المدد مصغّرة للعرض فقط</div>
 
@@ -276,8 +286,6 @@ window.onerror = function(msg, url, line, col, err){
       <span style="background:#fff; color:#4285F4; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">G</span>
       تسجيل الدخول عبر Google لحفظ التقدم
     </button>
-    <div class="min-note">مربوط بمشروع Firebase الحقيقي. ما راح يشتغل بمعاينة هذا الملف هنا لأن النطاق غير مصرّح به — بس جاهز يشتغل فور ما تركّبه بالتطبيق الفعلي أو تفتحه محلياً.</div>
-    <button class="btn-main" id="btnNetTest" style="background:linear-gradient(135deg, #444, #666); margin-top:8px;">🔬 اختبار الشبكة (تشخيص)</button>
   </div>
   <div class="card">
     <div class="profile-head">
@@ -339,34 +347,6 @@ window.onerror = function(msg, url, line, col, err){
   <div style="font-size:13px; color:var(--dim);">جاري التحميل...</div>
   <div class="adcount" id="adCount">3</div>
 </div>
-
-<div id="debugPanel" style="position:fixed; bottom:0; left:0; right:0; max-height:35vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:10px; padding:8px; z-index:9999; direction:ltr; text-align:left; display:none;"></div>
-<script>
-(function(){
-  const panel = document.getElementById('debugPanel');
-  function logToPanel(type, msg){
-    panel.style.display = 'block';
-    const line = document.createElement('div');
-    line.style.color = type === 'error' ? '#ff5555' : (type === 'warn' ? '#ffaa00' : '#0f0');
-    line.style.borderBottom = '1px solid #333';
-    line.style.padding = '3px 0';
-    line.textContent = '[' + type.toUpperCase() + '] ' + msg;
-    panel.appendChild(line);
-    panel.scrollTop = panel.scrollHeight;
-  }
-  window.addEventListener('error', (e) => {
-    logToPanel('error', (e.message || 'Unknown error') + ' — ' + (e.filename || '') + ':' + (e.lineno || ''));
-  });
-  window.addEventListener('unhandledrejection', (e) => {
-    logToPanel('error', 'Promise rejection: ' + (e.reason?.message || e.reason?.code || e.reason || 'unknown'));
-  });
-  const origError = console.error;
-  console.error = function(...args){ logToPanel('error', args.map(a => a?.message || a?.code || String(a)).join(' ')); origError.apply(console, args); };
-  const origWarn = console.warn;
-  console.warn = function(...args){ logToPanel('warn', args.map(String).join(' ')); origWarn.apply(console, args); };
-  window.debugLog = (msg) => logToPanel('log', msg);
-})();
-</script>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -612,38 +592,8 @@ btnETH.onclick = () => setCoin('eth');
 document.getElementById('wdBtnBTC').onclick = () => setCoin('btc');
 document.getElementById('wdBtnETH').onclick = () => setCoin('eth');
 document.getElementById('btnWithdraw').onclick = () => alert('نموذج شكلي فقط — ربط باينانس الحقيقي غير مفعّل بعد.');
-document.getElementById('btnNetTest').onclick = async () => {
-  if(window.debugLog) window.debugLog('=== بدء اختبار الشبكة ===');
-  // اختبار 1: طلب HTTP عادي (زي كروم)
-  try{
-    const t0 = Date.now();
-    const res = await fetch('https://firestore.googleapis.com', {method:'GET'});
-    if(window.debugLog) window.debugLog('✓ fetch عادي: نجح خلال ' + (Date.now()-t0) + 'ms — status: ' + res.status);
-  }catch(e){
-    if(window.debugLog) window.debugLog('✗ fetch عادي فشل: ' + (e.message || e));
-  }
-  // اختبار 2: طلب REST مباشر لـ Firestore (بدون SDK)
-  try{
-    const t0 = Date.now();
-    const url = 'https://firestore.googleapis.com/v1/projects/warehouse-tycoon-a3f83/databases/(default)/documents/players';
-    const res = await fetch(url, {method:'GET'});
-    const txt = await res.text();
-    if(window.debugLog) window.debugLog('✓ REST مباشر: نجح خلال ' + (Date.now()-t0) + 'ms — status: ' + res.status + ' — ' + txt.slice(0,100));
-  }catch(e){
-    if(window.debugLog) window.debugLog('✗ REST مباشر فشل: ' + (e.message || e));
-  }
-  // اختبار 3: SDK نفسه (اللي يعلّق)
-  try{
-    const t0 = Date.now();
-    await withTimeout(fbDb.collection('_nettest').doc('ping').set({t: Date.now()}), 6000, 'SDK write');
-    if(window.debugLog) window.debugLog('✓ SDK write: نجح خلال ' + (Date.now()-t0) + 'ms');
-  }catch(e){
-    if(window.debugLog) window.debugLog('✗ SDK write فشل: ' + (e.message || e));
-  }
-  if(window.debugLog) window.debugLog('=== انتهى اختبار الشبكة ===');
-};
 
-document.getElementById('btnGoogleLogin').onclick = async () => {
+async function handleGoogleAuthClick(){
   const nativeAuth = window.Capacitor?.Plugins?.FirebaseAuthentication;
   if(currentUser){
     if(nativeAuth) await nativeAuth.signOut().catch(()=>{});
@@ -668,7 +618,10 @@ document.getElementById('btnGoogleLogin').onclick = async () => {
       alert('تعذّر تسجيل الدخول: ' + err.message + '\n(هذا النطاق التجريبي غير مصرّح به بإعدادات Firebase)');
     });
   }
-};
+}
+document.getElementById('btnGoogleLogin').onclick = handleGoogleAuthClick;
+document.getElementById('btnGoogleLoginGate').onclick = handleGoogleAuthClick;
+
 
 
 function updateProfileUI(user){
@@ -686,18 +639,13 @@ function updateProfileUI(user){
   }
 }
 
-let saveErrorAlerted = false;
-let saveSuccessAlerted = false;
-let saveCallCount = 0;
 function withTimeout(promise, ms, label){
   return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT: ' + label + ' علّق أكثر من ' + (ms/1000) + ' ثواني بدون رد')), ms))
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT: ' + label)), ms))
   ]);
 }
 async function saveProgress(){
-  saveCallCount++;
-  if(window.debugLog) window.debugLog('saveProgress() استُدعيت #' + saveCallCount + ' — currentUser: ' + (currentUser ? currentUser.uid : 'null'));
   if(!currentUser) return;
   try{
     await withTimeout(fbDb.collection('players').doc(currentUser.uid).set({
@@ -705,10 +653,8 @@ async function saveProgress(){
       shelves: shelves.map(s => ({id:s.id, unlocked:s.unlocked, worker:s.worker})),
       updatedAt: Date.now()
     }), 8000, 'saveProgress');
-    if(window.debugLog) window.debugLog('✓ الحفظ وصل السيرفر بنجاح #' + saveCallCount);
   }catch(e){
     console.error('save failed', e);
-    if(!saveErrorAlerted){ saveErrorAlerted = true; alert('فشل الحفظ: ' + (e.code || e.message || e)); }
   }
 }
 
@@ -718,10 +664,8 @@ async function loadProgress(uid){
     try{
       doc = await fbDb.collection('players').doc(uid).get({ source: 'server' });
     }catch(serverErr){
-      if(window.debugLog) window.debugLog('قراءة السيرفر فشلت، رجعنا للكاش: ' + serverErr.message);
       doc = await fbDb.collection('players').doc(uid).get();
     }
-    if(window.debugLog) window.debugLog('loadProgress: doc.exists=' + doc.exists + ' — points بالمستند: ' + (doc.data()?.points ?? 'n/a'));
     if(doc.exists){
       const d = doc.data();
       points = d.points ?? points;
@@ -736,28 +680,31 @@ async function loadProgress(uid){
       saveProgress();
     }
     renderAll();
-  }catch(e){ console.error('load failed', e); alert('فشل التحميل: ' + (e.code || e.message || e)); }
+  }catch(e){ console.error('load failed', e); }
 }
 
+const loginGate = document.getElementById('loginGate');
 fbAuth.onAuthStateChanged(user => {
   currentUser = user;
   updateProfileUI(user);
-  if(user) loadProgress(user.uid);
+  if(user){
+    loginGate.classList.remove('show');
+    loadProgress(user.uid);
+  } else {
+    loginGate.classList.add('show');
+  }
 });
 
 setInterval(saveProgress, 4000); // حفظ تلقائي كل 4 ثواني إذا مسجّل دخول
 
 // حفظ فوري لحظة ما التطبيق يروح للخلفية (يمنع فقدان آخر ثواني قبل ما نظام التشغيل يقفله)
 const nativeApp = window.Capacitor?.Plugins?.App;
-if(window.debugLog) window.debugLog('مكوّن App الأصلي متوفر: ' + (nativeApp ? 'نعم ✓' : 'لا ✗ (سيُستخدم fallback)'));
 if(nativeApp){
   nativeApp.addListener('appStateChange', ({ isActive }) => {
-    if(window.debugLog) window.debugLog('appStateChange: isActive=' + isActive + (isActive ? '' : ' → حفظ فوري الآن'));
     if(!isActive) saveProgress();
   });
 } else {
   document.addEventListener('visibilitychange', () => {
-    if(window.debugLog) window.debugLog('visibilitychange: hidden=' + document.hidden + (document.hidden ? ' → حفظ فوري الآن' : ''));
     if(document.hidden) saveProgress();
   });
 }
@@ -827,7 +774,6 @@ setInterval(() => {
 }, 900);
 
 renderAll();
-window.debugLog && window.debugLog('السكربت الرئيسي نفّذ كامل بدون توقف ✓');
 </script>
 </body>
 </html>
