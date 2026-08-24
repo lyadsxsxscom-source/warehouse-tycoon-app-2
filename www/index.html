@@ -383,7 +383,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
 const fbDb = firebase.firestore();
-fbDb.settings({ experimentalForceLongPolling: true, merge: true });
+try{
+  fbDb.settings({ experimentalForceLongPolling: true });
+}catch(e){
+  console.error('Firestore settings failed', e);
+}
 // (تم تعطيل enablePersistence مؤقتاً للتشخيص — كانت تخفي أخطاء الحفظ الحقيقية)
 let currentUser = null;
 </script>
