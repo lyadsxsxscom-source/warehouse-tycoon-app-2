@@ -389,7 +389,11 @@ try{
 }catch(e){
   console.error('Firestore settings failed', e);
 }
-// (تم تعطيل enablePersistence مؤقتاً للتشخيص — كانت تخفي أخطاء الحفظ الحقيقية)
+try{
+  fbDb.enablePersistence({ synchronizeTabs: true });
+}catch(e){
+  console.error('Firestore persistence failed', e);
+}
 let currentUser = null;
 </script>
 <script>
@@ -702,7 +706,6 @@ async function saveProgress(){
       updatedAt: Date.now()
     }), 8000, 'saveProgress');
     if(window.debugLog) window.debugLog('✓ الحفظ وصل السيرفر بنجاح #' + saveCallCount);
-    if(!saveSuccessAlerted){ saveSuccessAlerted = true; alert('✓ الحفظ وصل السيرفر بنجاح'); }
   }catch(e){
     console.error('save failed', e);
     if(!saveErrorAlerted){ saveErrorAlerted = true; alert('فشل الحفظ: ' + (e.code || e.message || e)); }
