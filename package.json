@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "مستودع الأرباح - تطبيق idle tycoon",
   "scripts": {
+    "capacitor:sync:after": "node node_modules/capacitor-levelplay-ads/scripts/levelplay-manifest.js"
     "sync": "cap sync"
   },
   "dependencies": {
@@ -12,6 +13,10 @@
     "@capacitor-firebase/authentication":
     "capacitor-levelplay-ads": "latest"
 "^6.3.0"
+  "levelplay": {
+    "networks": ["unityads"],
+    "consentProvider": "custom"
+  }
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2"
