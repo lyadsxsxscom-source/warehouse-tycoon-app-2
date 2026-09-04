@@ -760,10 +760,15 @@ function runAdOverlay(onDone){
   let c = 3; adCount.textContent = c;
   const iv = setInterval(() => { c -= 1; adCount.textContent = c; if(c <= 0){ clearInterval(iv); adOverlay.classList.remove('show'); onDone(); } }, 1000);
 }
-document.getElementById('optAd').onclick = () => runAdOverlay(() => {
-  boostUntil = Date.now() + 60000; points += 2; totalPointsEarned += 2; adsWatched += 1;
-  tasks.find(t=>t.id==='watch3').progress = Math.min(3, adsWatched);
-  hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!'; renderAll();
+document.getElementById('optAd').onclick = async () => {
+  earnOverlay.classList.remove('show');
+  if(LevelPlayAds && adsReady){
+    try{ await LevelPlayAds.showRewarded(); }
+    catch(e){ hint.textContent = 'تعذّر عرض الإعلان، حاول لاحقاً.'; }
+  } else {
+    hint.textContent = 'الإعلان لسا يتحمّل، جرب بعد شوي.';
+  }
+};
 });
 document.getElementById('optSurvey').onclick = () => runAdOverlay(() => {
   points += 80; totalPointsEarned += 80; hint.textContent = '+80 نقطة من الاستبيان (نموذج شكلي فقط حالياً).'; renderAll();
