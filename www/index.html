@@ -237,6 +237,15 @@ window.onerror = function(msg, url, line, col, err){
 
 <!-- ===== STORE ===== -->
 <div class="screen" id="screen-store">
+  <h3>🎁 استرداد كود شحن</h3>
+  <div class="card">
+    <div class="field">
+      <label>اكتب الكود اللي حصلت عليه من الوكيل</label>
+      <input type="text" id="redeemInput" placeholder="مثال: GAME-100COINS-X92B" style="text-transform:uppercase;">
+    </div>
+    <button class="btn-main" id="btnRedeem">استرداد</button>
+  </div>
+
   <h3>شراء نقاط</h3>
   <div class="store-grid" id="storeGrid"></div>
 
@@ -682,6 +691,34 @@ async function loadProgress(uid){
     renderAll();
   }catch(e){ console.error('load failed', e); }
 }
+
+async function redeemCode(){
+  const input = document.getElementById('redeemInput');
+  const code = input.value.trim().toUpperCase();
+  if(!code){ hint.textContent = 'اكتب الكود أول.'; return; }
+  if(!currentUser){ alert('لازم تسجّل دخول أول.'); return; }
+  const codeRef = fbDb.collection('redeemCodes').doc(code);
+  const playerRef = fbDb.collection('players').doc(currentUser.uid);
+  try{
+    const awarded = await fbDb.runTransaction(async (tx) => {
+      const codeDoc = await tx.get(codeRef);
+      if(!codeDoc.exists) throw new Error('هذا الكود غير موجود.');
+      const data = codeDoc.data();
+      if(data.used) throw new Error('هذا الكود مستخدم من قبل.');
+      tx.update(codeRef, { used: true, usedBy: currentUser.uid, usedAt: Date.now() });
+      tx.update(playerRef, { points: firebase.firestore.FieldValue.increment(data.points) });
+      return data.points;
+    });
+    points += awarded;
+    totalPointsEarned += awarded;
+    input.value = '';
+    hint.textContent = `✓ تم الاسترداد! +${awarded} نقطة`;
+    renderAll();
+  }catch(e){
+    alert('تعذّر استرداد الكود: ' + e.message);
+  }
+}
+document.getElementById('btnRedeem').onclick = redeemCode;
 
 const loginGate = document.getElementById('loginGate');
 fbAuth.onAuthStateChanged(user => {
