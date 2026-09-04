@@ -1,22 +1,21 @@
 {
   "name": "warehouse-tycoon",
   "version": "1.0.0",
-  "description": "مستودع الأرباح - تطبيق idle tycoon",
+  "description": "تطبيق مستودع الأرباح - idle tycoon",
   "scripts": {
-    "capacitor:sync:after": "node node_modules/capacitor-levelplay-ads/scripts/levelplay-manifest.js"
+    "capacitor:sync:after": "node node_modules/capacitor-levelplay-ads/scripts/levelplay-manifest.js",
     "sync": "cap sync"
   },
   "dependencies": {
     "@capacitor/android": "^6.1.2",
     "@capacitor/app": "^6.0.1",
     "@capacitor/core": "^6.1.2",
-    "@capacitor-firebase/authentication":
+    "@capacitor-firebase/authentication": "^6.3.0",
     "capacitor-levelplay-ads": "latest"
-"^6.3.0"
+  },
   "levelplay": {
     "networks": ["unityads"],
     "consentProvider": "custom"
-  }
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2"
