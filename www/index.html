@@ -1,4 +1,4 @@
-   <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <script>
@@ -386,29 +386,29 @@ try{
 }
 let currentUser = null;
 
-// ===== Unity Ads (LevelPlay) integration =====
-const LevelPlayAds = window.Capacitor?.Plugins?.LevelPlayAds;
+// ===== Unity Ads SDK integration (مباشر، بدون LevelPlay) =====
+const UnityAdsPlugin = window.Capacitor?.Plugins?.UnityAdsPlugin;
 let adsReady = false;
-const REWARDED_UNIT_ID = 'xssxn4oejmgfqnn5';
+const UNITY_GAME_ID = '800367750';
+const REWARDED_UNIT_ID = 'Rewarded_Android';
+
+async function loadRewardedAd(){
+  if(!UnityAdsPlugin) return;
+  try{
+    await UnityAdsPlugin.load({ adUnitId: REWARDED_UNIT_ID });
+    adsReady = true;
+  }catch(e){
+    adsReady = false;
+    console.error('Ad load failed', e);
+    setTimeout(loadRewardedAd, 15000); // إعادة محاولة تحميل بعد 15 ثانية لو فشل
+  }
+}
 
 async function initAds(){
-  if(!LevelPlayAds) return; // معاينة بمتصفح عادي بدون التطبيق — تجاهل
+  if(!UnityAdsPlugin) return; // معاينة بمتصفح عادي بدون التطبيق — تجاهل
   try{
-    await LevelPlayAds.requestConsentInfo({});
-    await LevelPlayAds.initialize({ appKey: '27f25cbed', isTesting: true }); // ⚠️ غيّرها false قبل النشر الفعلي
-    await LevelPlayAds.loadRewarded({ adUnitId: REWARDED_UNIT_ID });
-    LevelPlayAds.addListener('onRewardedAdLoaded', () => { adsReady = true; });
-    LevelPlayAds.addListener('onRewardedAdLoadFailed', () => { adsReady = false; });
-    LevelPlayAds.addListener('onRewardedAdClosed', () => {
-      adsReady = false;
-      LevelPlayAds.loadRewarded({ adUnitId: REWARDED_UNIT_ID });
-    });
-    LevelPlayAds.addListener('onRewardedAdRewarded', () => {
-      boostUntil = Date.now() + 60000; points += 2; totalPointsEarned += 2; adsWatched += 1;
-      tasks.find(t=>t.id==='watch3').progress = Math.min(3, adsWatched);
-      hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!';
-      renderAll();
-    });
+    await UnityAdsPlugin.initialize({ gameId: UNITY_GAME_ID, testMode: true }); // ⚠️ غيّرها false قبل النشر الفعلي
+    loadRewardedAd();
   }catch(e){ console.error('Ads init failed', e); }
 }
 initAds();
@@ -789,9 +789,20 @@ function runAdOverlay(onDone){
 }
 document.getElementById('optAd').onclick = async () => {
   earnOverlay.classList.remove('show');
-  if(LevelPlayAds && adsReady){
-    try{ await LevelPlayAds.showRewarded(); }
-    catch(e){ hint.textContent = 'تعذّر عرض الإعلان، حاول لاحقاً.'; }
+  if(UnityAdsPlugin && adsReady){
+    try{
+      const result = await UnityAdsPlugin.show();
+      adsReady = false;
+      loadRewardedAd(); // تجهيز الإعلان التالي فوراً
+      if(result?.completed){
+        boostUntil = Date.now() + 60000; points += 2; totalPointsEarned += 2; adsWatched += 1;
+        tasks.find(t=>t.id==='watch3').progress = Math.min(3, adsWatched);
+        hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!';
+        renderAll();
+      } else {
+        hint.textContent = 'ما تم إكمال مشاهدة الإعلان بالكامل.';
+      }
+    }catch(e){ hint.textContent = 'تعذّر عرض الإعلان، حاول لاحقاً.'; }
   } else {
     hint.textContent = 'الإعلان لسا يتحمّل، جرب بعد شوي.';
   }
