@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+   <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <script>
@@ -385,7 +385,9 @@ try{
   console.error('Firestore persistence failed', e);
 }
 let currentUser = null;
- const LevelPlayAds = window.Capacitor?.Plugins?.LevelPlayAds;
+
+// ===== Unity Ads (LevelPlay) integration =====
+const LevelPlayAds = window.Capacitor?.Plugins?.LevelPlayAds;
 let adsReady = false;
 const REWARDED_UNIT_ID = 'xssxn4oejmgfqnn5';
 
@@ -794,7 +796,6 @@ document.getElementById('optAd').onclick = async () => {
     hint.textContent = 'الإعلان لسا يتحمّل، جرب بعد شوي.';
   }
 };
-});
 document.getElementById('optSurvey').onclick = () => runAdOverlay(() => {
   points += 80; totalPointsEarned += 80; hint.textContent = '+80 نقطة من الاستبيان (نموذج شكلي فقط حالياً).'; renderAll();
 });
