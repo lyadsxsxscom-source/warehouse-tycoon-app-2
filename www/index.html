@@ -385,6 +385,7 @@ try{
   console.error('Firestore persistence failed', e);
 }
 let currentUser = null;
+let dataLoaded = false; // يمنع الحفظ التلقائي من الكتابة فوق البيانات قبل ما التحميل يخلص فعلياً
 
 // ===== Unity Ads SDK integration (مباشر، بدون LevelPlay) =====
 const UnityAdsPlugin = window.Capacitor?.Plugins?.UnityAdsPlugin;
@@ -683,7 +684,7 @@ function withTimeout(promise, ms, label){
   ]);
 }
 async function saveProgress(){
-  if(!currentUser) return;
+  if(!currentUser || !dataLoaded) return;
   try{
     await withTimeout(fbDb.collection('players').doc(currentUser.uid).set({
       points, wallet, totalPointsEarned, workersRented, adsWatched,
@@ -712,8 +713,10 @@ async function loadProgress(uid){
       adsWatched = d.adsWatched ?? adsWatched;
       if(d.shelves){ d.shelves.forEach(sd => { const s = shelves.find(x => x.id === sd.id); if(s){ s.unlocked = sd.unlocked; s.worker = sd.worker; } }); }
       hint.textContent = 'تم تحميل تقدمك المحفوظ!';
+      dataLoaded = true;
     } else {
       hint.textContent = 'أهلاً! هذا أول تسجيل دخول، بدأنا لك تقدم جديد.';
+      dataLoaded = true;
       saveProgress();
     }
     renderAll();
@@ -760,6 +763,7 @@ fbAuth.onAuthStateChanged(user => {
     loadProgress(user.uid);
   } else {
     loginGate.classList.add('show');
+    dataLoaded = false;
   }
 });
 
