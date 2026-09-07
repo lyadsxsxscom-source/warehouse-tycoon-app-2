@@ -413,6 +413,27 @@ async function initAds(){
   }catch(e){ console.error('Ads init failed', e); }
 }
 initAds();
+// ===== AdGem Offerwall integration =====
+const AdGemPlugin = window.Capacitor?.Plugins?.AdGemPlugin;
+
+async function initAdGem(){
+  if(!AdGemPlugin) return;
+  try{
+    await AdGemPlugin.initialize({});
+    AdGemPlugin.addListener('offerwallReward', (data) => {
+      const amount = Number(data.amount) || 0;
+      if(amount > 0){
+        points += amount; totalPointsEarned += amount;
+        hint.textContent = `+${amount} نقطة من جدار المهام!`;
+        renderAll();
+      }
+    });
+    AdGemPlugin.addListener('offerwallFailed', () => {
+      hint.textContent = 'تعذّر فتح جدار المهام، حاول لاحقاً.';
+    });
+  }catch(e){ console.error('AdGem init failed', e); }
+}
+initAdGem();
 </script>
 <script>
 const WORKERS = {
@@ -765,6 +786,7 @@ fbAuth.onAuthStateChanged(user => {
     loginGate.classList.add('show');
     dataLoaded = false;
   }
+  if(AdGemPlugin){ AdGemPlugin.setPlayerId({ playerId: user.uid.toLowerCase() }); }
 });
 
 setInterval(saveProgress, 4000); // حفظ تلقائي كل 4 ثواني إذا مسجّل دخول
@@ -814,8 +836,14 @@ document.getElementById('optAd').onclick = async () => {
 document.getElementById('optSurvey').onclick = () => runAdOverlay(() => {
   points += 80; totalPointsEarned += 80; hint.textContent = '+80 نقطة من الاستبيان (نموذج شكلي فقط حالياً).'; renderAll();
 });
-document.getElementById('optOfferwall').onclick = () => runAdOverlay(() => {
-  points += 150; totalPointsEarned += 150; hint.textContent = '+150 نقطة من جدار المهام (نموذج شكلي فقط حالياً).'; renderAll();
+document.getElementById('optOfferwall').onclick = () => {
+  earnOverlay.classList.remove('show');
+  if(AdGemPlugin){
+    AdGemPlugin.showOfferwall();
+  } else {
+    hint.textContent = 'جدار المهام متاح فقط داخل نسخة التطبيق المثبّتة.';
+  }
+};
 });
 
 // Bottom nav
