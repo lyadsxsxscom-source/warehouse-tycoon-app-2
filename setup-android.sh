@@ -141,4 +141,71 @@ public class MainActivity extends BridgeActivity {
     }
 }
 EOF
+# 10) إضافة مكتبة AdGem SDK لملف android/app/build.gradle
+if ! grep -q "com.adgem:adgem-android" android/app/build.gradle; then
+  sed -i "/dependencies {/a\\    implementation 'com.adgem:adgem-android:5.0.0'" android/app/build.gradle
+  echo "✓ أضيفت مكتبة AdGem SDK"
+fi
+
+# 11) كتابة بلجن Capacitor مخصص لجدار عروض AdGem
+cat > android/app/src/main/java/com/warehousetycoon/app/AdGemPlugin.java << 'EOF'
+package com.warehousetycoon.app;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.adgem.sdk.AdGem;
+import com.adgem.sdk.AdGemConfig;
+import com.adgem.sdk.AdGemError;
+import com.adgem.sdk.OfferwallCallback;
+import com.adgem.sdk.PlayerMetadata;
+
+@CapacitorPlugin(name = "AdGemPlugin")
+public class AdGemPlugin extends Plugin {
+    private OfferwallCallback callback;
+
+    @PluginMethod
+    public void initialize(PluginCall call) {
+        String appId = call.getString("appId");
+        AdGem.get().initialize(getContext(), new AdGemConfig.Builder(appId).build());
+
+        callback = new OfferwallCallback() {
+            @Override public void onOfferwallLoadingStarted() {}
+            @Override public void onOfferwallLoadingFinished() {}
+            @Override public void onOfferwallLoadingFailed(AdGemError error) {
+                JSObject ret = new JSObject();
+                ret.put("kind", error.getKind().toString());
+                notifyListeners("offerwallFailed", ret);
+            }
+            @Override public void onOfferwallRewardReceived(int amount) {
+                JSObject ret = new JSObject();
+                ret.put("amount", amount);
+                notifyListeners("offerwallReward", ret);
+            }
+            @Override public void onOfferwallClosed() {
+                notifyListeners("offerwallClosed", new JSObject());
+            }
+        };
+        AdGem.get().registerOfferwallCallback(callback);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setPlayerId(PluginCall call) {
+        String playerId = call.getString("playerId");
+        PlayerMetadata player = new PlayerMetadata.Builder(playerId).build();
+        AdGem.get().setPlayer(player);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void showOfferwall(PluginCall call) {
+        getActivity().runOnUiThread(() -> AdGem.get().showOfferwall(getActivity()));
+        call.resolve();
+    }
+}
+EOF
+echo "✓ AdGemPlugin.java تمت كتابته"
 echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin"
