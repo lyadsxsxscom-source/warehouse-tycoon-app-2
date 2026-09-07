@@ -141,9 +141,9 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.adgem.sdk.AdGem;
-import com.adgem.sdk.OfferwallCallback;
-import com.adgem.sdk.PlayerMetadata;
+import com.adgem.android.AdGem;
+import com.adgem.android.OfferwallCallback;
+import com.adgem.android.PlayerMetadata;
 
 @CapacitorPlugin(name = "AdGemPlugin")
 public class AdGemPlugin extends Plugin {
