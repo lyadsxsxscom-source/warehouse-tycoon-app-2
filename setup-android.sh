@@ -143,7 +143,7 @@ public class MainActivity extends BridgeActivity {
 EOF
 # 10) إضافة مكتبة AdGem SDK لملف android/app/build.gradle
 if ! grep -q "com.adgem:adgem-android" android/app/build.gradle; then
-  sed -i "/dependencies {/a\\    implementation 'com.adgem:adgem-android:4.2.3'" android/app/build.gradle
+  sed -i "/dependencies {/a\\    implementation 'com.adgem:adgem-android:4.0.3'" android/app/build.gradle
   echo "✓ أضيفت مكتبة AdGem SDK"
 fi
 
