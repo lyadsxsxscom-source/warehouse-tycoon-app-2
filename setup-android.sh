@@ -126,27 +126,13 @@ public class UnityAdsPlugin extends Plugin {
 EOF
 echo "✓ UnityAdsPlugin.java تمت كتابته"
 
-# 9) تسجيل البلجن جوّا MainActivity.java
-cat > android/app/src/main/java/com/warehousetycoon/app/MainActivity.java << 'EOF'
-package com.warehousetycoon.app;
-
-import android.os.Bundle;
-import com.getcapacitor.BridgeActivity;
-
-public class MainActivity extends BridgeActivity {
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(UnityAdsPlugin.class);
-        super.onCreate(savedInstanceState);
-    }
-}
-EOF
-# 10) إضافة مكتبة AdGem SDK لملف android/app/build.gradle
+# 9) إضافة مكتبة AdGem SDK (v4.0.3 — متوافقة مع compileSdk 34 الحالي، لا تحتاج ترقية أدوات البناء)
 if ! grep -q "com.adgem:adgem-android" android/app/build.gradle; then
   sed -i "/dependencies {/a\\    implementation 'com.adgem:adgem-android:4.0.3'" android/app/build.gradle
   echo "✓ أضيفت مكتبة AdGem SDK"
 fi
 
+# 10) كتابة بلجن Capacitor مخصص لجدار عروض AdGem
 cat > android/app/src/main/java/com/warehousetycoon/app/AdGemPlugin.java << 'EOF'
 package com.warehousetycoon.app;
 
@@ -201,9 +187,9 @@ public class AdGemPlugin extends Plugin {
     }
 }
 EOF
-echo "✓ AdGemPlugin.java تمت كتابته (v4.2.3)"
+echo "✓ AdGemPlugin.java تمت كتابته"
 
-# 11b) ملف إعدادات AdGem XML (بديل التهيئة بالكود بإصدار v4)
+# 11) ملف إعدادات AdGem XML (يحدد App ID وسلوك جدار العروض)
 mkdir -p android/app/src/main/res/xml
 cat > android/app/src/main/res/xml/adgem_config.xml << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
@@ -214,10 +200,26 @@ cat > android/app/src/main/res/xml/adgem_config.xml << 'EOF'
 EOF
 echo "✓ adgem_config.xml تمت كتابته"
 
-# 11c) تسجيل ملف الإعدادات بـAndroidManifest.xml
+# 12) تسجيل ملف الإعدادات بـAndroidManifest.xml (نحطه قبل </application> مباشرة، مكان آمن دايماً)
 if ! grep -q "com.adgem.Config" android/app/src/main/AndroidManifest.xml; then
-  sed -i '/<application/a\        <meta-data android:name="com.adgem.Config" android:resource="@xml/adgem_config"/>' android/app/src/main/AndroidManifest.xml
+  sed -i '\|</application>|i\        <meta-data android:name="com.adgem.Config" android:resource="@xml/adgem_config" />' android/app/src/main/AndroidManifest.xml
   echo "✓ AndroidManifest.xml عُدّل"
 fi
-echo "✓ AdGemPlugin.java تمت كتابته"
-echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin"
+
+# 13) تسجيل البلجنز جوّا MainActivity.java (Unity Ads + AdGem)
+cat > android/app/src/main/java/com/warehousetycoon/app/MainActivity.java << 'EOF'
+package com.warehousetycoon.app;
+
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(UnityAdsPlugin.class);
+        registerPlugin(AdGemPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}
+EOF
+echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin و AdGemPlugin"
