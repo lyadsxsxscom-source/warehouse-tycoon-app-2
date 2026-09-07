@@ -247,16 +247,7 @@ window.onerror = function(msg, url, line, col, err){
     <div class="hint" id="redeemHint"></div>
   </div>
 
-  <h3>شراء نقاط</h3>
-  <div class="store-grid" id="storeGrid"></div>
-
-  <h3>شراء رفوف مباشرة</h3>
-  <div class="store-grid" id="storeShelvesGrid"></div>
-
-  <h3>استئجار عمال مباشرة</h3>
-  <div class="store-grid" id="storeWorkersGrid"></div>
-
-  <div class="note">هذي أسعار عرض توضيحي فقط. القيمة النهائية وطرق الدفع الفعلية تُحسم بعد مرحلة حساب الاقتصاد.</div>
+  <div class="note">لشراء نقاط أو فتح رفوف حصرية بفلوس حقيقية، زور موقعنا الرسمي واحصل على كود استرداد، وفعّله من الأعلى.</div>
 </div>
 
 <!-- ===== WITHDRAW ===== -->
@@ -413,6 +404,7 @@ async function initAds(){
   }catch(e){ console.error('Ads init failed', e); }
 }
 initAds();
+
 // ===== AdGem Offerwall integration =====
 const AdGemPlugin = window.Capacitor?.Plugins?.AdGemPlugin;
 
@@ -444,14 +436,7 @@ const WORKERS = {
 const SHELF_COUNT = 12;
 // index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط | index 6-11: حصرية من المتجر فقط (null = ما تُفتح بالنقاط)
 const SHELF_UNLOCK_COST = [0, 0, 120, 350, 800, 1600, null, null, null, null, null, null];
-const STORE_ITEMS = [
-  {amt:'500 نقطة', price:'$0.99'},
-  {amt:'2,800 نقطة', price:'$4.99', badge:'+12%'},
-  {amt:'6,500 نقطة', price:'$9.99', badge:'الأفضل'},
-  {amt:'15,000 نقطة', price:'$19.99', badge:'+30%'},
-];
 const SHELF_PRICE_USD = [null, null, 1.99, 4.99, 9.99, 19.99, 3.99, 6.99, 11.99, 17.99, 26.99, 39.99]; // matches shelf indices
-const WORKER_PRICE_USD = { day: 0.99, week: 2.99, month: 6.99 };
 
 let points = 260;
 let totalPointsEarned = 260;
@@ -502,61 +487,6 @@ function renderTasks(){
 }
 
 function renderStore(){
-  const g = document.getElementById('storeGrid');
-  g.innerHTML = '';
-  STORE_ITEMS.forEach(it => {
-    const d = document.createElement('div');
-    d.className = 'store-item';
-    d.innerHTML = `${it.badge ? `<div class="badge">${it.badge}</div>` : ''}
-      <div style="font-size:26px;">🎫</div>
-      <div class="amt">${it.amt}</div>
-      <button class="price">${it.price}</button>`;
-    d.querySelector('.price').onclick = () => { alert('نموذج شكلي فقط — الدفع الفعلي غير مفعّل بعد.'); };
-    g.appendChild(d);
-  });
-
-  const sg = document.getElementById('storeShelvesGrid');
-  sg.innerHTML = '';
-  const lockedShelves = shelves.filter(s => !s.unlocked);
-  if(lockedShelves.length === 0){
-    sg.innerHTML = `<div class="store-item" style="grid-column:1/-1;"><div class="amt">كل الرفوف مفتوحة 🎉</div></div>`;
-  } else {
-    lockedShelves.forEach(s => {
-      const d = document.createElement('div');
-      d.className = 'store-item';
-      d.innerHTML = `<div style="font-size:26px;">🗄️</div>
-        <div class="amt">رف ${s.id + 1}</div>
-        <button class="price">$${SHELF_PRICE_USD[s.id].toFixed(2)}</button>`;
-      d.querySelector('.price').onclick = () => {
-        alert('نموذج شكلي فقط — الدفع الفعلي غير مفعّل بعد. (سيفتح هذا الرف فوراً بدون نقاط عند التفعيل الحقيقي)');
-        s.unlocked = true;
-        renderAll();
-      };
-      sg.appendChild(d);
-    });
-  }
-
-  const wg = document.getElementById('storeWorkersGrid');
-  wg.innerHTML = '';
-  Object.keys(WORKERS).forEach(key => {
-    const w = WORKERS[key];
-    const d = document.createElement('div');
-    d.className = 'store-item';
-    d.innerHTML = `<div style="font-size:26px;">👷</div>
-      <div class="amt">${w.label}</div>
-      <div class="stat-sub" style="margin-bottom:4px;">+${w.rate} عملة/ث</div>
-      <button class="price">$${WORKER_PRICE_USD[key].toFixed(2)}</button>`;
-    d.querySelector('.price').onclick = () => {
-      const target = shelves.find(s => s.unlocked && (!s.worker || s.worker.expiresAt <= Date.now()));
-      if(!target){ alert('لازم رف مفتوح وفاضي أول — افتح رف من فوق أو من الرفوف بالنقاط.'); return; }
-      alert('نموذج شكلي فقط — الدفع الفعلي غير مفعّل بعد.');
-      target.worker = {kind:key, rate:w.rate, expiresAt: Date.now() + w.demoSeconds*1000};
-      workersRented += 1;
-      tasks.find(t=>t.id==='rent1').progress = Math.min(1, workersRented);
-      renderAll();
-    };
-    wg.appendChild(d);
-  });
 }
 
 function renderProfile(){
@@ -590,7 +520,7 @@ function render(){
       const cost = SHELF_UNLOCK_COST[s.id];
       if(cost === null){
         div.innerHTML = `<div class="emoji">🛒</div><div class="label">حصري بالمتجر ($${SHELF_PRICE_USD[s.id].toFixed(2)})</div>`;
-        div.onclick = () => { hint.textContent = 'هذا الرف يُفتح من المتجر فقط، مو بالنقاط.'; };
+        div.onclick = () => { hint.textContent = 'هذا الرف حصري — زور موقعنا للحصول على كود فتحه.'; };
       } else {
         div.innerHTML = `<div class="emoji">🔒</div><div class="label">فتح: ${cost} نقطة</div>`;
         div.onclick = () => {
@@ -782,11 +712,11 @@ fbAuth.onAuthStateChanged(user => {
   if(user){
     loginGate.classList.remove('show');
     loadProgress(user.uid);
+    if(AdGemPlugin){ AdGemPlugin.setPlayerId({ playerId: user.uid.toLowerCase() }); }
   } else {
     loginGate.classList.add('show');
     dataLoaded = false;
   }
-  if(AdGemPlugin){ AdGemPlugin.setPlayerId({ playerId: user.uid.toLowerCase() }); }
 });
 
 setInterval(saveProgress, 4000); // حفظ تلقائي كل 4 ثواني إذا مسجّل دخول
