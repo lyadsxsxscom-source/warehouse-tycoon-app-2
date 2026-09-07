@@ -408,7 +408,7 @@ async function loadRewardedAd(){
 async function initAds(){
   if(!UnityAdsPlugin) return; // معاينة بمتصفح عادي بدون التطبيق — تجاهل
   try{
-    await UnityAdsPlugin.initialize({ gameId: UNITY_GAME_ID, testMode: true }); // ⚠️ غيّرها false قبل النشر الفعلي
+    await UnityAdsPlugin.initialize({ gameId: UNITY_GAME_ID, testMode: false });
     loadRewardedAd();
   }catch(e){ console.error('Ads init failed', e); }
 }
