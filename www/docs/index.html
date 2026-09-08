@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مستودع الأرباح — التحميل والشحن</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14110D; --panel:#1F1B14; --panel2:#262117;
+    --amber:#E3A83B; --steel:#5B7B99; --ember:#E4572E;
+    --btc:#F7931A; --eth:#8A9BFF;
+    --text:#EFE6D2; --dim:#948A72; --border:#332C1F;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Cairo', sans-serif; line-height:1.7;
+  }
+
+  .stamp{
+    display:inline-block; border:2px solid currentColor; border-radius:3px;
+    padding:2px 10px; font-weight:800; letter-spacing:.5px; transform:rotate(-2deg);
+  }
+  .cut-line{
+    border:none; height:0; border-top:2px dashed var(--border); margin:0;
+    position:relative;
+  }
+  .cut-line::before, .cut-line::after{
+    content:'✂'; position:absolute; top:-11px; font-size:14px; color:var(--dim);
+  }
+  .cut-line::before{ right:16px; }
+  .cut-line::after{ left:16px; }
+
+  .wrap{max-width:640px; margin:0 auto; padding:0 20px;}
+
+  header{
+    padding:56px 0 40px; text-align:center;
+    background:
+      radial-gradient(circle at 20% 0%, rgba(227,168,59,0.14), transparent 45%),
+      radial-gradient(circle at 85% 20%, rgba(91,123,153,0.12), transparent 45%);
+    border-bottom:1px solid var(--border);
+  }
+  header .crate{font-size:54px; margin-bottom:6px;}
+  h1{
+    font-size:32px; font-weight:800; margin:0 0 10px; color:#fff;
+    letter-spacing:.5px;
+  }
+  header p{color:var(--dim); font-size:15px; max-width:420px; margin:0 auto 26px;}
+
+  .dl-btn{
+    display:inline-flex; align-items:center; gap:10px;
+    background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;
+    font-weight:800; font-size:16px; text-decoration:none;
+    padding:16px 30px; border-radius:12px;
+    box-shadow:0 10px 26px rgba(228,87,46,0.35);
+  }
+  .dl-btn:active{transform:translateY(1px);}
+  .dl-sub{display:block; margin-top:10px; font-size:11px; color:var(--dim);}
+
+  section{padding:38px 0;}
+  h2{
+    font-size:18px; color:#fff; margin:0 0 4px;
+    display:flex; align-items:center; gap:8px;
+  }
+  h2 .num{
+    width:26px; height:26px; border-radius:50%; background:var(--panel2);
+    border:1px solid var(--border); color:var(--amber); font-size:13px;
+    display:inline-flex; align-items:center; justify-content:center; font-weight:800;
+    flex-shrink:0;
+  }
+  .lead{color:var(--dim); font-size:13px; margin:0 0 18px;}
+
+  .how-it-plays{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px;
+  }
+  .pill{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:14px; font-size:12.5px; text-align:center;
+  }
+  .pill .ic{font-size:22px; display:block; margin-bottom:6px;}
+
+  .pack-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;}
+  .pack{
+    background:linear-gradient(180deg, var(--panel), var(--panel2)); border:1px solid var(--border);
+    border-radius:12px; padding:14px; text-align:center; position:relative;
+  }
+  .pack .amt{font-size:17px; font-weight:800; color:#fff;}
+  .pack .usd{font-size:12px; color:var(--amber); margin-top:2px; font-weight:700;}
+  .pack .best{
+    position:absolute; top:-9px; left:50%; transform:translateX(-50%) rotate(-2deg);
+    background:var(--amber); color:#241a05; font-size:10px; font-weight:800;
+    padding:2px 8px; border-radius:6px;
+  }
+
+  .steps{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:6px 16px;}
+  .step{
+    display:flex; gap:12px; padding:14px 0; border-bottom:1px solid var(--border);
+  }
+  .step:last-child{border-bottom:none;}
+  .step .n{
+    width:24px; height:24px; border-radius:50%; background:var(--panel2); border:1px solid var(--border);
+    color:var(--amber); font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; margin-top:2px;
+  }
+  .step .t{font-size:13.5px;}
+  .step .t b{color:#fff;}
+
+  .pay-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .pay-card .pname{font-size:13.5px; font-weight:800; color:#fff;}
+  .pay-card .pcode{
+    font-family:monospace; font-size:12px; color:var(--amber); direction:ltr; text-align:left;
+    word-break:break-all;
+  }
+  .pay-card .pnote{font-size:10.5px; color:var(--dim); margin-top:2px;}
+
+  .contact-row{display:flex; gap:10px; margin-top:8px;}
+  .contact-btn{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px; border-radius:12px; text-decoration:none; font-weight:800; font-size:13.5px;
+  }
+  .contact-btn.wa{background:#25D366; color:#08260f;}
+  .contact-btn.tg{background:#2AABEE; color:#06202f;}
+
+  footer{
+    border-top:1px solid var(--border); padding:26px 0 40px; text-align:center;
+    color:var(--dim); font-size:11px;
+  }
+  footer .stamp{margin-bottom:10px; color:var(--dim);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="crate">📦</div>
+    <h1>مستودع الأرباح</h1>
+    <p>لعبة إدارة مستودع idle — وظّف عمّالك، اجمع النقاط، وشاهد المحفظة تتراكم وحدها.</p>
+    <a class="dl-btn" href="https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/latest" target="_blank" rel="noopener">
+      ⬇ تحميل آخر نسخة (Android)
+    </a>
+    <span class="dl-sub">ملف APK مباشر من GitHub — فعّل "مصادر غير معروفة" عند التثبيت</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <h2><span class="num">1</span> كيف تلعب</h2>
+    <p class="lead">اجمع نقاط، افتح رفوف، ووظّف عمّال ينتجون لك عملة تتراكم بالمحفظة تلقائياً.</p>
+    <div class="how-it-plays">
+      <div class="pill"><span class="ic">🎬</span>شاهد إعلان أو أكمل عرض واكسب نقاط</div>
+      <div class="pill"><span class="ic">🗄️</span>افتح رف واستأجر عامل عليه</div>
+      <div class="pill"><span class="ic">⏱️</span>العامل ينتج عملة تلقائياً طول مدة عقده</div>
+      <div class="pill"><span class="ic">👛</span>العملة تتجمّع بالمحفظة — اختر BTC أو ETH</div>
+    </div>
+  </section>
+
+  <hr class="cut-line">
+
+  <section>
+    <h2><span class="num">2</span> اشحن نقاط</h2>
+    <p class="lead">1000 نقطة = 1$. الشحن حالياً يدوي عبر تواصل مباشر — بدون نظام دفع أوتوماتيكي بعد.</p>
+
+    <div class="pack-grid">
+      <div class="pack"><div class="amt">500 نقطة</div><div class="usd">$0.50</div></div>
+      <div class="pack"><span class="best">الأفضل</span><div class="amt">2,800 نقطة</div><div class="usd">$2.80</div></div>
+      <div class="pack"><div class="amt">6,500 نقطة</div><div class="usd">$6.50</div></div>
+      <div class="pack"><div class="amt">15,000 نقطة</div><div class="usd">$15.00</div></div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <div class="t"><b>اختر باقتك وتواصل معنا</b> عبر واتساب أو تيليجرام (الأزرار تحت) وأخبرنا أي باقة تريد.</div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <div class="t"><b>حوّل المبلغ</b> عبر إحدى وسائل الدفع تحت، وأرسل لقطة شاشة لإثبات التحويل.</div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <div class="t"><b>استلم كود الشحن</b> وفعّله من داخل اللعبة (المتجر ← استرداد كود).</div>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px; color:var(--dim); margin:20px 4px 8px; font-weight:600;">وسائل الدفع</h3>
+    <div class="pay-card">
+      <div>
+        <div class="pname">Kazawallet</div>
+        <div class="pnote">رقم الحساب</div>
+      </div>
+      <div class="pcode">k5813250</div>
+    </div>
+    <div class="pay-card">
+      <div>
+        <div class="pname">ShamCash</div>
+        <div class="pnote">الرمز</div>
+      </div>
+      <div class="pcode">4a8c7ac87d18d72ebe29daf4ce8ea08d</div>
+    </div>
+    <div class="pay-card">
+      <div>
+        <div class="pname">أقرب إليك / USDT-USDC (BEP20)</div>
+        <div class="pnote">تواصل معنا لتفاصيل التحويل</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="cut-line">
+
+  <section>
+    <h2><span class="num">3</span> تواصل معنا</h2>
+    <p class="lead">للشحن، أو أي مشكلة بالتطبيق، أو اقتراح.</p>
+    <div class="contact-row">
+      <a class="contact-btn wa" href="https://wa.me/963932867131" target="_blank" rel="noopener">💬 واتساب</a>
+      <a class="contact-btn tg" href="https://t.me/IBRAHEEM932" target="_blank" rel="noopener">✈️ تيليجرام</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="stamp">مستودع الأرباح</div>
+  <div>لعبة عرض توضيحي قبل الإطلاق الرسمي — الأسعار وطرق الدفع قابلة للتغيير.</div>
+</footer>
+
+</body>
+</html>
