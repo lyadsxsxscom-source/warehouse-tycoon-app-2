@@ -129,7 +129,7 @@ async function loadRecentCodes(){
   const tbody = document.getElementById('codesTable');
   tbody.innerHTML = '<tr><td colspan="3">جاري التحميل...</td></tr>';
   try{
-    const snap = await fbDb.collection('redeemCodes').orderBy(firebase.firestore.FieldPath.documentId()).limitToLast(15).get();
+    const snap = await fbDb.collection('redeemCodes').orderBy('createdAt', 'desc').limit(15).get();
     if(snap.empty){ tbody.innerHTML = '<tr><td colspan="3">لا يوجد أكواد بعد</td></tr>'; return; }
     tbody.innerHTML = '';
     snap.forEach(doc => {
