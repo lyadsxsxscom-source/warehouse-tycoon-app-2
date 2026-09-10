@@ -188,6 +188,23 @@ window.onerror = function(msg, url, line, col, err){
   }
   .navbtn .ic{font-size:19px;}
   .navbtn.active{color:var(--amber);}
+  .navbtn{position:relative;}
+  .mail-dot{
+    position:absolute; top:2px; left:calc(50% - 2px); width:9px; height:9px; border-radius:50%;
+    background:var(--ember); border:2px solid #0f0c08; display:none;
+  }
+  .mail-dot.show{display:block;}
+
+  .mail-item{
+    background:var(--panel2); border:1px solid var(--border); border-radius:14px;
+    padding:14px; margin-bottom:10px; position:relative;
+  }
+  .mail-item.unread{border-color:var(--amber);}
+  .mail-item .mtitle{font-size:13.5px; font-weight:800; color:#fff; margin-bottom:4px;}
+  .mail-item .mmsg{font-size:12.5px; color:var(--dim); margin-bottom:10px; line-height:1.6;}
+  .mail-item .mtime{font-size:10px; color:var(--dim); margin-bottom:10px;}
+  .mail-item .mclaimed{font-size:12px; color:#5fd88a; font-weight:700;}
+  .mail-empty{text-align:center; color:var(--dim); font-size:13px; padding:40px 0;}
 </style>
 </head>
 <body>
@@ -311,8 +328,14 @@ window.onerror = function(msg, url, line, col, err){
   </div>
 </div>
 
+<!-- ===== MAIL ===== -->
+<div class="screen" id="screen-mail">
+  <h3>📬 البريد</h3>
+  <div id="mailList"><div class="mail-empty">سجّل دخول عشان تشوف رسائلك.</div></div>
+</div>
+
 <div class="note">
-  عرض توضيحي: النقاط تُكسب من الإعلان/الاستبيان/جدار المهام خلف زر واحد، وتُصرف على الرفوف والعمال.
+  عرض توضيحي: النقاط تُكسب من الإعلان/جدار المهام خلف زر واحد، وتُصرف على الرفوف والعمال.
   العملة ينتجها العمال تلقائياً وتتراكم مباشرة بالمحفظة، وتقدر تختار BTC أو ETH.
 </div>
 
@@ -320,6 +343,7 @@ window.onerror = function(msg, url, line, col, err){
 <div class="bottomnav">
   <button class="navbtn active" data-screen="home"><span class="ic">🏠</span>الرئيسية</button>
   <button class="navbtn" data-screen="store"><span class="ic">🛒</span>المتجر</button>
+  <button class="navbtn" data-screen="mail"><span class="ic">📬</span><span class="mail-dot" id="mailDot"></span>البريد</button>
   <button class="navbtn" data-screen="withdraw"><span class="ic">💸</span>السحب</button>
   <button class="navbtn" data-screen="profile"><span class="ic">👤</span>الملف</button>
 </div>
@@ -721,6 +745,68 @@ async function redeemCode(){
 }
 document.getElementById('btnRedeem').onclick = redeemCode;
 
+// ===== Mail (رسائل شحن النقاط من الموقع) =====
+let mailUnsub = null;
+async function claimMail(mailId, code, btn){
+  btn.disabled = true; btn.textContent = 'جاري الاسترداد...';
+  const codeRef = fbDb.collection('redeemCodes').doc(code);
+  const playerRef = fbDb.collection('players').doc(currentUser.uid);
+  const mailRef = fbDb.collection('mail').doc(mailId);
+  try{
+    const awarded = await fbDb.runTransaction(async (tx) => {
+      const codeDoc = await tx.get(codeRef);
+      if(!codeDoc.exists) throw new Error('هذا الكود غير موجود.');
+      const data = codeDoc.data();
+      if(data.used) throw new Error('تم استرداد هذا الكود مسبقاً.');
+      tx.update(codeRef, { used: true, usedBy: currentUser.uid, usedAt: Date.now() });
+      tx.update(playerRef, { points: firebase.firestore.FieldValue.increment(data.points) });
+      tx.update(mailRef, { claimed: true, read: true, claimedAt: Date.now() });
+      return data.points;
+    });
+    points += awarded; totalPointsEarned += awarded;
+    hint.textContent = `✓ تم استرداد ${awarded} نقطة من البريد!`;
+    renderAll();
+  }catch(e){
+    btn.disabled = false; btn.textContent = 'استرداد';
+    alert('تعذّر الاسترداد: ' + e.message);
+  }
+}
+
+function renderMail(docs){
+  const list = document.getElementById('mailList');
+  const mailDot = document.getElementById('mailDot');
+  if(docs.length === 0){ list.innerHTML = '<div class="mail-empty">ما في رسائل لسا.</div>'; mailDot.classList.remove('show'); return; }
+  let hasUnread = false;
+  list.innerHTML = '';
+  docs.forEach(({id, data:d}) => {
+    if(!d.read) hasUnread = true;
+    const item = document.createElement('div');
+    item.className = 'mail-item' + (d.read ? '' : ' unread');
+    const dt = new Date(d.createdAt);
+    item.innerHTML = `
+      <div class="mtitle">🎁 ${(d.points ?? 0).toLocaleString('en-US')} نقطة</div>
+      <div class="mmsg">${d.message || ''}</div>
+      <div class="mtime">${dt.toLocaleDateString('ar-EG')}</div>
+      ${d.claimed
+        ? `<div class="mclaimed">✓ تم الاسترداد</div>`
+        : `<button class="btn-main" style="padding:10px;" data-mailid="${id}" data-code="${d.code}">استرداد</button>`}
+    `;
+    list.appendChild(item);
+  });
+  mailDot.classList.toggle('show', hasUnread);
+  list.querySelectorAll('button[data-mailid]').forEach(btn => {
+    btn.onclick = () => claimMail(btn.dataset.mailid, btn.dataset.code, btn);
+  });
+}
+
+function watchMail(uid){
+  if(mailUnsub) mailUnsub();
+  mailUnsub = fbDb.collection('mail').where('uid', '==', uid).orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      renderMail(snap.docs.map(d => ({id: d.id, data: d.data()})));
+    }, err => { console.error('mail load failed', err); });
+}
+
 const loginGate = document.getElementById('loginGate');
 fbAuth.onAuthStateChanged(user => {
   currentUser = user;
@@ -728,10 +814,14 @@ fbAuth.onAuthStateChanged(user => {
   if(user){
     loginGate.classList.remove('show');
     loadProgress(user.uid);
+    watchMail(user.uid);
     if(AdGemPlugin){ AdGemPlugin.setPlayerId({ playerId: user.uid.toLowerCase() }); }
   } else {
     loginGate.classList.add('show');
     dataLoaded = false;
+    if(mailUnsub){ mailUnsub(); mailUnsub = null; }
+    document.getElementById('mailList').innerHTML = '<div class="mail-empty">سجّل دخول عشان تشوف رسائلك.</div>';
+    document.getElementById('mailDot').classList.remove('show');
   }
 });
 
@@ -783,7 +873,7 @@ document.getElementById('optOfferwall').onclick = () => {
 };
 
 // Bottom nav
-const SCREEN_ORDER = ['home','store','withdraw','profile'];
+const SCREEN_ORDER = ['home','store','mail','withdraw','profile'];
 function goToScreen(name){
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.screen === name));
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -830,4 +920,4 @@ setInterval(() => {
 renderAll();
 </script>
 </body>
-    </html>
+</html>
