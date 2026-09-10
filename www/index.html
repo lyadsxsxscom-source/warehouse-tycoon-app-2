@@ -248,6 +248,8 @@ window.onerror = function(msg, url, line, col, err){
   </div>
 
   <div class="note">لشراء نقاط أو فتح رفوف حصرية بفلوس حقيقية، زور موقعنا الرسمي واحصل على كود استرداد، وفعّله من الأعلى.</div>
+
+  <a href="https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/" target="_blank" rel="noopener" class="btn-main" style="display:block; text-align:center; text-decoration:none; margin-top:10px;">🌐 زيارة موقعنا للشحن والتحميل</a>
 </div>
 
 <!-- ===== WITHDRAW ===== -->
@@ -325,7 +327,7 @@ window.onerror = function(msg, url, line, col, err){
 <!-- Overlays -->
 <div class="overlay" id="rentOverlay">
   <div class="modal">
-    <h4>استئجار عامل — رف <span id="rentSlotLabel"></span></h4>
+    <h4 id="rentTitle">استئجار عامل <span id="rentCoinLabel"></span> — رف <span id="rentSlotLabel"></span></h4>
     <div class="option" data-dur="day"><div><div class="name">يوم واحد</div><div class="desc">إنتاج +1 عملة/ث</div></div><div class="cost">50 نقطة</div></div>
     <div class="option" data-dur="week"><div><div class="name">أسبوع</div><div class="desc">إنتاج +1.5 عملة/ث</div></div><div class="cost">280 نقطة</div></div>
     <div class="option" data-dur="month"><div><div class="name">شهر</div><div class="desc">إنتاج +2.2 عملة/ث</div></div><div class="cost">900 نقطة</div></div>
@@ -337,16 +339,9 @@ window.onerror = function(msg, url, line, col, err){
   <div class="modal">
     <h4>كسب نقاط</h4>
     <div class="option" id="optAd"><div><div class="name">🎬 مشاهدة إعلان</div><div class="desc">فوري + مضاعفة إنتاج 60 ثانية</div></div><div class="cost">+2</div></div>
-    <div class="option" id="optSurvey"><div><div class="name">📋 إكمال استبيان</div><div class="desc">نموذج شكلي حالياً</div></div><div class="cost">+80</div></div>
     <div class="option" id="optOfferwall"><div><div class="name">🎯 جدار المهام</div><div class="desc">نموذج شكلي حالياً</div></div><div class="cost">+150</div></div>
     <div class="close" id="closeEarn">إغلاق</div>
   </div>
-</div>
-
-<div class="overlay" id="adOverlay">
-  <div style="font-size:44px;">📺</div>
-  <div style="font-size:13px; color:var(--dim);">جاري التحميل...</div>
-  <div class="adcount" id="adCount">3</div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -428,10 +423,16 @@ async function initAdGem(){
 initAdGem();
 </script>
 <script>
+// الأسعار مأخوذة من سعر السوق وقت الضبط: BTC≈$78,224.10 / ETH≈$2,464.79
+// معادلة التسعير: قيمة إنتاج العامل بالدولار = تكلفته بالنقاط ÷ 900 (أي 900 نقطة = 1$ إنتاج)
+// rate هو معدل الإنتاج بالثانية موزّع على demoSeconds (مدة تجريبية مُسرّعة لغرض الاختبار)
 const WORKERS = {
-  day:   {label:'عامل يومي',   rate:1,   cost:50,  demoSeconds:20},
-  week:  {label:'عامل أسبوعي', rate:1.5, cost:280, demoSeconds:40},
-  month: {label:'عامل شهري',   rate:2.2, cost:900, demoSeconds:65},
+  btc_day:   {label:'عامل بيتكوين يومي',   coin:'btc', cost:100,  rate:0.000000071021, demoSeconds:20},
+  btc_week:  {label:'عامل بيتكوين أسبوعي', coin:'btc', cost:600,  rate:0.000000213063, demoSeconds:40},
+  btc_month: {label:'عامل بيتكوين شهري',   coin:'btc', cost:2000, rate:0.000000437052, demoSeconds:65},
+  eth_day:   {label:'عامل إيثيريوم يومي',   coin:'eth', cost:100,  rate:0.000002253967, demoSeconds:20},
+  eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.000006761901, demoSeconds:40},
+  eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.000013870567, demoSeconds:65},
 };
 const SHELF_COUNT = 12;
 // index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط | index 6-11: حصرية من المتجر فقط (null = ما تُفتح بالنقاط)
@@ -466,9 +467,9 @@ const floatPlus = document.getElementById('floatPlus');
 const btnBTC = document.getElementById('btnBTC');
 const btnETH = document.getElementById('btnETH');
 
-function currentRate(){
+function currentRate(coin){
   const now = Date.now();
-  return shelves.reduce((sum, s) => (s.worker && s.worker.expiresAt > now) ? sum + s.worker.rate : sum, 0);
+  return shelves.reduce((sum, s) => (s.worker && s.worker.coin === coin && s.worker.expiresAt > now) ? sum + s.worker.rate : sum, 0);
 }
 
 function renderTasks(){
@@ -531,7 +532,7 @@ function render(){
     } else if(s.worker && s.worker.expiresAt > now){
       div.classList.add('working');
       const remain = Math.max(0, s.worker.expiresAt - now);
-      div.innerHTML = `<div class="emoji">👷</div><div class="name">${WORKERS[s.worker.kind].label}</div><div class="timer">${Math.ceil(remain/1000)} ث متبقية</div>`;
+      div.innerHTML = `<div class="emoji">👷</div><div class="name">${s.worker.coin==='btc'?'₿':'Ξ'} ${WORKERS[s.worker.coin+'_'+s.worker.kind].label}</div><div class="timer">${Math.ceil(remain/1000)} ث متبقية</div>`;
       div.onclick = () => { hint.textContent = 'هذا العامل شغّال حالياً.'; };
     } else if(s.worker && s.worker.expiresAt <= now){
       div.classList.add('expired');
@@ -545,8 +546,8 @@ function render(){
   });
 
   const boosted = now < boostUntil;
-  const rate = currentRate() * (boosted ? 2 : 1);
-  walletRate.textContent = `+${rate.toFixed(2)}/ثانية ${activeCoin.toUpperCase()} ${boosted ? '×2' : ''}`;
+  const rate = currentRate(activeCoin) * (boosted ? 2 : 1);
+  walletRate.textContent = `+${rate.toFixed(8)}/ثانية ${activeCoin.toUpperCase()} ${boosted ? '×2' : ''}`;
   if(Math.floor(points) !== lastPointsShown){ bumpEl(pointsNum); lastPointsShown = Math.floor(points); }
   pointsNum.textContent = Math.floor(points).toLocaleString('en-US');
   if(wallet[activeCoin] > lastWalletShown + 0.0000005){ bumpEl(walletNum); lastWalletShown = wallet[activeCoin]; }
@@ -558,15 +559,30 @@ function render(){
 }
 function renderAll(){ render(); renderTasks(); renderStore(); }
 
-function openRent(slotId){ pendingSlot = slotId; rentSlotLabel.textContent = slotId + 1; rentOverlay.classList.add('show'); }
+function refreshRentOptions(){
+  document.querySelectorAll('#rentOverlay .option').forEach(opt => {
+    const dur = opt.dataset.dur;
+    const w = WORKERS[activeCoin + '_' + dur];
+    opt.querySelector('.name').textContent = (dur==='day' ? 'يوم واحد' : dur==='week' ? 'أسبوع' : 'شهر');
+    opt.querySelector('.desc').textContent = `إنتاج ${w.rate.toFixed(8)} ${activeCoin.toUpperCase()}/ث`;
+    opt.querySelector('.cost').textContent = `${w.cost} نقطة`;
+  });
+}
+function openRent(slotId){
+  pendingSlot = slotId;
+  rentSlotLabel.textContent = slotId + 1;
+  document.getElementById('rentCoinLabel').textContent = activeCoin==='btc' ? '₿ بيتكوين' : 'Ξ إيثيريوم';
+  refreshRentOptions();
+  rentOverlay.classList.add('show');
+}
 document.getElementById('closeRent').onclick = () => rentOverlay.classList.remove('show');
 document.querySelectorAll('#rentOverlay .option').forEach(opt => {
   opt.onclick = () => {
-    const dur = opt.dataset.dur; const w = WORKERS[dur];
+    const dur = opt.dataset.dur; const w = WORKERS[activeCoin + '_' + dur];
     if(points < w.cost){ hint.textContent = 'نقاط غير كافية.'; rentOverlay.classList.remove('show'); return; }
     points -= w.cost;
     const s = shelves.find(x => x.id === pendingSlot);
-    s.worker = {kind:dur, rate:w.rate, expiresAt: Date.now() + w.demoSeconds*1000};
+    s.worker = {kind:dur, coin:activeCoin, rate:w.rate, expiresAt: Date.now() + w.demoSeconds*1000};
     workersRented += 1;
     tasks.find(t=>t.id==='rent1').progress = Math.min(1, workersRented);
     rentOverlay.classList.remove('show');
@@ -737,12 +753,6 @@ const earnOverlay = document.getElementById('earnOverlay');
 document.getElementById('btnEarn').onclick = () => earnOverlay.classList.add('show');
 document.getElementById('closeEarn').onclick = () => earnOverlay.classList.remove('show');
 
-function runAdOverlay(onDone){
-  const adOverlay = document.getElementById('adOverlay'); const adCount = document.getElementById('adCount');
-  earnOverlay.classList.remove('show'); adOverlay.classList.add('show');
-  let c = 3; adCount.textContent = c;
-  const iv = setInterval(() => { c -= 1; adCount.textContent = c; if(c <= 0){ clearInterval(iv); adOverlay.classList.remove('show'); onDone(); } }, 1000);
-}
 document.getElementById('optAd').onclick = async () => {
   earnOverlay.classList.remove('show');
   if(UnityAdsPlugin && adsReady){
@@ -763,9 +773,6 @@ document.getElementById('optAd').onclick = async () => {
     hint.textContent = 'الإعلان لسا يتحمّل، جرب بعد شوي.';
   }
 };
-document.getElementById('optSurvey').onclick = () => runAdOverlay(() => {
-  points += 80; totalPointsEarned += 80; hint.textContent = '+80 نقطة من الاستبيان (نموذج شكلي فقط حالياً).'; renderAll();
-});
 document.getElementById('optOfferwall').onclick = () => {
   earnOverlay.classList.remove('show');
   if(AdGemPlugin){
@@ -803,15 +810,18 @@ document.body.addEventListener('touchend', e => {
   if(newIdx !== idx) goToScreen(SCREEN_ORDER[newIdx]);
 }, {passive:true});
 
-// idle tick
+// idle tick — يعمل كل 900ms، والإنتاج rate هو "عملة/ثانية" فعلياً، فالكسب بكل تحديث = rate × 0.9
 setInterval(() => {
   const now = Date.now();
   const boosted = now < boostUntil;
-  const rate = currentRate() * (boosted ? 2 : 1);
-  const gain = rate / 10 / 1000;
-  if(gain > 0){
-    wallet[activeCoin] += gain;
-    floatPlus.textContent = `+${gain.toFixed(6)}`;
+  const boostMul = boosted ? 2 : 1;
+  const btcGain = currentRate('btc') * boostMul * 0.9;
+  const ethGain = currentRate('eth') * boostMul * 0.9;
+  wallet.btc += btcGain;
+  wallet.eth += ethGain;
+  const activeGain = activeCoin === 'btc' ? btcGain : ethGain;
+  if(activeGain > 0){
+    floatPlus.textContent = `+${activeGain.toFixed(8)}`;
     floatPlus.classList.remove('show'); void floatPlus.offsetWidth; floatPlus.classList.add('show');
   }
   render();
@@ -820,4 +830,4 @@ setInterval(() => {
 renderAll();
 </script>
 </body>
-</html>
+    </html>
