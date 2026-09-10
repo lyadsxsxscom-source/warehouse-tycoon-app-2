@@ -121,6 +121,10 @@
           <label>سعر الإيثيريوم بالدولار (1 ETH = ؟$)</label>
           <input type="number" id="rateEth" placeholder="مثال: 2464">
         </div>
+        <div class="field">
+          <label>الحد الأدنى للسحب بالدولار</label>
+          <input type="number" id="rateMinWd" placeholder="مثال: 20">
+        </div>
         <button class="btn" id="btnSaveRates">حفظ الأسعار</button>
         <div class="msg" id="ratesMsg"></div>
       </div>
@@ -365,7 +369,7 @@ function watchWithdrawRequests(){
         card.className = 'req-card';
         card.innerHTML = `
           <div class="req-top">
-            <span class="amt">${d.amount.toFixed(8)} ${d.coin.toUpperCase()}</span>
+            <span class="amt">${d.amount.toFixed(8)} ${d.coin.toUpperCase()}${d.network ? ' ('+d.network+')' : ''}</span>
             <span class="req-status ${d.status}">${statusLabel}</span>
           </div>
           <div class="req-who">${d.displayName || ''} ${d.email ? '· ' + d.email : ''}</div>
@@ -416,6 +420,7 @@ async function loadRates(){
       document.getElementById('rateSyp').value = d.usdToSyp || '';
       document.getElementById('rateBtc').value = d.btcUsd || '';
       document.getElementById('rateEth').value = d.ethUsd || '';
+      document.getElementById('rateMinWd').value = d.minWithdrawUsd || '';
     }
   }catch(e){ console.error('load rates failed', e); }
 }
@@ -424,9 +429,10 @@ document.getElementById('btnSaveRates').onclick = async () => {
   const usdToSyp = parseFloat(document.getElementById('rateSyp').value) || 0;
   const btcUsd = parseFloat(document.getElementById('rateBtc').value) || 0;
   const ethUsd = parseFloat(document.getElementById('rateEth').value) || 0;
+  const minWithdrawUsd = parseFloat(document.getElementById('rateMinWd').value) || 0;
   try{
     await fbDb.collection('config').doc('pricing').set({
-      usdToSyp, btcUsd, ethUsd, updatedAt: Date.now(), updatedBy: fbAuth.currentUser.uid
+      usdToSyp, btcUsd, ethUsd, minWithdrawUsd, updatedAt: Date.now(), updatedBy: fbAuth.currentUser.uid
     });
     ratesMsg.style.color = '#5fd88a';
     ratesMsg.textContent = '✓ تم الحفظ';
