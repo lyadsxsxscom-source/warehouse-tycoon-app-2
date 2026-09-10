@@ -458,12 +458,12 @@ initAdGem();
 // rate هو معدل الإنتاج بالثانية، seconds هي مدة الإيجار الحقيقية (يوم/أسبوع/شهر فعلية)
 const DAY_S = 86400, WEEK_S = 604800, MONTH_S = 2592000;
 const WORKERS = {
-  btc_day:   {label:'عامل بيتكوين يومي',   coin:'btc', cost:100,  rate:0.0000000164400, seconds:DAY_S},
-  btc_week:  {label:'عامل بيتكوين أسبوعي', coin:'btc', cost:600,  rate:0.0000000140915, seconds:WEEK_S},
-  btc_month: {label:'عامل بيتكوين شهري',   coin:'btc', cost:2000, rate:0.0000000109600, seconds:MONTH_S},
-  eth_day:   {label:'عامل إيثيريوم يومي',   coin:'eth', cost:100,  rate:0.0000005217516, seconds:DAY_S},
-  eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.0000004472157, seconds:WEEK_S},
-  eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.0000003478344, seconds:MONTH_S},
+  btc_day:   {label:'عامل بيتكوين يومي',   coin:'btc', cost:100,  rate:0.0000000000164400, seconds:DAY_S},
+  btc_week:  {label:'عامل بيتكوين أسبوعي', coin:'btc', cost:600,  rate:0.0000000000140915, seconds:WEEK_S},
+  btc_month: {label:'عامل بيتكوين شهري',   coin:'btc', cost:2000, rate:0.0000000000109600, seconds:MONTH_S},
+  eth_day:   {label:'عامل إيثيريوم يومي',   coin:'eth', cost:100,  rate:0.0000000005217516, seconds:DAY_S},
+  eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.0000000004472157, seconds:WEEK_S},
+  eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.0000000003478344, seconds:MONTH_S},
 };
 const SHELF_COUNT = 6;
 // index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط
