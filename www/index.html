@@ -264,7 +264,7 @@ window.onerror = function(msg, url, line, col, err){
     <div class="hint" id="redeemHint"></div>
   </div>
 
-  <div class="note">لشراء نقاط أو فتح رفوف حصرية بفلوس حقيقية، زور موقعنا الرسمي واحصل على كود استرداد، وفعّله من الأعلى.</div>
+  <div class="note">لشراء نقاط بفلوس حقيقية، زور موقعنا الرسمي واحصل على كود استرداد، وفعّله من الأعلى.</div>
 
   <a href="https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/" target="_blank" rel="noopener" class="btn-main" style="display:block; text-align:center; text-decoration:none; margin-top:10px;">🌐 زيارة موقعنا للشحن والتحميل</a>
 </div>
@@ -283,18 +283,19 @@ window.onerror = function(msg, url, line, col, err){
   </div>
   <div class="card">
     <div class="field">
-      <label>عنوان محفظة باينانس</label>
-      <input type="text" placeholder="مثال: bnb1... (نموذج تجريبي، غير مفعّل)">
+      <label>عنوان محفظة باينانس (نفس العملة المختارة فوق)</label>
+      <input type="text" id="wdAddress" placeholder="مثال: bc1q... أو 0x...">
     </div>
     <div class="field">
       <label>المبلغ</label>
-      <input type="text" placeholder="0.00000000">
+      <input type="text" id="wdAmount" placeholder="0.00000000">
     </div>
+    <div class="buy-msg" id="wdMsg" style="text-align:center; font-size:12px; color:var(--ember); min-height:16px;"></div>
     <button class="btn-main" id="btnWithdraw" style="margin-top:2px;">📤 طلب سحب</button>
-    <div class="min-note">الحد الأدنى للسحب وربط باينانس الحقيقي لسه ما اتفعّل بهذا البرومبتايب — هذي واجهة فقط لتصميم التدفق.</div>
+    <div class="min-note" id="wdMinNote">الحد الأدنى للسحب 20$</div>
   </div>
   <h3>سجل السحوبات</h3>
-  <div class="card">
+  <div class="card" id="wdHistory">
     <div class="history-item"><span>لا يوجد سحوبات سابقة</span><span>—</span></div>
   </div>
 </div>
@@ -363,7 +364,7 @@ window.onerror = function(msg, url, line, col, err){
   <div class="modal">
     <h4>كسب نقاط</h4>
     <div class="option" id="optAd"><div><div class="name">🎬 مشاهدة إعلان</div><div class="desc">فوري + مضاعفة إنتاج 60 ثانية</div></div><div class="cost">+2</div></div>
-    <div class="option" id="optOfferwall"><div><div class="name">🎯 جدار المهام</div><div class="desc">نموذج شكلي حالياً</div></div><div class="cost">+150</div></div>
+    <div class="option" id="optOfferwall"><div><div class="name">🎯 جدار المهام</div><div class="desc">مهام وعروض متنوعة — كل عرض بمكافأته الخاصة</div></div><div class="cost">افتح</div></div>
     <div class="close" id="closeEarn">إغلاق</div>
   </div>
 </div>
@@ -458,10 +459,10 @@ const WORKERS = {
   eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.000006761901, demoSeconds:40},
   eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.000013870567, demoSeconds:65},
 };
-const SHELF_COUNT = 12;
-// index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط | index 6-11: حصرية من المتجر فقط (null = ما تُفتح بالنقاط)
-const SHELF_UNLOCK_COST = [0, 0, 120, 350, 800, 1600, null, null, null, null, null, null];
-const SHELF_PRICE_USD = [null, null, 1.99, 4.99, 9.99, 19.99, 3.99, 6.99, 11.99, 17.99, 26.99, 39.99]; // matches shelf indices
+const SHELF_COUNT = 6;
+// index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط
+// (الرفوف الحصرية من المتجر مؤجّلة لما بعد النشر — تُضاف لاحقاً لو صار طلب عليها)
+const SHELF_UNLOCK_COST = [0, 0, 120, 350, 800, 1600];
 
 let points = 260;
 let totalPointsEarned = 260;
@@ -543,16 +544,11 @@ function render(){
     if(!s.unlocked){
       div.classList.add('locked');
       const cost = SHELF_UNLOCK_COST[s.id];
-      if(cost === null){
-        div.innerHTML = `<div class="emoji">🛒</div><div class="label">حصري بالمتجر ($${SHELF_PRICE_USD[s.id].toFixed(2)})</div>`;
-        div.onclick = () => { hint.textContent = 'هذا الرف حصري — زور موقعنا للحصول على كود فتحه.'; };
-      } else {
-        div.innerHTML = `<div class="emoji">🔒</div><div class="label">فتح: ${cost} نقطة</div>`;
-        div.onclick = () => {
-          if(points >= cost){ points -= cost; s.unlocked = true; hint.textContent = 'تم فتح رف جديد!'; renderAll(); }
-          else { hint.textContent = 'نقاط غير كافية لفتح هذا الرف.'; }
-        };
-      }
+      div.innerHTML = `<div class="emoji">🔒</div><div class="label">فتح: ${cost} نقطة</div>`;
+      div.onclick = () => {
+        if(points >= cost){ points -= cost; s.unlocked = true; hint.textContent = 'تم فتح رف جديد!'; renderAll(); }
+        else { hint.textContent = 'نقاط غير كافية لفتح هذا الرف.'; }
+      };
     } else if(s.worker && s.worker.expiresAt > now){
       div.classList.add('working');
       const remain = Math.max(0, s.worker.expiresAt - now);
@@ -620,7 +616,76 @@ btnBTC.onclick = () => setCoin('btc');
 btnETH.onclick = () => setCoin('eth');
 document.getElementById('wdBtnBTC').onclick = () => setCoin('btc');
 document.getElementById('wdBtnETH').onclick = () => setCoin('eth');
-document.getElementById('btnWithdraw').onclick = () => alert('نموذج شكلي فقط — ربط باينانس الحقيقي غير مفعّل بعد.');
+// ===== سعر الصرف/الأسعار من الأدمن (لحساب الحد الأدنى بالدولار) =====
+let PRICING = { usdToSyp: 0, btcUsd: 0, ethUsd: 0 };
+async function loadPricing(){
+  try{
+    const doc = await fbDb.collection('config').doc('pricing').get();
+    if(doc.exists) PRICING = Object.assign(PRICING, doc.data());
+  }catch(e){ console.error('pricing load failed', e); }
+}
+loadPricing();
+
+let wdUnsub = null;
+function renderWithdrawHistory(docs){
+  const el = document.getElementById('wdHistory');
+  if(docs.length === 0){ el.innerHTML = '<div class="history-item"><span>لا يوجد سحوبات سابقة</span><span>—</span></div>'; return; }
+  el.innerHTML = '';
+  docs.forEach(d => {
+    const label = d.status === 'fulfilled' ? '✓ تم الإرسال' : d.status === 'rejected' ? '✕ مرفوض (استرجع الرصيد)' : '⏳ قيد المراجعة';
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    row.innerHTML = `<span>${d.amount.toFixed(8)} ${d.coin.toUpperCase()}</span><span>${label}</span>`;
+    el.appendChild(row);
+  });
+}
+function watchWithdrawHistory(uid){
+  if(wdUnsub) wdUnsub();
+  wdUnsub = fbDb.collection('withdrawRequests').where('uid', '==', uid)
+    .onSnapshot(snap => {
+      const docs = snap.docs.map(d => d.data());
+      docs.sort((a, b) => (b.createdAt||0) - (a.createdAt||0));
+      renderWithdrawHistory(docs);
+    }, err => console.error('withdraw history failed', err));
+}
+
+document.getElementById('btnWithdraw').onclick = async () => {
+  const wdMsg = document.getElementById('wdMsg');
+  const address = document.getElementById('wdAddress').value.trim();
+  const amount = parseFloat(document.getElementById('wdAmount').value);
+  wdMsg.textContent = '';
+  if(!currentUser){ wdMsg.textContent = 'لازم تسجّل دخول أول.'; return; }
+  if(!address){ wdMsg.textContent = 'حط عنوان المحفظة.'; return; }
+  if(!amount || amount <= 0){ wdMsg.textContent = 'حط مبلغ صحيح.'; return; }
+  if(amount > wallet[activeCoin]){ wdMsg.textContent = 'المبلغ أكبر من رصيدك المتاح.'; return; }
+  const priceUsd = activeCoin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
+  if(priceUsd > 0 && (amount * priceUsd) < 20){
+    wdMsg.textContent = `الحد الأدنى للسحب 20$ (المبلغ الحالي ≈ $${(amount*priceUsd).toFixed(2)}).`;
+    return;
+  }
+  const btn = document.getElementById('btnWithdraw');
+  btn.disabled = true;
+  try{
+    wallet[activeCoin] -= amount;
+    await fbDb.collection('withdrawRequests').add({
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || '',
+      email: currentUser.email || '',
+      coin: activeCoin,
+      amount, walletAddress: address,
+      status: 'pending', createdAt: Date.now(),
+    });
+    await saveProgress();
+    document.getElementById('wdAddress').value = '';
+    document.getElementById('wdAmount').value = '';
+    hint.textContent = 'تم إرسال طلب السحب، رح تتم مراجعته خلال 24 ساعة.';
+    renderAll();
+  }catch(e){
+    wallet[activeCoin] += amount; // تراجع عن الخصم لو فشل الإرسال
+    wdMsg.textContent = 'تعذّر إرسال الطلب: ' + e.message;
+  }
+  btn.disabled = false;
+};
 
 async function handleGoogleAuthClick(){
   const nativeAuth = window.Capacitor?.Plugins?.FirebaseAuthentication;
@@ -821,11 +886,13 @@ fbAuth.onAuthStateChanged(user => {
     loginGate.classList.remove('show');
     loadProgress(user.uid);
     watchMail(user.uid);
+    watchWithdrawHistory(user.uid);
     if(AdGemPlugin){ AdGemPlugin.setPlayerId({ playerId: user.uid.toLowerCase() }); }
   } else {
     loginGate.classList.add('show');
     dataLoaded = false;
     if(mailUnsub){ mailUnsub(); mailUnsub = null; }
+    if(wdUnsub){ wdUnsub(); wdUnsub = null; }
     document.getElementById('mailList').innerHTML = '<div class="mail-empty">سجّل دخول عشان تشوف رسائلك.</div>';
     document.getElementById('mailDot').classList.remove('show');
   }
@@ -926,4 +993,4 @@ setInterval(() => {
 renderAll();
 </script>
 </body>
-    </html>
+</html>
