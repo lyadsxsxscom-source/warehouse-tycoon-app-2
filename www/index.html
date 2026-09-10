@@ -801,10 +801,16 @@ function renderMail(docs){
 
 function watchMail(uid){
   if(mailUnsub) mailUnsub();
-  mailUnsub = fbDb.collection('mail').where('uid', '==', uid).orderBy('createdAt', 'desc')
+  document.getElementById('mailList').innerHTML = '<div class="mail-empty">جاري التحميل...</div>';
+  mailUnsub = fbDb.collection('mail').where('uid', '==', uid)
     .onSnapshot(snap => {
-      renderMail(snap.docs.map(d => ({id: d.id, data: d.data()})));
-    }, err => { console.error('mail load failed', err); });
+      const docs = snap.docs.map(d => ({id: d.id, data: d.data()}));
+      docs.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
+      renderMail(docs);
+    }, err => {
+      console.error('mail load failed', err);
+      document.getElementById('mailList').innerHTML = `<div class="mail-empty">تعذّر تحميل البريد: ${err.message}</div>`;
+    });
 }
 
 const loginGate = document.getElementById('loginGate');
@@ -920,4 +926,4 @@ setInterval(() => {
 renderAll();
 </script>
 </body>
-</html>
+    </html>
