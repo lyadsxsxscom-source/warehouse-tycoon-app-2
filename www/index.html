@@ -83,6 +83,7 @@ window.onerror = function(msg, url, line, col, err){
   }
   .wallet-toggle button.active.btc{background:linear-gradient(135deg, var(--btc), #ffb95c); color:#2a1500; border-color:var(--btc); box-shadow:0 0 12px rgba(247,147,26,0.5);}
   .wallet-toggle button.active.eth{background:linear-gradient(135deg, var(--eth), #c2ccff); color:#131a3d; border-color:var(--eth); box-shadow:0 0 12px rgba(138,155,255,0.5);}
+  .wallet-toggle button.active:not(.btc):not(.eth){background:linear-gradient(135deg, var(--amber), #ffcf7a); color:#2a1500; border-color:var(--amber); box-shadow:0 0 12px rgba(227,168,59,0.5);}
   .float-plus{position:absolute; top:8px; left:12px; font-size:11px; font-weight:800; color:var(--amber); opacity:0; pointer-events:none;}
   @keyframes floatUp{0%{opacity:0; transform:translateY(6px);} 20%{opacity:1; transform:translateY(0);} 100%{opacity:0; transform:translateY(-16px);}}
   .float-plus.show{animation:floatUp 1.1s ease-out;}
@@ -283,7 +284,11 @@ window.onerror = function(msg, url, line, col, err){
   </div>
   <div class="card">
     <div class="field">
-      <label>عنوان محفظة باينانس (نفس العملة المختارة فوق)</label>
+      <label>الشبكة</label>
+      <div class="wallet-toggle" id="wdNetworkToggle" style="margin-top:0;"></div>
+    </div>
+    <div class="field">
+      <label>عنوان محفظة باينانس (بنفس العملة والشبكة المختارة)</label>
       <input type="text" id="wdAddress" placeholder="مثال: bc1q... أو 0x...">
     </div>
     <div class="field">
@@ -292,7 +297,7 @@ window.onerror = function(msg, url, line, col, err){
     </div>
     <div class="buy-msg" id="wdMsg" style="text-align:center; font-size:12px; color:var(--ember); min-height:16px;"></div>
     <button class="btn-main" id="btnWithdraw" style="margin-top:2px;">📤 طلب سحب</button>
-    <div class="min-note" id="wdMinNote">الحد الأدنى للسحب 20$</div>
+    <div class="min-note" id="wdMinNote">الحد الأدنى للسحب 20$ — مرة وحدة كل 24 ساعة</div>
   </div>
   <h3>سجل السحوبات</h3>
   <div class="card" id="wdHistory">
@@ -450,14 +455,15 @@ initAdGem();
 <script>
 // الأسعار مأخوذة من سعر السوق وقت الضبط: BTC≈$78,224.10 / ETH≈$2,464.79
 // معادلة التسعير: قيمة إنتاج العامل بالدولار = تكلفته بالنقاط ÷ 900 (أي 900 نقطة = 1$ إنتاج)
-// rate هو معدل الإنتاج بالثانية موزّع على demoSeconds (مدة تجريبية مُسرّعة لغرض الاختبار)
+// rate هو معدل الإنتاج بالثانية، seconds هي مدة الإيجار الحقيقية (يوم/أسبوع/شهر فعلية)
+const DAY_S = 86400, WEEK_S = 604800, MONTH_S = 2592000;
 const WORKERS = {
-  btc_day:   {label:'عامل بيتكوين يومي',   coin:'btc', cost:100,  rate:0.000000071021, demoSeconds:20},
-  btc_week:  {label:'عامل بيتكوين أسبوعي', coin:'btc', cost:600,  rate:0.000000213063, demoSeconds:40},
-  btc_month: {label:'عامل بيتكوين شهري',   coin:'btc', cost:2000, rate:0.000000437052, demoSeconds:65},
-  eth_day:   {label:'عامل إيثيريوم يومي',   coin:'eth', cost:100,  rate:0.000002253967, demoSeconds:20},
-  eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.000006761901, demoSeconds:40},
-  eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.000013870567, demoSeconds:65},
+  btc_day:   {label:'عامل بيتكوين يومي',   coin:'btc', cost:100,  rate:0.0000000164400, seconds:DAY_S},
+  btc_week:  {label:'عامل بيتكوين أسبوعي', coin:'btc', cost:600,  rate:0.0000000140915, seconds:WEEK_S},
+  btc_month: {label:'عامل بيتكوين شهري',   coin:'btc', cost:2000, rate:0.0000000109600, seconds:MONTH_S},
+  eth_day:   {label:'عامل إيثيريوم يومي',   coin:'eth', cost:100,  rate:0.0000005217516, seconds:DAY_S},
+  eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.0000004472157, seconds:WEEK_S},
+  eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.0000003478344, seconds:MONTH_S},
 };
 const SHELF_COUNT = 6;
 // index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط
@@ -522,10 +528,31 @@ function renderProfile(){
   document.getElementById('pfAds').textContent = adsWatched;
 }
 
+const WD_NETWORKS = {
+  btc: [{id:'BTC', label:'₿ Bitcoin (الأصلية)'}, {id:'BEP20', label:'BEP20 (BSC)'}],
+  eth: [{id:'ERC20', label:'Ethereum (ERC20)'}, {id:'BEP20', label:'BEP20 (BSC)'}],
+};
+let wdNetwork = 'BTC';
 function renderWithdraw(){
   document.getElementById('wdBalance').textContent = wallet[activeCoin].toFixed(8);
   document.getElementById('wdBtnBTC').classList.toggle('active', activeCoin==='btc');
   document.getElementById('wdBtnETH').classList.toggle('active', activeCoin==='eth');
+  const nets = WD_NETWORKS[activeCoin];
+  if(!nets.find(n => n.id === wdNetwork)) wdNetwork = nets[0].id;
+  const toggle = document.getElementById('wdNetworkToggle');
+  toggle.innerHTML = nets.map(n => `<button data-net="${n.id}" class="${n.id===wdNetwork?'active':''}">${n.label}</button>`).join('');
+  toggle.querySelectorAll('button').forEach(b => { b.onclick = () => { wdNetwork = b.dataset.net; renderWithdraw(); }; });
+}
+
+function formatRemain(ms){
+  const totalS = Math.ceil(ms/1000);
+  const d = Math.floor(totalS/86400);
+  const h = Math.floor((totalS%86400)/3600);
+  const m = Math.floor((totalS%3600)/60);
+  if(d > 0) return `${d}ي ${h}س`;
+  if(h > 0) return `${h}س ${m}د`;
+  if(m > 0) return `${m}د`;
+  return `${totalS}ث`;
 }
 
 function bumpEl(el){
@@ -552,7 +579,7 @@ function render(){
     } else if(s.worker && s.worker.expiresAt > now){
       div.classList.add('working');
       const remain = Math.max(0, s.worker.expiresAt - now);
-      div.innerHTML = `<div class="emoji">👷</div><div class="name">${s.worker.coin==='btc'?'₿':'Ξ'} ${WORKERS[s.worker.coin+'_'+s.worker.kind].label}</div><div class="timer">${Math.ceil(remain/1000)} ث متبقية</div>`;
+      div.innerHTML = `<div class="emoji">👷</div><div class="name">${s.worker.coin==='btc'?'₿':'Ξ'} ${WORKERS[s.worker.coin+'_'+s.worker.kind].label}</div><div class="timer">${formatRemain(remain)} متبقي</div>`;
       div.onclick = () => { hint.textContent = 'هذا العامل شغّال حالياً.'; };
     } else if(s.worker && s.worker.expiresAt <= now){
       div.classList.add('expired');
@@ -602,7 +629,7 @@ document.querySelectorAll('#rentOverlay .option').forEach(opt => {
     if(points < w.cost){ hint.textContent = 'نقاط غير كافية.'; rentOverlay.classList.remove('show'); return; }
     points -= w.cost;
     const s = shelves.find(x => x.id === pendingSlot);
-    s.worker = {kind:dur, coin:activeCoin, rate:w.rate, expiresAt: Date.now() + w.demoSeconds*1000};
+    s.worker = {kind:dur, coin:activeCoin, rate:w.rate, expiresAt: Date.now() + w.seconds*1000};
     workersRented += 1;
     tasks.find(t=>t.id==='rent1').progress = Math.min(1, workersRented);
     rentOverlay.classList.remove('show');
@@ -622,12 +649,16 @@ async function loadPricing(){
   try{
     const doc = await fbDb.collection('config').doc('pricing').get();
     if(doc.exists) PRICING = Object.assign(PRICING, doc.data());
+    const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
+    document.getElementById('wdMinNote').textContent = `الحد الأدنى للسحب ${minUsd}$ — مرة وحدة كل 24 ساعة`;
   }catch(e){ console.error('pricing load failed', e); }
 }
 loadPricing();
 
 let wdUnsub = null;
+let withdrawHistoryDocs = [];
 function renderWithdrawHistory(docs){
+  withdrawHistoryDocs = docs;
   const el = document.getElementById('wdHistory');
   if(docs.length === 0){ el.innerHTML = '<div class="history-item"><span>لا يوجد سحوبات سابقة</span><span>—</span></div>'; return; }
   el.innerHTML = '';
@@ -635,7 +666,7 @@ function renderWithdrawHistory(docs){
     const label = d.status === 'fulfilled' ? '✓ تم الإرسال' : d.status === 'rejected' ? '✕ مرفوض (استرجع الرصيد)' : '⏳ قيد المراجعة';
     const row = document.createElement('div');
     row.className = 'history-item';
-    row.innerHTML = `<span>${d.amount.toFixed(8)} ${d.coin.toUpperCase()}</span><span>${label}</span>`;
+    row.innerHTML = `<span>${d.amount.toFixed(8)} ${d.coin.toUpperCase()}${d.network ? ' ('+d.network+')' : ''}</span><span>${label}</span>`;
     el.appendChild(row);
   });
 }
@@ -658,9 +689,16 @@ document.getElementById('btnWithdraw').onclick = async () => {
   if(!address){ wdMsg.textContent = 'حط عنوان المحفظة.'; return; }
   if(!amount || amount <= 0){ wdMsg.textContent = 'حط مبلغ صحيح.'; return; }
   if(amount > wallet[activeCoin]){ wdMsg.textContent = 'المبلغ أكبر من رصيدك المتاح.'; return; }
+  const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
   const priceUsd = activeCoin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
-  if(priceUsd > 0 && (amount * priceUsd) < 20){
-    wdMsg.textContent = `الحد الأدنى للسحب 20$ (المبلغ الحالي ≈ $${(amount*priceUsd).toFixed(2)}).`;
+  if(priceUsd > 0 && (amount * priceUsd) < minUsd){
+    wdMsg.textContent = `الحد الأدنى للسحب ${minUsd}$ (المبلغ الحالي ≈ $${(amount*priceUsd).toFixed(2)}).`;
+    return;
+  }
+  const lastReq = withdrawHistoryDocs[0]; // مرتب من الأحدث للأقدم
+  if(lastReq && (Date.now() - lastReq.createdAt) < 86400000){
+    const remainH = Math.ceil((86400000 - (Date.now() - lastReq.createdAt)) / 3600000);
+    wdMsg.textContent = `تقدر تسحب مرة كل 24 ساعة بس — جرّب بعد حوالي ${remainH} ساعة.`;
     return;
   }
   const btn = document.getElementById('btnWithdraw');
@@ -671,7 +709,7 @@ document.getElementById('btnWithdraw').onclick = async () => {
       uid: currentUser.uid,
       displayName: currentUser.displayName || '',
       email: currentUser.email || '',
-      coin: activeCoin,
+      coin: activeCoin, network: wdNetwork,
       amount, walletAddress: address,
       status: 'pending', createdAt: Date.now(),
     });
