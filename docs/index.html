@@ -376,9 +376,9 @@ const fbDb = firebase.firestore();
 // ⚠️ عبّي هاي القيم الثلاثة بعد ما تسوّي حساب مجاني على emailjs.com وتربطه بجيميلك
 // (Service ID / Template ID / Public Key من لوحة تحكم EmailJS) — لو تركتها فاضية
 // الطلب رح يوصل ويتخزّن عادي، بس ما رح يوصلك إيميل تلقائي، بس تشوفه بصفحة admin.
-const EMAILJS_SERVICE_ID = '';
-const EMAILJS_TEMPLATE_ID = '';
-const EMAILJS_PUBLIC_KEY = '';
+const EMAILJS_SERVICE_ID = 'service_0m07x0k';
+const EMAILJS_TEMPLATE_ID = 'template_1n955f3';
+const EMAILJS_PUBLIC_KEY = 'D8hFuVrztoh6N2r46';
 if(EMAILJS_PUBLIC_KEY && window.emailjs) emailjs.init(EMAILJS_PUBLIC_KEY);
 
 let currentUser = null;
@@ -541,4 +541,4 @@ document.getElementById('btnSubmitPurchase').onclick = async () => {
 };
 </script>
 </body>
-          </html>
+  </html>
