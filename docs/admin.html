@@ -53,6 +53,32 @@
   th{color:var(--dim); font-weight:600;}
   .used-yes{color:var(--dim);}
   .used-no{color:var(--amber); font-weight:700;}
+
+  .tabs{display:flex; gap:8px; margin-bottom:16px;}
+  .tab{
+    flex:1; text-align:center; padding:10px; border-radius:10px; font-size:13px; font-weight:800;
+    background:var(--panel); border:1px solid var(--border); color:var(--dim); cursor:pointer;
+  }
+  .tab.active{background:var(--amber); color:#241a05; border-color:var(--amber);}
+
+  .req-card{
+    background:linear-gradient(180deg, var(--panel), var(--panel2)); border:1px solid var(--border);
+    border-radius:14px; padding:14px; margin-bottom:12px;
+  }
+  .req-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .req-top .amt{font-size:16px; font-weight:800; color:#fff;}
+  .req-top .method{font-size:11px; color:var(--amber); font-weight:700;}
+  .req-who{font-size:12px; color:var(--dim); margin-bottom:8px;}
+  .req-note{font-size:12px; color:var(--text); background:#00000030; border-radius:8px; padding:8px; margin-bottom:8px;}
+  .req-img{width:100%; border-radius:10px; margin-bottom:10px; cursor:zoom-in; display:block;}
+  .req-actions{display:flex; gap:8px;}
+  .req-actions .btn{padding:11px; font-size:12.5px;}
+  .btn-reject{background:var(--panel); color:var(--dim); border:1px solid var(--border);}
+  .req-status{font-size:11px; padding:3px 10px; border-radius:20px; font-weight:800;}
+  .req-status.pending{background:#4a3a12; color:var(--amber);}
+  .req-status.fulfilled{background:#123a1c; color:#5fd88a;}
+  .req-status.rejected{background:#3a1212; color:#e06868;}
+  .empty-note{text-align:center; color:var(--dim); font-size:13px; padding:20px 0;}
 </style>
 </head>
 <body>
@@ -65,6 +91,16 @@
   </div>
 
   <div id="panel" style="display:none;">
+    <div class="tabs">
+      <div class="tab active" id="tabRequests">📥 طلبات الشراء <span id="pendingBadge"></span></div>
+      <div class="tab" id="tabCodes">🔑 توليد كود</div>
+    </div>
+
+    <div id="viewRequests">
+      <div id="requestsList"></div>
+    </div>
+
+    <div id="viewCodes" style="display:none;">
     <div class="card">
       <div class="field">
         <label>عدد النقاط</label>
@@ -85,6 +121,7 @@
         <thead><tr><th>الكود</th><th>نقاط</th><th>الحالة</th></tr></thead>
         <tbody id="codesTable"></tbody>
       </table>
+    </div>
     </div>
   </div>
 </div>
@@ -179,11 +216,106 @@ document.getElementById('btnCopy').onclick = () => {
   });
 };
 
+// ===== Tabs =====
+const tabRequests = document.getElementById('tabRequests');
+const tabCodes = document.getElementById('tabCodes');
+const viewRequests = document.getElementById('viewRequests');
+const viewCodes = document.getElementById('viewCodes');
+tabRequests.onclick = () => {
+  tabRequests.classList.add('active'); tabCodes.classList.remove('active');
+  viewRequests.style.display = 'block'; viewCodes.style.display = 'none';
+};
+tabCodes.onclick = () => {
+  tabCodes.classList.add('active'); tabRequests.classList.remove('active');
+  viewCodes.style.display = 'block'; viewRequests.style.display = 'none';
+};
+
+// ===== Purchase requests =====
+const METHOD_LABEL = { Kazawallet: 'Kazawallet', ShamCash: 'ShamCash', contact: 'تواصل مباشر' };
+let requestsUnsub = null;
+
+function watchPurchaseRequests(){
+  const list = document.getElementById('requestsList');
+  if(requestsUnsub) requestsUnsub();
+  requestsUnsub = fbDb.collection('purchaseRequests').orderBy('createdAt', 'desc').limit(40)
+    .onSnapshot(snap => {
+      if(snap.empty){ list.innerHTML = '<div class="empty-note">لا يوجد طلبات شراء بعد</div>'; updateBadge(0); return; }
+      let pendingCount = 0;
+      list.innerHTML = '';
+      snap.forEach(doc => {
+        const d = doc.data();
+        if(d.status === 'pending') pendingCount++;
+        const statusLabel = d.status === 'fulfilled' ? '✓ أُرسل' : d.status === 'rejected' ? '✕ مرفوض' : '⏳ قيد المراجعة';
+        const card = document.createElement('div');
+        card.className = 'req-card';
+        card.innerHTML = `
+          <div class="req-top">
+            <span class="amt">${(d.points ?? 0).toLocaleString('en-US')} نقطة <span style="color:var(--dim); font-size:12px;">($${d.usd ?? '-'})</span></span>
+            <span class="req-status ${d.status}">${statusLabel}</span>
+          </div>
+          <div class="req-top"><span class="method">${METHOD_LABEL[d.method] || d.method || '-'}</span></div>
+          <div class="req-who">${d.displayName || ''} ${d.email ? '· ' + d.email : ''}</div>
+          ${d.note ? `<div class="req-note">${d.note}</div>` : ''}
+          ${d.proofImage ? `<img class="req-img" src="${d.proofImage}" onclick="window.open(this.src)">` : ''}
+          <div class="req-actions" ${d.status !== 'pending' ? 'style="display:none;"' : ''}>
+            <button class="btn" data-act="fulfill" data-id="${doc.id}" data-uid="${d.uid}" data-points="${d.points}">✓ توليد كود وإرسال بالبريد</button>
+            <button class="btn btn-reject" data-act="reject" data-id="${doc.id}">رفض</button>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+      updateBadge(pendingCount);
+    }, err => {
+      list.innerHTML = '<div class="empty-note">تعذّر تحميل الطلبات</div>';
+      console.error(err);
+    });
+}
+function updateBadge(n){
+  const badge = document.getElementById('pendingBadge');
+  badge.textContent = n > 0 ? n : '';
+}
+
+document.getElementById('requestsList').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if(!btn) return;
+  btn.disabled = true;
+  const reqId = btn.dataset.id;
+  if(btn.dataset.act === 'reject'){
+    try{ await fbDb.collection('purchaseRequests').doc(reqId).update({ status: 'rejected', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid }); }
+    catch(err){ alert('تعذّر الرفض: ' + err.message); }
+    btn.disabled = false;
+    return;
+  }
+  if(btn.dataset.act === 'fulfill'){
+    const uid = btn.dataset.uid;
+    const points = parseInt(btn.dataset.points, 10);
+    const code = genCode();
+    try{
+      await fbDb.collection('redeemCodes').doc(code).set({
+        points, used: false, createdAt: Date.now(), createdBy: fbAuth.currentUser.uid
+      });
+      await fbDb.collection('mail').add({
+        uid, points, code,
+        message: `تم تأكيد شحنتك بـ ${points.toLocaleString('en-US')} نقطة! اضغط "استرداد" تحت لتفعيلها.`,
+        createdAt: Date.now(), claimed: false, read: false,
+      });
+      await fbDb.collection('purchaseRequests').doc(reqId).update({
+        status: 'fulfilled', fulfilledAt: Date.now(), fulfilledBy: fbAuth.currentUser.uid, generatedCode: code
+      });
+    }catch(err){
+      alert('تعذّر إتمام الطلب: ' + err.message);
+      btn.disabled = false;
+    }
+  }
+});
+
+
 fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
     gate.style.display = 'none';
     panel.style.display = 'block';
     loadRecentCodes();
+    watchPurchaseRequests();
   } else if(user){
     gate.style.display = 'block';
     panel.style.display = 'none';
