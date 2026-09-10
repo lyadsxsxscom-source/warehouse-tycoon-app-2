@@ -127,6 +127,93 @@
   .contact-btn.wa{background:#25D366; color:#08260f;}
   .contact-btn.tg{background:#2AABEE; color:#06202f;}
 
+  /* ===== Buy flow ===== */
+  .login-gate{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:18px; text-align:center; margin-bottom:18px;
+  }
+  .login-gate p{font-size:12.5px; color:var(--dim); margin:0 0 14px;}
+  .g-btn{
+    display:inline-flex; align-items:center; gap:10px; background:#fff; color:#1f1f1f;
+    font-weight:800; font-size:14px; border:none; border-radius:10px; padding:13px 20px;
+    cursor:pointer; font-family:'Cairo', sans-serif;
+  }
+  .g-btn .gcircle{
+    background:#4285F4; color:#fff; width:20px; height:20px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;
+  }
+  .acct-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:10px 14px; margin-bottom:18px; font-size:12.5px;
+  }
+  .acct-bar .who{display:flex; align-items:center; gap:8px;}
+  .acct-bar img{width:26px; height:26px; border-radius:50%;}
+  .acct-bar .out{color:var(--dim); background:none; border:none; font-family:'Cairo', sans-serif; font-size:11.5px; cursor:pointer; text-decoration:underline;}
+
+  .buy-btn{
+    display:block; width:100%; border:none; border-radius:12px; padding:16px;
+    background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;
+    font-weight:800; font-size:15px; cursor:pointer; font-family:'Cairo', sans-serif;
+    box-shadow:0 10px 26px rgba(228,87,46,0.3);
+  }
+
+  .buy-overlay{
+    position:fixed; inset:0; background:rgba(5,4,2,0.92); display:none;
+    align-items:flex-end; justify-content:center; z-index:50;
+  }
+  .buy-overlay.show{display:flex;}
+  .buy-modal{
+    width:100%; max-width:460px; max-height:88vh; overflow-y:auto;
+    background:var(--panel2); border:1px solid var(--border); border-radius:20px 20px 0 0;
+    padding:20px 18px 26px;
+  }
+  .buy-modal h3{font-size:16px; color:#fff; margin:0 0 14px; display:flex; align-items:center; justify-content:space-between;}
+  .buy-modal h3 .x{cursor:pointer; color:var(--dim); font-size:20px; line-height:1;}
+  .buy-back{color:var(--amber); font-size:12px; cursor:pointer; margin-bottom:12px; display:inline-block;}
+
+  .pkg-opt, .pay-opt{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:13px 14px; margin-bottom:10px; cursor:pointer;
+  }
+  .pkg-opt:active, .pay-opt:active{border-color:var(--amber);}
+  .pkg-opt .amt{font-weight:800; color:#fff; font-size:14px;}
+  .pkg-opt .usd{font-size:11.5px; color:var(--amber); font-weight:700;}
+  .pay-opt .pname{font-weight:800; color:#fff; font-size:13.5px;}
+  .pay-opt .pdesc{font-size:11px; color:var(--dim); margin-top:2px;}
+  .pay-opt .arrow{color:var(--dim); font-size:16px;}
+
+  .pay-detail{
+    background:var(--panel); border:1px dashed var(--amber); border-radius:12px;
+    padding:14px; margin-bottom:16px;
+  }
+  .pay-detail .lbl{font-size:11px; color:var(--dim); margin-bottom:4px;}
+  .pay-detail .code{font-family:monospace; font-size:15px; color:var(--amber); direction:ltr; text-align:left; word-break:break-all;}
+
+  .upload-box{
+    border:2px dashed var(--border); border-radius:12px; padding:18px; text-align:center;
+    cursor:pointer; margin-bottom:14px; position:relative; overflow:hidden;
+  }
+  .upload-box.has-img{border-style:solid; border-color:var(--amber); padding:0;}
+  .upload-box img{width:100%; display:block; max-height:220px; object-fit:contain; background:#000;}
+  .upload-box .ph{font-size:12.5px; color:var(--dim);}
+  .upload-box input{position:absolute; inset:0; opacity:0; cursor:pointer;}
+
+  .note-field{
+    width:100%; background:#00000030; border:1px solid var(--border); border-radius:10px;
+    padding:11px; color:var(--text); font-family:'Cairo', sans-serif; font-size:13px;
+    margin-bottom:14px; resize:vertical; min-height:60px;
+  }
+
+  .success-box{text-align:center; padding:20px 6px;}
+  .success-box .ic{font-size:46px; margin-bottom:10px;}
+  .success-box h4{color:#fff; font-size:16px; margin:0 0 8px;}
+  .success-box p{font-size:13px; color:var(--dim); margin:0;}
+
+  .buy-msg{text-align:center; font-size:12px; color:var(--ember); min-height:16px; margin:4px 0 10px;}
+
+
   footer{
     border-top:1px solid var(--border); padding:26px 0 40px; text-align:center;
     color:var(--dim); font-size:11px;
@@ -165,31 +252,25 @@
 
   <section>
     <h2><span class="num">2</span> اشحن نقاط</h2>
-    <p class="lead">1000 نقطة = 1$. الشحن حالياً يدوي عبر تواصل مباشر — بدون نظام دفع أوتوماتيكي بعد.</p>
+    <p class="lead">1000 نقطة = 1$. سجّل دخول بنفس حساب جوجل يلي بتستخدمه داخل اللعبة، عشان نقدر نبعتلك نقاطك تلقائياً بصندوق "البريد" داخل التطبيق فور تأكيد التحويل.</p>
 
-    <div class="pack-grid">
-      <div class="pack"><div class="amt">500 نقطة</div><div class="usd">$0.50</div></div>
-      <div class="pack"><span class="best">الأفضل</span><div class="amt">2,800 نقطة</div><div class="usd">$2.80</div></div>
-      <div class="pack"><div class="amt">6,500 نقطة</div><div class="usd">$6.50</div></div>
-      <div class="pack"><div class="amt">15,000 نقطة</div><div class="usd">$15.00</div></div>
+    <div id="loginGateBuy" class="login-gate">
+      <p>لازم تسجّل دخول أول عشان تقدر تشتري نقاط.</p>
+      <button class="g-btn" id="btnBuyLogin"><span class="gcircle">G</span> تسجيل الدخول عبر Google</button>
+      <div class="buy-msg" id="loginMsg"></div>
     </div>
 
-    <div class="steps">
-      <div class="step">
-        <div class="n">1</div>
-        <div class="t"><b>اختر باقتك وتواصل معنا</b> عبر واتساب أو تيليجرام (الأزرار تحت) وأخبرنا أي باقة تريد.</div>
+    <div id="acctBar" class="acct-bar" style="display:none;">
+      <div class="who">
+        <img id="acctAvatar" src="" alt="">
+        <span id="acctName"></span>
       </div>
-      <div class="step">
-        <div class="n">2</div>
-        <div class="t"><b>حوّل المبلغ</b> عبر إحدى وسائل الدفع تحت، وأرسل لقطة شاشة لإثبات التحويل.</div>
-      </div>
-      <div class="step">
-        <div class="n">3</div>
-        <div class="t"><b>استلم كود الشحن</b> وفعّله من داخل اللعبة (المتجر ← استرداد كود).</div>
-      </div>
+      <button class="out" id="btnBuyLogout">تسجيل خروج</button>
     </div>
 
-    <h3 style="font-size:13px; color:var(--dim); margin:20px 4px 8px; font-weight:600;">وسائل الدفع</h3>
+    <button class="buy-btn" id="btnOpenBuy" style="display:none;">💳 شراء نقاط الآن</button>
+
+    <h3 style="font-size:13px; color:var(--dim); margin:22px 4px 8px; font-weight:600;">طرق الدفع المتاحة</h3>
     <div class="pay-card">
       <div>
         <div class="pname">Kazawallet</div>
@@ -230,5 +311,234 @@
   <div>لعبة عرض توضيحي قبل الإطلاق الرسمي — الأسعار وطرق الدفع قابلة للتغيير.</div>
 </footer>
 
+<!-- ===== Buy modal ===== -->
+<div class="buy-overlay" id="buyOverlay">
+  <div class="buy-modal">
+    <h3><span id="buyStepTitle">اختر الباقة</span><span class="x" id="buyClose">×</span></h3>
+
+    <div id="stepPackage">
+      <div class="pkg-opt" data-points="500" data-usd="0.50"><div><div class="amt">500 نقطة</div></div><div class="usd">$0.50</div></div>
+      <div class="pkg-opt" data-points="2800" data-usd="2.80"><div><div class="amt">2,800 نقطة</div></div><div class="usd">$2.80</div></div>
+      <div class="pkg-opt" data-points="6500" data-usd="6.50"><div><div class="amt">6,500 نقطة</div></div><div class="usd">$6.50</div></div>
+      <div class="pkg-opt" data-points="15000" data-usd="15.00"><div><div class="amt">15,000 نقطة</div></div><div class="usd">$15.00</div></div>
+    </div>
+
+    <div id="stepMethod" style="display:none;">
+      <span class="buy-back" id="backToPackage">‹ رجوع</span>
+      <div class="pay-opt" data-method="Kazawallet"><div><div class="pname">Kazawallet</div><div class="pdesc">تحويل فوري لرقم حساب</div></div><span class="arrow">‹</span></div>
+      <div class="pay-opt" data-method="ShamCash"><div><div class="pname">ShamCash</div><div class="pdesc">تحويل فوري برمز</div></div><span class="arrow">‹</span></div>
+      <div class="pay-opt" data-method="contact"><div><div class="pname">أقرب إليك / USDT-USDC</div><div class="pdesc">تواصل مباشر لتفاصيل التحويل</div></div><span class="arrow">‹</span></div>
+    </div>
+
+    <div id="stepDetail" style="display:none;">
+      <span class="buy-back" id="backToMethod">‹ رجوع</span>
+      <div class="pay-detail">
+        <div class="lbl" id="detailLabel"></div>
+        <div class="code" id="detailCode"></div>
+      </div>
+      <div class="upload-box" id="uploadBox">
+        <input type="file" accept="image/*" id="proofInput">
+        <div class="ph" id="uploadPh">📎 اضغط لرفع صورة إشعار التحويل</div>
+        <img id="proofPreview" style="display:none;">
+      </div>
+      <textarea class="note-field" id="noteField" placeholder="ملاحظة (اختياري) — مثلاً اسمك بتطبيق التحويل"></textarea>
+      <div class="buy-msg" id="submitMsg"></div>
+      <button class="buy-btn" id="btnSubmitPurchase">إرسال الطلب</button>
+    </div>
+
+    <div id="stepSuccess" style="display:none;">
+      <div class="success-box">
+        <div class="ic">✅</div>
+        <h4>وصلنا طلبك!</h4>
+        <p>رح توصلك النقاط خلال 24 ساعة عبر صندوق "البريد" داخل التطبيق.<br>شكراً على صبرك 🙏</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAP7sXXQeNCmdgwqUo6meC2Uv6_zM7jxwA",
+  authDomain: "warehouse-tycoon-a3f83.firebaseapp.com",
+  projectId: "warehouse-tycoon-a3f83",
+  storageBucket: "warehouse-tycoon-a3f83.firebasestorage.app",
+  messagingSenderId: "1054454384493",
+  appId: "1:1054454384493:web:3003d8c766739e75e33c64",
+};
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbDb = firebase.firestore();
+
+// ⚠️ عبّي هاي القيم الثلاثة بعد ما تسوّي حساب مجاني على emailjs.com وتربطه بجيميلك
+// (Service ID / Template ID / Public Key من لوحة تحكم EmailJS) — لو تركتها فاضية
+// الطلب رح يوصل ويتخزّن عادي، بس ما رح يوصلك إيميل تلقائي، بس تشوفه بصفحة admin.
+const EMAILJS_SERVICE_ID = '';
+const EMAILJS_TEMPLATE_ID = '';
+const EMAILJS_PUBLIC_KEY = '';
+if(EMAILJS_PUBLIC_KEY && window.emailjs) emailjs.init(EMAILJS_PUBLIC_KEY);
+
+let currentUser = null;
+let selectedPackage = null;
+let selectedMethod = null;
+let proofDataUrl = null;
+
+const loginGateBuy = document.getElementById('loginGateBuy');
+const acctBar = document.getElementById('acctBar');
+const btnOpenBuy = document.getElementById('btnOpenBuy');
+const loginMsg = document.getElementById('loginMsg');
+
+document.getElementById('btnBuyLogin').onclick = () => {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  fbAuth.signInWithPopup(provider).catch(err => {
+    loginMsg.textContent = 'تعذّر تسجيل الدخول: ' + err.message;
+  });
+};
+document.getElementById('btnBuyLogout').onclick = () => fbAuth.signOut();
+
+fbAuth.onAuthStateChanged(user => {
+  currentUser = user;
+  if(user){
+    loginGateBuy.style.display = 'none';
+    acctBar.style.display = 'flex';
+    btnOpenBuy.style.display = 'block';
+    document.getElementById('acctName').textContent = user.displayName || user.email;
+    document.getElementById('acctAvatar').src = user.photoURL || '';
+  } else {
+    loginGateBuy.style.display = 'block';
+    acctBar.style.display = 'none';
+    btnOpenBuy.style.display = 'none';
+  }
+});
+
+// ===== Modal navigation =====
+const buyOverlay = document.getElementById('buyOverlay');
+const stepPackage = document.getElementById('stepPackage');
+const stepMethod = document.getElementById('stepMethod');
+const stepDetail = document.getElementById('stepDetail');
+const stepSuccess = document.getElementById('stepSuccess');
+const buyStepTitle = document.getElementById('buyStepTitle');
+
+function showStep(step){
+  [stepPackage, stepMethod, stepDetail, stepSuccess].forEach(s => s.style.display = 'none');
+  step.style.display = 'block';
+}
+
+btnOpenBuy.onclick = () => {
+  selectedPackage = null; selectedMethod = null; proofDataUrl = null;
+  document.getElementById('proofInput').value = '';
+  document.getElementById('proofPreview').style.display = 'none';
+  document.getElementById('uploadPh').style.display = 'block';
+  document.getElementById('uploadBox').classList.remove('has-img');
+  document.getElementById('noteField').value = '';
+  document.getElementById('submitMsg').textContent = '';
+  buyStepTitle.textContent = 'اختر الباقة';
+  showStep(stepPackage);
+  buyOverlay.classList.add('show');
+};
+document.getElementById('buyClose').onclick = () => buyOverlay.classList.remove('show');
+
+document.querySelectorAll('.pkg-opt').forEach(opt => {
+  opt.onclick = () => {
+    selectedPackage = { points: parseInt(opt.dataset.points, 10), usd: opt.dataset.usd };
+    buyStepTitle.textContent = 'اختر طريقة الدفع';
+    showStep(stepMethod);
+  };
+});
+document.getElementById('backToPackage').onclick = () => { buyStepTitle.textContent = 'اختر الباقة'; showStep(stepPackage); };
+
+const PAY_INFO = {
+  Kazawallet: { label: 'رقم حساب Kazawallet', code: 'k5813250' },
+  ShamCash:   { label: 'رمز ShamCash', code: '4a8c7ac87d18d72ebe29daf4ce8ea08d' },
+};
+document.querySelectorAll('.pay-opt').forEach(opt => {
+  opt.onclick = () => {
+    const method = opt.dataset.method;
+    if(method === 'contact'){
+      buyOverlay.classList.remove('show');
+      const txt = encodeURIComponent(`مرحباً، بدي أشحن باقة ${selectedPackage.points} نقطة ($${selectedPackage.usd}) عبر أقرب إليك / USDT.`);
+      window.open(`https://wa.me/963932867131?text=${txt}`, '_blank');
+      return;
+    }
+    selectedMethod = method;
+    document.getElementById('detailLabel').textContent = PAY_INFO[method].label;
+    document.getElementById('detailCode').textContent = PAY_INFO[method].code;
+    buyStepTitle.textContent = 'أتمم التحويل';
+    showStep(stepDetail);
+  };
+});
+document.getElementById('backToMethod').onclick = () => { buyStepTitle.textContent = 'اختر طريقة الدفع'; showStep(stepMethod); };
+
+// ===== Proof image upload + compression =====
+document.getElementById('proofInput').onchange = (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 700;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      proofDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      const preview = document.getElementById('proofPreview');
+      preview.src = proofDataUrl;
+      preview.style.display = 'block';
+      document.getElementById('uploadPh').style.display = 'none';
+      document.getElementById('uploadBox').classList.add('has-img');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+// ===== Submit purchase request =====
+document.getElementById('btnSubmitPurchase').onclick = async () => {
+  const submitMsg = document.getElementById('submitMsg');
+  if(!currentUser){ submitMsg.textContent = 'لازم تسجّل دخول أول.'; return; }
+  if(!proofDataUrl){ submitMsg.textContent = 'ارفع صورة إشعار التحويل أول.'; return; }
+  const btn = document.getElementById('btnSubmitPurchase');
+  btn.disabled = true;
+  submitMsg.style.color = 'var(--dim)';
+  submitMsg.textContent = 'جاري إرسال الطلب...';
+  try{
+    await fbDb.collection('purchaseRequests').add({
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || '',
+      email: currentUser.email || '',
+      points: selectedPackage.points,
+      usd: selectedPackage.usd,
+      method: selectedMethod,
+      proofImage: proofDataUrl,
+      note: document.getElementById('noteField').value.trim(),
+      status: 'pending',
+      createdAt: Date.now(),
+    });
+    if(EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY && window.emailjs){
+      emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        buyer_name: currentUser.displayName || currentUser.email,
+        buyer_email: currentUser.email || '',
+        method: selectedMethod,
+        points: selectedPackage.points,
+        usd: selectedPackage.usd,
+        note: document.getElementById('noteField').value.trim(),
+      }).catch(err => console.error('emailjs failed', err));
+    }
+    buyStepTitle.textContent = '';
+    showStep(stepSuccess);
+  }catch(e){
+    submitMsg.style.color = 'var(--ember)';
+    submitMsg.textContent = 'تعذّر إرسال الطلب: ' + e.message;
+  }
+  btn.disabled = false;
+};
+</script>
 </body>
-</html>
+          </html>
