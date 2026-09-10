@@ -54,9 +54,9 @@
   .used-yes{color:var(--dim);}
   .used-no{color:var(--amber); font-weight:700;}
 
-  .tabs{display:flex; gap:8px; margin-bottom:16px;}
+  .tabs{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;}
   .tab{
-    flex:1; text-align:center; padding:10px; border-radius:10px; font-size:13px; font-weight:800;
+    flex:1 1 45%; text-align:center; padding:10px 4px; border-radius:10px; font-size:12px; font-weight:800;
     background:var(--panel); border:1px solid var(--border); color:var(--dim); cursor:pointer;
   }
   .tab.active{background:var(--amber); color:#241a05; border-color:var(--amber);}
@@ -93,11 +93,37 @@
   <div id="panel" style="display:none;">
     <div class="tabs">
       <div class="tab active" id="tabRequests">📥 طلبات الشراء <span id="pendingBadge"></span></div>
+      <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
+      <div class="tab" id="tabSettings">⚙️ الإعدادات</div>
     </div>
 
     <div id="viewRequests">
       <div id="requestsList"></div>
+    </div>
+
+    <div id="viewWithdraws" style="display:none;">
+      <div id="withdrawsList"></div>
+    </div>
+
+    <div id="viewSettings" style="display:none;">
+      <div class="card">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:10px;">أسعار تُستخدم بحساب مبالغ الليرة السورية والحد الأدنى للسحب — حدّثها وقت ما تتغير الأسعار</div>
+        <div class="field">
+          <label>سعر صرف الدولار مقابل الليرة السورية (1$ = ؟ ل.س)</label>
+          <input type="number" id="rateSyp" placeholder="مثال: 14500">
+        </div>
+        <div class="field">
+          <label>سعر البيتكوين بالدولار (1 BTC = ؟$)</label>
+          <input type="number" id="rateBtc" placeholder="مثال: 78224">
+        </div>
+        <div class="field">
+          <label>سعر الإيثيريوم بالدولار (1 ETH = ؟$)</label>
+          <input type="number" id="rateEth" placeholder="مثال: 2464">
+        </div>
+        <button class="btn" id="btnSaveRates">حفظ الأسعار</button>
+        <div class="msg" id="ratesMsg"></div>
+      </div>
     </div>
 
     <div id="viewCodes" style="display:none;">
@@ -218,20 +244,32 @@ document.getElementById('btnCopy').onclick = () => {
 
 // ===== Tabs =====
 const tabRequests = document.getElementById('tabRequests');
+const tabWithdraws = document.getElementById('tabWithdraws');
 const tabCodes = document.getElementById('tabCodes');
+const tabSettings = document.getElementById('tabSettings');
 const viewRequests = document.getElementById('viewRequests');
+const viewWithdraws = document.getElementById('viewWithdraws');
 const viewCodes = document.getElementById('viewCodes');
-tabRequests.onclick = () => {
-  tabRequests.classList.add('active'); tabCodes.classList.remove('active');
-  viewRequests.style.display = 'block'; viewCodes.style.display = 'none';
-};
-tabCodes.onclick = () => {
-  tabCodes.classList.add('active'); tabRequests.classList.remove('active');
-  viewCodes.style.display = 'block'; viewRequests.style.display = 'none';
-};
+const viewSettings = document.getElementById('viewSettings');
+const allTabs = [tabRequests, tabWithdraws, tabCodes, tabSettings];
+const allViews = [viewRequests, viewWithdraws, viewCodes, viewSettings];
+function activateTab(tab, view){
+  allTabs.forEach(t => t.classList.toggle('active', t === tab));
+  allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
+}
+tabRequests.onclick = () => activateTab(tabRequests, viewRequests);
+tabWithdraws.onclick = () => activateTab(tabWithdraws, viewWithdraws);
+tabCodes.onclick = () => activateTab(tabCodes, viewCodes);
+tabSettings.onclick = () => activateTab(tabSettings, viewSettings);
 
 // ===== Purchase requests =====
-const METHOD_LABEL = { Kazawallet: 'Kazawallet', ShamCash: 'ShamCash', contact: 'تواصل مباشر' };
+const METHOD_LABEL = {
+  Kazawallet: 'Kazawallet',
+  ShamCash_usd: 'ShamCash (دولار)', ShamCash_syp: 'ShamCash (ليرة سورية)',
+  Syriatel: 'سرياتيل كاش / أقرب إليك',
+  BinancePay: 'Binance Pay',
+  USDT_BEP20: 'USDT (BEP20)', USDT_TRC20: 'USDT (TRC20)', USDT_ERC20: 'USDT (ERC20)',
+};
 let requestsUnsub = null;
 
 function watchPurchaseRequests(){
@@ -250,7 +288,7 @@ function watchPurchaseRequests(){
         card.className = 'req-card';
         card.innerHTML = `
           <div class="req-top">
-            <span class="amt">${(d.points ?? 0).toLocaleString('en-US')} نقطة <span style="color:var(--dim); font-size:12px;">($${d.usd ?? '-'})</span></span>
+            <span class="amt">${(d.points ?? 0).toLocaleString('en-US')} نقطة <span style="color:var(--dim); font-size:12px;">(${d.amountDisplay || ('$' + (d.usd ?? '-'))})</span></span>
             <span class="req-status ${d.status}">${statusLabel}</span>
           </div>
           <div class="req-top"><span class="method">${METHOD_LABEL[d.method] || d.method || '-'}</span></div>
@@ -309,6 +347,95 @@ document.getElementById('requestsList').addEventListener('click', async (e) => {
   }
 });
 
+// ===== طلبات السحب =====
+let withdrawsUnsub = null;
+function watchWithdrawRequests(){
+  const list = document.getElementById('withdrawsList');
+  if(withdrawsUnsub) withdrawsUnsub();
+  withdrawsUnsub = fbDb.collection('withdrawRequests').orderBy('createdAt', 'desc').limit(40)
+    .onSnapshot(snap => {
+      if(snap.empty){ list.innerHTML = '<div class="empty-note">لا يوجد طلبات سحب بعد</div>'; updateWdBadge(0); return; }
+      let pendingCount = 0;
+      list.innerHTML = '';
+      snap.forEach(doc => {
+        const d = doc.data();
+        if(d.status === 'pending') pendingCount++;
+        const statusLabel = d.status === 'fulfilled' ? '✓ أُرسل' : d.status === 'rejected' ? '✕ مرفوض (استرجع الرصيد)' : '⏳ قيد المراجعة';
+        const card = document.createElement('div');
+        card.className = 'req-card';
+        card.innerHTML = `
+          <div class="req-top">
+            <span class="amt">${d.amount.toFixed(8)} ${d.coin.toUpperCase()}</span>
+            <span class="req-status ${d.status}">${statusLabel}</span>
+          </div>
+          <div class="req-who">${d.displayName || ''} ${d.email ? '· ' + d.email : ''}</div>
+          <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${d.walletAddress || ''}</div>
+          <div class="req-actions" ${d.status !== 'pending' ? 'style="display:none;"' : ''}>
+            <button class="btn" data-wdact="fulfill" data-id="${doc.id}">✓ تم الإرسال يدوياً</button>
+            <button class="btn btn-reject" data-wdact="reject" data-id="${doc.id}" data-uid="${d.uid}" data-coin="${d.coin}" data-amount="${d.amount}">رفض وإرجاع الرصيد</button>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+      updateWdBadge(pendingCount);
+    }, err => {
+      list.innerHTML = '<div class="empty-note">تعذّر تحميل طلبات السحب</div>';
+      console.error(err);
+    });
+}
+function updateWdBadge(n){
+  document.getElementById('wdPendingBadge').textContent = n > 0 ? n : '';
+}
+document.getElementById('withdrawsList').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-wdact]');
+  if(!btn) return;
+  btn.disabled = true;
+  const reqId = btn.dataset.id;
+  if(btn.dataset.wdact === 'fulfill'){
+    try{ await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'fulfilled', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid }); }
+    catch(err){ alert('تعذّر التأكيد: ' + err.message); btn.disabled = false; }
+    return;
+  }
+  if(btn.dataset.wdact === 'reject'){
+    const uid = btn.dataset.uid, coin = btn.dataset.coin, amount = parseFloat(btn.dataset.amount);
+    try{
+      await fbDb.collection('players').doc(uid).update({
+        [`wallet.${coin}`]: firebase.firestore.FieldValue.increment(amount)
+      });
+      await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'rejected', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid });
+    }catch(err){ alert('تعذّر الرفض: ' + err.message); btn.disabled = false; }
+  }
+});
+
+// ===== إعدادات الأسعار =====
+async function loadRates(){
+  try{
+    const doc = await fbDb.collection('config').doc('pricing').get();
+    if(doc.exists){
+      const d = doc.data();
+      document.getElementById('rateSyp').value = d.usdToSyp || '';
+      document.getElementById('rateBtc').value = d.btcUsd || '';
+      document.getElementById('rateEth').value = d.ethUsd || '';
+    }
+  }catch(e){ console.error('load rates failed', e); }
+}
+document.getElementById('btnSaveRates').onclick = async () => {
+  const ratesMsg = document.getElementById('ratesMsg');
+  const usdToSyp = parseFloat(document.getElementById('rateSyp').value) || 0;
+  const btcUsd = parseFloat(document.getElementById('rateBtc').value) || 0;
+  const ethUsd = parseFloat(document.getElementById('rateEth').value) || 0;
+  try{
+    await fbDb.collection('config').doc('pricing').set({
+      usdToSyp, btcUsd, ethUsd, updatedAt: Date.now(), updatedBy: fbAuth.currentUser.uid
+    });
+    ratesMsg.style.color = '#5fd88a';
+    ratesMsg.textContent = '✓ تم الحفظ';
+  }catch(e){
+    ratesMsg.style.color = 'var(--ember)';
+    ratesMsg.textContent = 'تعذّر الحفظ: ' + e.message;
+  }
+};
+
 
 fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
@@ -316,6 +443,8 @@ fbAuth.onAuthStateChanged(user => {
     panel.style.display = 'block';
     loadRecentCodes();
     watchPurchaseRequests();
+    watchWithdrawRequests();
+    loadRates();
   } else if(user){
     gate.style.display = 'block';
     panel.style.display = 'none';
