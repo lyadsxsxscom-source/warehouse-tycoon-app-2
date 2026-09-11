@@ -79,6 +79,34 @@
   .req-status.fulfilled{background:#123a1c; color:#5fd88a;}
   .req-status.rejected{background:#3a1212; color:#e06868;}
   .empty-note{text-align:center; color:var(--dim); font-size:13px; padding:20px 0;}
+
+  .pkg-row, .variant-row{
+    display:flex; gap:6px; align-items:center; margin-bottom:8px;
+  }
+  .pkg-row input, .variant-row input{
+    background:#00000030; border:1px solid var(--border); border-radius:8px;
+    padding:9px 8px; color:var(--text); font-family:'Cairo', sans-serif; font-size:12.5px; min-width:0;
+  }
+  .pkg-row input.pts{flex:1.3;} .pkg-row input.usd{flex:1;}
+  .variant-row input.vname{flex:1;} .variant-row input.vlabel{flex:1.4;} .variant-row input.vcode{flex:1.6;}
+  .variant-row select{
+    background:#00000030; border:1px solid var(--border); border-radius:8px; color:var(--text);
+    font-family:'Cairo', sans-serif; font-size:12px; padding:9px 4px;
+  }
+  .del-btn{
+    background:none; border:none; color:var(--ember); font-size:18px; cursor:pointer; padding:4px 6px; flex:0 0 auto;
+  }
+  .method-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:12px;
+  }
+  .method-card .mhead{display:flex; gap:6px; margin-bottom:8px;}
+  .method-card .mhead input{flex:1; background:#00000030; border:1px solid var(--border); border-radius:8px; padding:9px 8px; color:var(--text); font-family:'Cairo', sans-serif; font-size:13px;}
+  .variants-box{background:#00000020; border-radius:8px; padding:8px; margin-bottom:8px;}
+  .variants-lbl{font-size:11px; color:var(--dim); margin-bottom:6px;}
+  .add-variant-btn{
+    background:none; border:1px dashed var(--border); color:var(--dim); border-radius:8px;
+    padding:7px; font-size:11px; width:100%; cursor:pointer; font-family:'Cairo', sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -94,8 +122,10 @@
     <div class="tabs">
       <div class="tab active" id="tabRequests">📥 طلبات الشراء <span id="pendingBadge"></span></div>
       <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
+      <div class="tab" id="tabStore">🛠 المتجر</div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
       <div class="tab" id="tabSettings">⚙️ الإعدادات</div>
+      <div class="tab" id="tabStore">🛍️ إدارة المتجر</div>
     </div>
 
     <div id="viewRequests">
@@ -104,6 +134,23 @@
 
     <div id="viewWithdraws" style="display:none;">
       <div id="withdrawsList"></div>
+    </div>
+
+    <div id="viewStore" style="display:none;">
+      <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:10px;">باقات النقاط</div>
+        <div id="packagesList"></div>
+        <button class="btn" id="btnAddPackage" style="background:var(--panel); color:var(--amber); border:1px solid var(--amber); margin-bottom:10px;">+ إضافة باقة</button>
+        <button class="btn" id="btnSavePackages">حفظ الباقات</button>
+        <div class="msg" id="packagesMsg"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:10px;">طرق الدفع</div>
+        <div id="methodsList"></div>
+        <button class="btn" id="btnAddMethod" style="background:var(--panel); color:var(--amber); border:1px solid var(--amber); margin-bottom:10px;">+ إضافة طريقة دفع</button>
+        <button class="btn" id="btnSaveMethods">حفظ طرق الدفع</button>
+        <div class="msg" id="methodsMsg"></div>
+      </div>
     </div>
 
     <div id="viewSettings" style="display:none;">
@@ -249,20 +296,23 @@ document.getElementById('btnCopy').onclick = () => {
 // ===== Tabs =====
 const tabRequests = document.getElementById('tabRequests');
 const tabWithdraws = document.getElementById('tabWithdraws');
+const tabStore = document.getElementById('tabStore');
 const tabCodes = document.getElementById('tabCodes');
 const tabSettings = document.getElementById('tabSettings');
 const viewRequests = document.getElementById('viewRequests');
 const viewWithdraws = document.getElementById('viewWithdraws');
+const viewStore = document.getElementById('viewStore');
 const viewCodes = document.getElementById('viewCodes');
 const viewSettings = document.getElementById('viewSettings');
-const allTabs = [tabRequests, tabWithdraws, tabCodes, tabSettings];
-const allViews = [viewRequests, viewWithdraws, viewCodes, viewSettings];
+const allTabs = [tabRequests, tabWithdraws, tabStore, tabCodes, tabSettings];
+const allViews = [viewRequests, viewWithdraws, viewStore, viewCodes, viewSettings];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
 }
 tabRequests.onclick = () => activateTab(tabRequests, viewRequests);
 tabWithdraws.onclick = () => activateTab(tabWithdraws, viewWithdraws);
+tabStore.onclick = () => activateTab(tabStore, viewStore);
 tabCodes.onclick = () => activateTab(tabCodes, viewCodes);
 tabSettings.onclick = () => activateTab(tabSettings, viewSettings);
 
@@ -411,7 +461,152 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
   }
 });
 
-// ===== إعدادات الأسعار =====
+// ===== إدارة المتجر: الباقات =====
+let packagesData = [];
+let methodsData = [];
+
+function renderPackagesList(){
+  const el = document.getElementById('packagesList');
+  el.innerHTML = '';
+  packagesData.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'pkg-row';
+    row.innerHTML = `
+      <input class="pts" type="number" placeholder="نقاط" value="${p.points ?? ''}" data-i="${i}" data-f="points">
+      <input class="usd" type="number" step="0.01" placeholder="دولار" value="${p.usd ?? ''}" data-i="${i}" data-f="usd">
+      <button class="del-btn" data-del="${i}">✕</button>
+    `;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('input').forEach(inp => {
+    inp.oninput = () => { packagesData[+inp.dataset.i][inp.dataset.f] = parseFloat(inp.value) || 0; };
+  });
+  el.querySelectorAll('button[data-del]').forEach(btn => {
+    btn.onclick = () => { packagesData.splice(+btn.dataset.del, 1); renderPackagesList(); };
+  });
+}
+document.getElementById('btnAddPackage').onclick = () => {
+  packagesData.push({ points: 0, usd: 0 });
+  renderPackagesList();
+};
+document.getElementById('btnSavePackages').onclick = async () => {
+  const msg = document.getElementById('packagesMsg');
+  try{
+    await fbDb.collection('config').doc('storeConfig').set({ packages: packagesData }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+
+// ===== إدارة المتجر: طرق الدفع =====
+function renderMethodsList(){
+  const el = document.getElementById('methodsList');
+  el.innerHTML = '';
+  methodsData.forEach((m, mi) => {
+    const card = document.createElement('div');
+    card.className = 'method-card';
+    card.innerHTML = `
+      <div class="mhead">
+        <input placeholder="اسم الطريقة" value="${m.name || ''}" data-mi="${mi}" data-mf="name">
+        <button class="del-btn" data-delm="${mi}">✕</button>
+      </div>
+      <input placeholder="وصف مختصر" value="${m.desc || ''}" data-mi="${mi}" data-mf="desc" style="width:100%; background:#00000030; border:1px solid var(--border); border-radius:8px; padding:9px 8px; color:var(--text); font-family:'Cairo', sans-serif; font-size:12px; margin-bottom:8px;">
+      <div class="variants-box">
+        <div class="variants-lbl">الخيارات (لو أكتر من واحد، المشتري بيختار بينهم — مثلاً دولار/ليرة أو شبكة)</div>
+        <div class="variantsList" data-mi="${mi}"></div>
+        <button class="add-variant-btn" data-addv="${mi}">+ إضافة خيار</button>
+      </div>
+    `;
+    el.appendChild(card);
+    renderVariantsList(mi);
+  });
+  el.querySelectorAll('input[data-mf]').forEach(inp => {
+    inp.oninput = () => { methodsData[+inp.dataset.mi][inp.dataset.mf] = inp.value; };
+  });
+  el.querySelectorAll('button[data-delm]').forEach(btn => {
+    btn.onclick = () => { methodsData.splice(+btn.dataset.delm, 1); renderMethodsList(); };
+  });
+  el.querySelectorAll('button[data-addv]').forEach(btn => {
+    btn.onclick = () => {
+      const mi = +btn.dataset.addv;
+      if(!methodsData[mi].variants) methodsData[mi].variants = [];
+      methodsData[mi].variants.push({ name: '', label: '', code: '', currency: 'usd' });
+      renderVariantsList(mi);
+    };
+  });
+}
+function renderVariantsList(mi){
+  const box = document.querySelector(`.variantsList[data-mi="${mi}"]`);
+  if(!box) return;
+  const variants = methodsData[mi].variants || [];
+  box.innerHTML = variants.map((v, vi) => `
+    <div class="variant-row">
+      <input class="vname" placeholder="اسم الخيار (مثلاً: بالدولار)" value="${v.name || ''}" data-mi="${mi}" data-vi="${vi}" data-vf="name">
+      <input class="vlabel" placeholder="التسمية بخطوة الدفع" value="${v.label || ''}" data-mi="${mi}" data-vi="${vi}" data-vf="label">
+      <input class="vcode" placeholder="الرقم/الكود/العنوان" value="${v.code || ''}" data-mi="${mi}" data-vi="${vi}" data-vf="code">
+      <select data-mi="${mi}" data-vi="${vi}" data-vf="currency">
+        <option value="usd" ${v.currency==='usd'?'selected':''}>$</option>
+        <option value="syp" ${v.currency==='syp'?'selected':''}>ل.س</option>
+      </select>
+      <button class="del-btn" data-delv="${mi}:${vi}">✕</button>
+    </div>
+  `).join('');
+  box.querySelectorAll('[data-vf]').forEach(el => {
+    el.oninput = el.onchange = () => {
+      methodsData[+el.dataset.mi].variants[+el.dataset.vi][el.dataset.vf] = el.value;
+    };
+  });
+  box.querySelectorAll('button[data-delv]').forEach(btn => {
+    btn.onclick = () => {
+      const [mi2, vi2] = btn.dataset.delv.split(':').map(Number);
+      methodsData[mi2].variants.splice(vi2, 1);
+      renderVariantsList(mi2);
+    };
+  });
+}
+document.getElementById('btnAddMethod').onclick = () => {
+  methodsData.push({ name: '', desc: '', variants: [{ name: 'الحساب', label: '', code: '', currency: 'usd' }] });
+  renderMethodsList();
+};
+document.getElementById('btnSaveMethods').onclick = async () => {
+  const msg = document.getElementById('methodsMsg');
+  try{
+    await fbDb.collection('config').doc('storeConfig').set({ paymentMethods: methodsData }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+
+const DEFAULT_PACKAGES = [
+  { points: 500, usd: 0.50 }, { points: 2800, usd: 2.80 },
+  { points: 6500, usd: 6.50 }, { points: 15000, usd: 15.00 },
+];
+const DEFAULT_METHODS = [
+  { name:'Kazawallet', desc:'تحويل فوري بالدولار', variants:[{name:'الحساب', label:'رقم حساب Kazawallet', code:'k5813250', currency:'usd'}] },
+  { name:'ShamCash', desc:'دولار أو ليرة سورية', variants:[
+    {name:'بالدولار', label:'رمز ShamCash (دولار)', code:'4a8c7ac87d18d72ebe29daf4ce8ea08d', currency:'usd'},
+    {name:'بالليرة السورية', label:'رمز ShamCash (ليرة)', code:'4a8c7ac87d18d72ebe29daf4ce8ea08d', currency:'syp'},
+  ]},
+  { name:'سرياتيل كاش / أقرب إليك', desc:'تحويل بالليرة السورية', variants:[
+    {name:'الحساب', label:'رقم سرياتيل كاش / أقرب إليك', code:'42411059<br>53374602', currency:'syp'},
+  ]},
+  { name:'Binance Pay', desc:'تحويل فوري بمعرّف بينانس', variants:[
+    {name:'المعرّف', label:'Binance Pay ID', code:'1239344460', currency:'usd'},
+  ]},
+  { name:'USDT (كريبتو)', desc:'BEP20 / TRC20 / ERC20', variants:[
+    {name:'شبكة BEP20', label:'عنوان USDT — BEP20', code:'0xb937c9779ac1439715bf2aa91225bf9826af035c', currency:'usd'},
+    {name:'شبكة TRC20', label:'عنوان USDT — TRC20', code:'THHZkB5GxZGqCYvFAgNdVHjmQDYQzXJLZL', currency:'usd'},
+    {name:'شبكة ERC20', label:'عنوان USDT — ERC20', code:'0xb937c9779ac1439715bf2aa91225bf9826af035c', currency:'usd'},
+  ]},
+];
+async function loadStoreConfig(){
+  try{
+    const doc = await fbDb.collection('config').doc('storeConfig').get();
+    const d = doc.exists ? doc.data() : {};
+    packagesData = (d.packages && d.packages.length) ? d.packages : DEFAULT_PACKAGES.map(p=>({...p}));
+    methodsData = (d.paymentMethods && d.paymentMethods.length) ? d.paymentMethods : DEFAULT_METHODS.map(m=>({...m, variants:m.variants.map(v=>({...v}))}));
+    renderPackagesList();
+    renderMethodsList();
+  }catch(e){ console.error('store config load failed', e); }
+}
 async function loadRates(){
   try{
     const doc = await fbDb.collection('config').doc('pricing').get();
@@ -451,7 +646,7 @@ fbAuth.onAuthStateChanged(user => {
     watchPurchaseRequests();
     watchWithdrawRequests();
     loadRates();
-  } else if(user){
+    loadStoreConfig();
     gate.style.display = 'block';
     panel.style.display = 'none';
     gateMsg.textContent = 'هذا الحساب غير مصرّح له بالدخول.';
