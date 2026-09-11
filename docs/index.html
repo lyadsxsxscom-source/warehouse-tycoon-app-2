@@ -271,40 +271,7 @@
     <button class="buy-btn" id="btnOpenBuy" style="display:none;">💳 شراء نقاط الآن</button>
 
     <h3 style="font-size:13px; color:var(--dim); margin:22px 4px 8px; font-weight:600;">طرق الدفع المتاحة</h3>
-    <div class="pay-card">
-      <div>
-        <div class="pname">Kazawallet</div>
-        <div class="pnote">رقم الحساب (دولار)</div>
-      </div>
-      <div class="pcode">k5813250</div>
-    </div>
-    <div class="pay-card">
-      <div>
-        <div class="pname">ShamCash</div>
-        <div class="pnote">الرمز — يقبل دولار أو ليرة سورية</div>
-      </div>
-      <div class="pcode">4a8c7ac87d18d72ebe29daf4ce8ea08d</div>
-    </div>
-    <div class="pay-card">
-      <div>
-        <div class="pname">أقرب إليك / سيرياتيل كاش</div>
-        <div class="pnote">ليرة سورية — حسب سعر الصرف الحالي</div>
-      </div>
-      <div class="pcode">42411059</div>
-    </div>
-    <div class="pay-card">
-      <div>
-        <div class="pname">Binance Pay</div>
-        <div class="pnote">معرّف الدفع (دولار)</div>
-      </div>
-      <div class="pcode">1239344460</div>
-    </div>
-    <div class="pay-card">
-      <div>
-        <div class="pname">USDT</div>
-        <div class="pnote">دولار — شبكات BEP20 / TRC20 / ERC20</div>
-      </div>
-    </div>
+    <div id="payMethodsInfo"></div>
   </section>
 
   <hr class="cut-line">
@@ -330,33 +297,16 @@
   <div class="buy-modal">
     <h3><span id="buyStepTitle">اختر الباقة</span><span class="x" id="buyClose">×</span></h3>
 
-    <div id="stepPackage">
-      <div class="pkg-opt" data-points="500" data-usd="0.50"><div><div class="amt">500 نقطة</div></div><div class="usd">$0.50</div></div>
-      <div class="pkg-opt" data-points="2800" data-usd="2.80"><div><div class="amt">2,800 نقطة</div></div><div class="usd">$2.80</div></div>
-      <div class="pkg-opt" data-points="6500" data-usd="6.50"><div><div class="amt">6,500 نقطة</div></div><div class="usd">$6.50</div></div>
-      <div class="pkg-opt" data-points="15000" data-usd="15.00"><div><div class="amt">15,000 نقطة</div></div><div class="usd">$15.00</div></div>
-    </div>
+    <div id="stepPackage"></div>
 
     <div id="stepMethod" style="display:none;">
       <span class="buy-back" id="backToPackage">‹ رجوع</span>
-      <div class="pay-opt" data-method="Kazawallet"><div><div class="pname">Kazawallet</div><div class="pdesc">تحويل فوري بالدولار</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-method="ShamCash"><div><div class="pname">ShamCash</div><div class="pdesc">دولار أو ليرة سورية</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-method="Syriatel"><div><div class="pname">سرياتيل كاش / أقرب إليك</div><div class="pdesc">تحويل بالليرة السورية</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-method="BinancePay"><div><div class="pname">Binance Pay</div><div class="pdesc">تحويل فوري بمعرّف بينانس</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-method="USDT"><div><div class="pname">USDT (كريبتو)</div><div class="pdesc">BEP20 / TRC20 / ERC20</div></div><span class="arrow">‹</span></div>
+      <div id="methodList"></div>
     </div>
 
-    <div id="stepShamCurrency" style="display:none;">
-      <span class="buy-back" id="backToMethodFromSham">‹ رجوع</span>
-      <div class="pay-opt" data-currency="usd"><div><div class="pname">بالدولار</div><div class="pdesc">تحويل مباشر بالدولار</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-currency="syp"><div><div class="pname">بالليرة السورية</div><div class="pdesc">تحويل بالليرة حسب سعر الصرف الحالي</div></div><span class="arrow">‹</span></div>
-    </div>
-
-    <div id="stepUsdtNetwork" style="display:none;">
-      <span class="buy-back" id="backToMethodFromUsdt">‹ رجوع</span>
-      <div class="pay-opt" data-network="BEP20"><div><div class="pname">شبكة BEP20</div><div class="pdesc">BNB Smart Chain</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-network="TRC20"><div><div class="pname">شبكة TRC20</div><div class="pdesc">Tron</div></div><span class="arrow">‹</span></div>
-      <div class="pay-opt" data-network="ERC20"><div><div class="pname">شبكة ERC20</div><div class="pdesc">Ethereum</div></div><span class="arrow">‹</span></div>
+    <div id="stepVariant" style="display:none;">
+      <span class="buy-back" id="backToMethodFromVariant">‹ رجوع</span>
+      <div id="variantList"></div>
     </div>
 
     <div id="stepDetail" style="display:none;">
@@ -449,16 +399,60 @@ fbAuth.onAuthStateChanged(user => {
   }
 });
 
+// ===== القيم الافتراضية (تُستخدم فقط لو ما زبطت صفحة الأدمن القيم بعد) =====
+const DEFAULT_PACKAGES = [
+  {points:500, usd:0.50}, {points:2800, usd:2.80}, {points:6500, usd:6.50}, {points:15000, usd:15.00},
+];
+const DEFAULT_METHODS = [
+  {name:'Kazawallet', desc:'تحويل فوري بالدولار', variants:[
+    {name:'الحساب', label:'رقم حساب Kazawallet', code:'k5813250', currency:'usd'}]},
+  {name:'ShamCash', desc:'دولار أو ليرة سورية', variants:[
+    {name:'بالدولار', label:'رمز ShamCash (دولار)', code:'4a8c7ac87d18d72ebe29daf4ce8ea08d', currency:'usd'},
+    {name:'بالليرة السورية', label:'رمز ShamCash (ليرة)', code:'4a8c7ac87d18d72ebe29daf4ce8ea08d', currency:'syp'}]},
+  {name:'سرياتيل كاش / أقرب إليك', desc:'تحويل بالليرة السورية', variants:[
+    {name:'الحساب', label:'رقم سرياتيل كاش / أقرب إليك', code:'42411059<br>53374602', currency:'syp'}]},
+  {name:'Binance Pay', desc:'تحويل فوري بمعرّف بينانس', variants:[
+    {name:'المعرّف', label:'Binance Pay ID', code:'1239344460', currency:'usd'}]},
+  {name:'USDT (كريبتو)', desc:'BEP20 / TRC20 / ERC20', variants:[
+    {name:'شبكة BEP20', label:'عنوان USDT — BEP20', code:'0xb937c9779ac1439715bf2aa91225bf9826af035c', currency:'usd'},
+    {name:'شبكة TRC20', label:'عنوان USDT — TRC20', code:'THHZkB5GxZGqCYvFAgNdVHjmQDYQzXJLZL', currency:'usd'},
+    {name:'شبكة ERC20', label:'عنوان USDT — ERC20', code:'0xb937c9779ac1439715bf2aa91225bf9826af035c', currency:'usd'}]},
+];
+let PACKAGES = DEFAULT_PACKAGES;
+let METHODS = DEFAULT_METHODS;
+
+async function loadStoreConfig(){
+  try{
+    const doc = await fbDb.collection('config').doc('storeConfig').get();
+    const d = doc.exists ? doc.data() : {};
+    if(Array.isArray(d.packages) && d.packages.length) PACKAGES = d.packages;
+    if(Array.isArray(d.paymentMethods) && d.paymentMethods.length) METHODS = d.paymentMethods;
+  }catch(e){ console.error('store config load failed', e); }
+  renderPayMethodsInfo();
+}
+loadStoreConfig();
+
+function renderPayMethodsInfo(){
+  const el = document.getElementById('payMethodsInfo');
+  el.innerHTML = METHODS.map(m => `
+    <div class="pay-card">
+      <div>
+        <div class="pname">${m.logo ? `<img src="${m.logo}" style="height:16px; vertical-align:middle; margin-left:6px;">` : ''}${m.name}</div>
+        <div class="pnote">${m.desc || ''}</div>
+      </div>
+    </div>`).join('');
+}
+
 // ===== Modal navigation =====
 const buyOverlay = document.getElementById('buyOverlay');
 const stepPackage = document.getElementById('stepPackage');
 const stepMethod = document.getElementById('stepMethod');
-const stepShamCurrency = document.getElementById('stepShamCurrency');
-const stepUsdtNetwork = document.getElementById('stepUsdtNetwork');
+const stepVariant = document.getElementById('stepVariant');
 const stepDetail = document.getElementById('stepDetail');
 const stepSuccess = document.getElementById('stepSuccess');
 const buyStepTitle = document.getElementById('buyStepTitle');
-const ALL_STEPS = [stepPackage, stepMethod, stepShamCurrency, stepUsdtNetwork, stepDetail, stepSuccess];
+const ALL_STEPS = [stepPackage, stepMethod, stepVariant, stepDetail, stepSuccess];
+let selectedMethodObj = null;
 
 function showStep(step){
   ALL_STEPS.forEach(s => s.style.display = 'none');
@@ -466,7 +460,7 @@ function showStep(step){
 }
 
 btnOpenBuy.onclick = () => {
-  selectedPackage = null; selectedMethod = null; proofDataUrl = null;
+  selectedPackage = null; selectedMethod = null; selectedMethodObj = null; proofDataUrl = null;
   document.getElementById('proofInput').value = '';
   document.getElementById('proofPreview').style.display = 'none';
   document.getElementById('uploadPh').style.display = 'block';
@@ -474,41 +468,56 @@ btnOpenBuy.onclick = () => {
   document.getElementById('noteField').value = '';
   document.getElementById('submitMsg').textContent = '';
   buyStepTitle.textContent = 'اختر الباقة';
+  document.getElementById('stepPackage').innerHTML = PACKAGES.map((p, i) => `
+    <div class="pkg-opt" data-idx="${i}"><div><div class="amt">${p.points.toLocaleString('en-US')} نقطة</div></div><div class="usd">$${p.usd}</div></div>`).join('');
+  document.querySelectorAll('#stepPackage .pkg-opt').forEach(opt => {
+    opt.onclick = () => {
+      const pkg = PACKAGES[parseInt(opt.dataset.idx, 10)];
+      selectedPackage = { points: pkg.points, usd: parseFloat(pkg.usd) };
+      buyStepTitle.textContent = 'اختر طريقة الدفع';
+      renderMethodList();
+      showStep(stepMethod);
+    };
+  });
   showStep(stepPackage);
   buyOverlay.classList.add('show');
 };
 document.getElementById('buyClose').onclick = () => buyOverlay.classList.remove('show');
-
-document.querySelectorAll('.pkg-opt').forEach(opt => {
-  opt.onclick = () => {
-    selectedPackage = { points: parseInt(opt.dataset.points, 10), usd: parseFloat(opt.dataset.usd) };
-    buyStepTitle.textContent = 'اختر طريقة الدفع';
-    showStep(stepMethod);
-  };
-});
 document.getElementById('backToPackage').onclick = () => { buyStepTitle.textContent = 'اختر الباقة'; showStep(stepPackage); };
-document.getElementById('backToMethodFromSham').onclick = () => { buyStepTitle.textContent = 'اختر طريقة الدفع'; showStep(stepMethod); };
-document.getElementById('backToMethodFromUsdt').onclick = () => { buyStepTitle.textContent = 'اختر طريقة الدفع'; showStep(stepMethod); };
-document.getElementById('backToMethod').onclick = () => { buyStepTitle.textContent = 'اختر طريقة الدفع'; showStep(stepMethod); };
-
-const PAY_INFO = {
-  Kazawallet:  { label: 'رقم حساب Kazawallet', code: 'k5813250', currency: 'usd' },
-  ShamCash_usd:{ label: 'رمز ShamCash (تحويل بالدولار)', code: '4a8c7ac87d18d72ebe29daf4ce8ea08d', currency: 'usd' },
-  ShamCash_syp:{ label: 'رمز ShamCash (تحويل بالليرة السورية)', code: '4a8c7ac87d18d72ebe29daf4ce8ea08d', currency: 'syp' },
-  Syriatel:    { label: 'رقم سرياتيل كاش / أقرب إليك', code: '42411059<br>53374602', currency: 'syp' },
-  BinancePay:  { label: 'Binance Pay ID', code: '1239344460', currency: 'usd' },
-  USDT_BEP20:  { label: 'عنوان USDT — شبكة BEP20', code: '0xb937c9779ac1439715bf2aa91225bf9826af035c', currency: 'usd' },
-  USDT_TRC20:  { label: 'عنوان USDT — شبكة TRC20', code: 'THHZkB5GxZGqCYvFAgNdVHjmQDYQzXJLZL', currency: 'usd' },
-  USDT_ERC20:  { label: 'عنوان USDT — شبكة ERC20', code: '0xb937c9779ac1439715bf2aa91225bf9826af035c', currency: 'usd' },
+document.getElementById('backToMethodFromVariant').onclick = () => { buyStepTitle.textContent = 'اختر طريقة الدفع'; showStep(stepMethod); };
+document.getElementById('backToMethod').onclick = () => {
+  if(selectedMethodObj && selectedMethodObj.variants.length > 1){ buyStepTitle.textContent = selectedMethodObj.name; showStep(stepVariant); }
+  else { buyStepTitle.textContent = 'اختر طريقة الدفع'; showStep(stepMethod); }
 };
 
-function openDetailStep(method){
-  selectedMethod = method;
-  const info = PAY_INFO[method];
-  document.getElementById('detailLabel').textContent = info.label;
-  document.getElementById('detailCode').innerHTML = info.code;
+function renderMethodList(){
+  document.getElementById('methodList').innerHTML = METHODS.map((m, i) => `
+    <div class="pay-opt" data-idx="${i}"><div><div class="pname">${m.name}</div><div class="pdesc">${m.desc || ''}</div></div><span class="arrow">‹</span></div>`).join('');
+  document.querySelectorAll('#methodList .pay-opt').forEach(opt => {
+    opt.onclick = () => {
+      const method = METHODS[parseInt(opt.dataset.idx, 10)];
+      selectedMethodObj = method;
+      if(method.variants.length > 1){
+        buyStepTitle.textContent = method.name;
+        document.getElementById('variantList').innerHTML = method.variants.map((v, i) => `
+          <div class="pay-opt" data-i="${i}"><div><div class="pname">${v.name}</div></div><span class="arrow">‹</span></div>`).join('');
+        document.querySelectorAll('#variantList .pay-opt').forEach(vopt => {
+          vopt.onclick = () => openDetailStep(method.variants[parseInt(vopt.dataset.i, 10)]);
+        });
+        showStep(stepVariant);
+      } else {
+        openDetailStep(method.variants[0]);
+      }
+    };
+  });
+}
+
+function openDetailStep(variant){
+  selectedMethod = selectedMethodObj.name + (selectedMethodObj.variants.length > 1 ? (' — ' + variant.name) : '');
+  document.getElementById('detailLabel').textContent = variant.label;
+  document.getElementById('detailCode').innerHTML = variant.code;
   const amountEl = document.getElementById('detailAmount');
-  if(info.currency === 'syp'){
+  if(variant.currency === 'syp'){
     if(PRICING.usdToSyp > 0){
       amountEl.textContent = `${Math.round(selectedPackage.usd * PRICING.usdToSyp).toLocaleString('en-US')} ل.س`;
     } else {
@@ -520,21 +529,6 @@ function openDetailStep(method){
   buyStepTitle.textContent = 'أتمم التحويل';
   showStep(stepDetail);
 }
-
-document.querySelectorAll('.pay-opt').forEach(opt => {
-  opt.onclick = () => {
-    if(opt.dataset.method){
-      const method = opt.dataset.method;
-      if(method === 'ShamCash'){ buyStepTitle.textContent = 'اختر العملة'; showStep(stepShamCurrency); return; }
-      if(method === 'USDT'){ buyStepTitle.textContent = 'اختر الشبكة'; showStep(stepUsdtNetwork); return; }
-      openDetailStep(method); // Kazawallet, Syriatel, BinancePay
-    } else if(opt.dataset.currency){
-      openDetailStep(opt.dataset.currency === 'usd' ? 'ShamCash_usd' : 'ShamCash_syp');
-    } else if(opt.dataset.network){
-      openDetailStep('USDT_' + opt.dataset.network);
-    }
-  };
-});
 
 // ===== Proof image upload + compression =====
 document.getElementById('proofInput').onchange = (e) => {
@@ -606,4 +600,4 @@ document.getElementById('btnSubmitPurchase').onclick = async () => {
 };
 </script>
 </body>
-                                                                                          </html>
+</html>
