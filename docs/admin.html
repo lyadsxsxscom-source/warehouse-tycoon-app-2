@@ -647,6 +647,7 @@ fbAuth.onAuthStateChanged(user => {
     watchWithdrawRequests();
     loadRates();
     loadStoreConfig();
+  } else if(user){
     gate.style.display = 'block';
     panel.style.display = 'none';
     gateMsg.textContent = 'هذا الحساب غير مصرّح له بالدخول.';
@@ -658,4 +659,4 @@ fbAuth.onAuthStateChanged(user => {
 });
 </script>
 </body>
-</html>
+          </html>
