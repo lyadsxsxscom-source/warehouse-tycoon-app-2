@@ -449,6 +449,7 @@ async function initAdGem(){
         points += amount; totalPointsEarned += amount;
         hint.textContent = `+${amount} نقطة من جدار المهام!`;
         renderAll();
+        saveProgress();
       }
     });
     AdGemPlugin.addListener('offerwallFailed', () => {
@@ -486,6 +487,7 @@ let adsWatched = 0;
 let workersRented = 0;
 
 let shelves = Array.from({length: SHELF_COUNT}, (_, i) => ({ id:i, unlocked: i < 2, worker: null }));
+let dailyDate = null;
 let tasks = [
   {id:'login', label:'تسجيل الدخول اليوم', reward:20, done:true, claimed:false},
   {id:'watch3', label:'شاهد 3 إعلانات', reward:40, progress:0, target:3, claimed:false},
@@ -518,7 +520,7 @@ function renderTasks(){
     div.innerHTML = `<span>${t.label} ${t.target ? `(${Math.min(t.progress||0, t.target)}/${t.target})` : ''}</span>
       <button class="claim" ${(!doneNow || t.claimed) ? 'disabled' : ''}>${t.claimed ? 'تم ✓' : `+${t.reward}`}</button>`;
     div.querySelector('.claim').onclick = () => {
-      if(doneNow && !t.claimed){ t.claimed = true; points += t.reward; totalPointsEarned += t.reward; renderAll(); }
+      if(doneNow && !t.claimed){ t.claimed = true; points += t.reward; totalPointsEarned += t.reward; renderAll(); saveProgress(); }
     };
     tasksEl.appendChild(div);
   });
@@ -789,11 +791,17 @@ async function saveProgress(){
     await withTimeout(fbDb.collection('players').doc(currentUser.uid).set({
       points, wallet, totalPointsEarned, workersRented, adsWatched,
       shelves: shelves.map(s => ({id:s.id, unlocked:s.unlocked, worker:s.worker})),
+      tasks, dailyDate,
       updatedAt: Date.now()
     }), 8000, 'saveProgress');
   }catch(e){
     console.error('save failed', e);
   }
+}
+
+function todayStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
 }
 
 async function loadProgress(uid){
@@ -812,6 +820,17 @@ async function loadProgress(uid){
       workersRented = d.workersRented ?? workersRented;
       adsWatched = d.adsWatched ?? adsWatched;
       if(d.shelves){ d.shelves.forEach(sd => { const s = shelves.find(x => x.id === sd.id); if(s){ s.unlocked = sd.unlocked; s.worker = sd.worker; } }); }
+      if(d.dailyDate === todayStr() && Array.isArray(d.tasks)){
+        tasks = d.tasks; // نفس اليوم — نحافظ على حالة المهام (مُستلمة/غير مُستلمة) زي ما هي
+      } else {
+        dailyDate = todayStr(); // يوم جديد (أو أول مرة) — تصفير المهام
+        tasks = [
+          {id:'login', label:'تسجيل الدخول اليوم', reward:20, done:true, claimed:false},
+          {id:'watch3', label:'شاهد 3 إعلانات', reward:40, progress:0, target:3, claimed:false},
+          {id:'rent1', label:'استأجر عامل واحد', reward:60, progress:0, target:1, claimed:false},
+        ];
+        saveProgress();
+      }
       hint.textContent = 'تم تحميل تقدمك المحفوظ!';
       dataLoaded = true;
     } else {
@@ -972,6 +991,7 @@ document.getElementById('optAd').onclick = async () => {
         tasks.find(t=>t.id==='watch3').progress = Math.min(3, adsWatched);
         hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!';
         renderAll();
+        saveProgress();
       } else {
         hint.textContent = 'ما تم إكمال مشاهدة الإعلان بالكامل.';
       }
