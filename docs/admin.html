@@ -423,12 +423,14 @@ function watchWithdrawRequests(){
           </div>
           <div class="req-who">${d.displayName || ''} ${d.email ? '· ' + d.email : ''}</div>
           <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${d.walletAddress || ''}</div>
+          <div class="req-note" id="chk-${doc.id}">🔍 جاري التحقق من نشاط الحساب...</div>
           <div class="req-actions" ${d.status !== 'pending' ? 'style="display:none;"' : ''}>
             <button class="btn" data-wdact="fulfill" data-id="${doc.id}">✓ تم الإرسال يدوياً</button>
             <button class="btn btn-reject" data-wdact="reject" data-id="${doc.id}" data-uid="${d.uid}" data-coin="${d.coin}" data-amount="${d.amount}">رفض وإرجاع الرصيد</button>
           </div>
         `;
         list.appendChild(card);
+        if(d.status === 'pending') checkWithdrawPlausibility(doc.id, d);
       });
       updateWdBadge(pendingCount);
     }, err => {
@@ -439,6 +441,36 @@ function watchWithdrawRequests(){
 function updateWdBadge(n){
   document.getElementById('wdPendingBadge').textContent = n > 0 ? n : '';
 }
+
+async function checkWithdrawPlausibility(reqId, d){
+  const el = document.getElementById('chk-' + reqId);
+  if(!el) return;
+  try{
+    const pricingDoc = await fbDb.collection('config').doc('pricing').get();
+    const pricing = pricingDoc.exists ? pricingDoc.data() : {};
+    const priceUsd = d.coin === 'btc' ? (pricing.btcUsd || 0) : (pricing.ethUsd || 0);
+    const playerDoc = await fbDb.collection('players').doc(d.uid).get();
+    if(!playerDoc.exists){
+      el.textContent = '⚠️ ما لقيت بيانات هذا الحساب — راجع يدوياً.';
+      el.style.color = 'var(--ember)';
+      return;
+    }
+    const p = playerDoc.data();
+    const earned = p.totalPointsEarned || 0;
+    const requestedUsd = priceUsd > 0 ? d.amount * priceUsd : 0;
+    const maxExpectedUsd = earned / 900; // نفس نسبة الاقتصاد المتفق عليها: 900 نقطة تقريباً = 1$ إنتاج
+    el.innerHTML = `إجمالي نقاط الحساب من البداية: ${earned.toLocaleString('en-US')} — يعادل حد أقصى تقريبي ${maxExpectedUsd.toFixed(2)}$`;
+    if(requestedUsd > maxExpectedUsd * 1.5){
+      el.innerHTML += `<br><b style="color:var(--ember);">⚠️ المبلغ المطلوب (${requestedUsd.toFixed(2)}$) أكبر بكثير من المتوقع — راجع الحساب قبل الموافقة.</b>`;
+    } else {
+      el.innerHTML += `<br><span style="color:#5fd88a;">✓ يبدو منطقياً بالنسبة لنشاط الحساب.</span>`;
+    }
+  }catch(e){
+    el.textContent = 'تعذّر التحقق: ' + e.message;
+    el.style.color = 'var(--dim)';
+  }
+}
+
 document.getElementById('withdrawsList').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-wdact]');
   if(!btn) return;
