@@ -719,6 +719,9 @@ document.getElementById('btnWithdraw').onclick = async () => {
       email: currentUser.email || '',
       coin: activeCoin, network: wdNetwork,
       amount, walletAddress: address,
+      totalPointsEarnedSnapshot: totalPointsEarned,
+      workersRentedSnapshot: workersRented,
+      adsWatchedSnapshot: adsWatched,
       status: 'pending', createdAt: Date.now(),
     });
     await saveProgress();
