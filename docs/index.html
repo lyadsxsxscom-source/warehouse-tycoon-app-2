@@ -540,6 +540,21 @@ function openDetailStep(variant){
 document.getElementById('proofInput').onchange = (e) => {
   const file = e.target.files[0];
   if(!file) return;
+  const submitMsgEl = document.getElementById('submitMsg');
+  const MAX_SIZE = 8 * 1024 * 1024; // 8MB كحد أقصى للملف الأصلي قبل الضغط
+  if(!file.type.startsWith('image/')){
+    submitMsgEl.style.color = 'var(--ember)';
+    submitMsgEl.textContent = 'الملف المرفوع لازم يكون صورة فقط.';
+    e.target.value = '';
+    return;
+  }
+  if(file.size > MAX_SIZE){
+    submitMsgEl.style.color = 'var(--ember)';
+    submitMsgEl.textContent = 'حجم الصورة كبير جداً (الحد الأقصى 8MB).';
+    e.target.value = '';
+    return;
+  }
+  submitMsgEl.textContent = '';
   const reader = new FileReader();
   reader.onload = (ev) => {
     const img = new Image();

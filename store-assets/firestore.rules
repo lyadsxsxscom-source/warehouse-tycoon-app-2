@@ -14,16 +14,27 @@ service cloud.firestore {
       allow create, delete: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
     }
     match /purchaseRequests/{id} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.points is int && request.resource.data.points > 0
+        && request.resource.data.usd is number && request.resource.data.usd > 0
+        && request.resource.data.proofImage is string;
       allow read, update: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
     }
     match /mail/{id} {
       allow create: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
       allow read: if request.auth != null && (request.auth.uid == resource.data.uid || request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2');
-      allow update: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow update: if request.auth != null && request.auth.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed', 'read', 'claimedAt']);
     }
     match /withdrawRequests/{id} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.coin in ['btc', 'eth']
+        && request.resource.data.walletAddress is string;
       allow read: if request.auth != null && (request.auth.uid == resource.data.uid || request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2');
       allow update: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
     }
