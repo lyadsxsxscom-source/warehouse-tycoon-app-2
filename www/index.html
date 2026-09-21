@@ -412,6 +412,7 @@ let dataLoaded = false; // يمنع الحفظ التلقائي من الكتا�
 
 // ===== Unity Ads SDK integration (مباشر، بدون LevelPlay) =====
 const UnityAdsPlugin = window.Capacitor?.Plugins?.UnityAdsPlugin;
+const BrowserPlugin = window.Capacitor?.Plugins?.Browser;
 let adsReady = false;
 const UNITY_GAME_ID = '800367750';
 const REWARDED_UNIT_ID = 'Rewarded_Android';
@@ -438,11 +439,7 @@ async function initAds(){
 initAds();
 
 // ===== Offerwall.me Integration =====
-function openOfferwall(){
-  const apiKey = "DVi4ShFau6GZOWTjPSDyIbYatdimPk";
-  const userId = currentUser ? currentUser.uid : "guest_" + Date.now();
-  window.open(`https://offerwall.me/offerwall/${apiKey}/${userId}`, "_blank");
-  }
+// (منطق الفتح الفعلي موجود بمعالج optOfferwall.onclick لاحقاً، ويستخدم Browser الأصلي داخل التطبيق)
 </script>
 <script>
 // الأسعار مأخوذة من سعر السوق وقت الضبط: BTC≈$78,224.10 / ETH≈$2,464.79
@@ -996,7 +993,12 @@ document.getElementById('optOfferwall').onclick = () => {
   earnOverlay.classList.remove('show');
   const apiKey = "DVi4ShFau6GZOWTjPSDyIbYatdimPk";
   const userId = currentUser ? currentUser.uid : "guest_" + Date.now();
-  window.open(`https://offerwall.me/offerwall/${apiKey}/${userId}`, "_blank");
+  const offerwallUrl = `https://offerwall.me/offerwall/${apiKey}/${userId}`;
+  if(BrowserPlugin){
+    BrowserPlugin.open({ url: offerwallUrl });
+  } else {
+    window.open(offerwallUrl, "_blank");
+  }
 };
 
 // Bottom nav
