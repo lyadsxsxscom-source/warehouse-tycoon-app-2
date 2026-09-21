@@ -437,28 +437,12 @@ async function initAds(){
 }
 initAds();
 
-// ===== AdGem Offerwall integration =====
-const AdGemPlugin = window.Capacitor?.Plugins?.AdGemPlugin;
-
-async function initAdGem(){
-  if(!AdGemPlugin) return;
-  try{
-    await AdGemPlugin.initialize({});
-    AdGemPlugin.addListener('offerwallReward', (data) => {
-      const amount = Number(data.amount) || 0;
-      if(amount > 0){
-        points += amount; totalPointsEarned += amount;
-        hint.textContent = `+${amount} نقطة من جدار المهام!`;
-        renderAll();
-        saveProgress();
-      }
-    });
-    AdGemPlugin.addListener('offerwallFailed', () => {
-      hint.textContent = 'تعذّر فتح جدار المهام، حاول لاحقاً.';
-    });
-  }catch(e){ console.error('AdGem init failed', e); }
-}
-initAdGem();
+// ===== Offerwall.me Integration =====
+function openOfferwall(){
+  const apiKey = "DVi4ShFau6GZOWTjPSDyIbYatdimPk";
+  const userId = currentUser ? currentUser.uid : "guest_" + Date.now();
+  window.open(`https://offerwall.me/offerwall/${apiKey}/${userId}`, "_blank");
+  }
 </script>
 <script>
 // الأسعار مأخوذة من سعر السوق وقت الضبط: BTC≈$78,224.10 / ETH≈$2,464.79
@@ -1011,11 +995,9 @@ document.getElementById('optAd').onclick = async () => {
 };
 document.getElementById('optOfferwall').onclick = () => {
   earnOverlay.classList.remove('show');
-  if(AdGemPlugin){
-    AdGemPlugin.showOfferwall();
-  } else {
-    hint.textContent = 'جدار المهام متاح فقط داخل نسخة التطبيق المثبّتة.';
-  }
+  const apiKey = "DVi4ShFau6GZOWTjPSDyIbYatdimPk";
+  const userId = currentUser ? currentUser.uid : "guest_" + Date.now();
+  window.open(`https://offerwall.me/offerwall/${apiKey}/${userId}`, "_blank");
 };
 
 // Bottom nav
