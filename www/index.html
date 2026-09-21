@@ -943,7 +943,6 @@ fbAuth.onAuthStateChanged(user => {
     loadProgress(user.uid);
     watchMail(user.uid);
     watchWithdrawHistory(user.uid);
-    if(AdGemPlugin){ AdGemPlugin.setPlayerId({ playerId: user.uid.toLowerCase() }); }
   } else {
     loginGate.classList.add('show');
     dataLoaded = false;
