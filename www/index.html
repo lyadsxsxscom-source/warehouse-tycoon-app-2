@@ -225,6 +225,16 @@ window.onerror = function(msg, url, line, col, err){
   </button>
 </div>
 
+<div id="forceUpdateGate" class="overlay" style="z-index:100; background:var(--bg);">
+  <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#E4572E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg></div>
+  <h1 style="margin:0 0 4px;">تحديث مطلوب</h1>
+  <div class="subtitle" style="margin-bottom:26px; text-align:center; max-width:280px;">صار في نسخة جديدة من التطبيق فيها إصلاحات مهمة. لازم تحدّث عشان تكمل اللعب.</div>
+  <button class="btn-main" id="btnForceUpdate" style="max-width:280px; background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;">
+    ⬇ تحميل آخر نسخة
+  </button>
+</div>
+
+
 <h1>مستودع الأرباح</h1>
 
 <!-- ===== HOME ===== -->
@@ -407,6 +417,39 @@ try{
 }catch(e){
   console.error('Firestore persistence failed', e);
 }
+
+// ===== التحقق من التحديث الإجباري =====
+const APP_VERSION = "1.0.0"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_DOWNLOAD_URL = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/download/latest-debug/app-debug.apk";
+function versionCompare(a, b){
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for(let i = 0; i < Math.max(pa.length, pb.length); i++){
+    const na = pa[i] || 0, nb = pb[i] || 0;
+    if(na !== nb) return na - nb;
+  }
+  return 0;
+}
+async function checkForceUpdate(){
+  try{
+    const doc = await fbDb.collection('config').doc('appVersion').get();
+    if(!doc.exists) return false;
+    const minVersion = doc.data().minVersion;
+    if(!minVersion) return false;
+    if(versionCompare(APP_VERSION, minVersion) < 0){
+      document.getElementById('forceUpdateGate').classList.add('show');
+      return true;
+    }
+  }catch(e){ console.error('force update check failed', e); }
+  return false;
+}
+document.getElementById('btnForceUpdate').onclick = () => {
+  const nativeBrowser = window.Capacitor?.Plugins?.Browser;
+  if(nativeBrowser){ nativeBrowser.open({ url: APP_DOWNLOAD_URL }); }
+  else { window.open(APP_DOWNLOAD_URL, "_blank"); }
+};
+checkForceUpdate();
+
 let currentUser = null;
 let dataLoaded = false; // يمنع الحفظ التلقائي من الكتابة فوق البيانات قبل ما التحميل يخلص فعلياً
 

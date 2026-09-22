@@ -201,6 +201,16 @@
         <button class="btn" id="btnSaveRates">حفظ الأسعار</button>
         <div class="msg" id="ratesMsg"></div>
       </div>
+      <div class="card">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:4px;">التحديث الإجباري</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">لما تطلع نسخة جديدة فيها إصلاح مهم، حط رقمها هون — أي مستخدم لسا عنده نسخة أقدم رح تظهرله شاشة "تحديث مطلوب" ما تخليه يكمل اللعب لحد ما يحدّث. اترك الحقل فاضي لتعطيل الإجبار.</div>
+        <div class="field">
+          <label>أقل نسخة مسموحة (مثال: 1.0.1)</label>
+          <input type="text" id="minVersionInput" placeholder="مثال: 1.0.1" style="direction:ltr; text-align:right;">
+        </div>
+        <button class="btn" id="btnSaveMinVersion">حفظ نسخة التحديث الإجباري</button>
+        <div class="msg" id="minVersionMsg"></div>
+      </div>
     </div>
 
     <div id="viewCodes" style="display:none;">
@@ -829,6 +839,28 @@ document.getElementById('btnSaveRates').onclick = async () => {
   }
 };
 
+// ===== التحديث الإجباري =====
+async function loadMinVersion(){
+  try{
+    const doc = await fbDb.collection('config').doc('appVersion').get();
+    document.getElementById('minVersionInput').value = doc.exists ? (doc.data().minVersion || '') : '';
+  }catch(e){ console.error('load min version failed', e); }
+}
+document.getElementById('btnSaveMinVersion').onclick = async () => {
+  const msg = document.getElementById('minVersionMsg');
+  const minVersion = document.getElementById('minVersionInput').value.trim();
+  try{
+    await fbDb.collection('config').doc('appVersion').set({
+      minVersion, updatedAt: Date.now(), updatedBy: fbAuth.currentUser.uid
+    });
+    msg.style.color = '#5fd88a';
+    msg.textContent = minVersion ? '✓ تم الحفظ — أي نسخة أقدم من ' + minVersion + ' رح تُجبر على التحديث فوراً' : '✓ تم التعطيل — ما في تحديث إجباري حالياً';
+  }catch(e){
+    msg.style.color = 'var(--ember)';
+    msg.textContent = 'تعذّر الحفظ: ' + e.message;
+  }
+};
+
 
 fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
@@ -840,6 +872,7 @@ fbAuth.onAuthStateChanged(user => {
     loadRates();
     loadStoreConfig();
     loadGameConfig();
+    loadMinVersion();
   } else if(user){
     gate.style.display = 'block';
     panel.style.display = 'none';
