@@ -832,6 +832,42 @@ async function loadProgress(uid){
   }catch(e){ console.error('load failed', e); }
 }
 
+// ===== سحب نقاط جدار المهام المعلّقة (Offerwall.me → Cloudflare Worker) =====
+const OFFERWALL_APP_SECRET = "IX706yUQVwUedGq9lZp5N8mMAhk3qIm8";
+const OFFERWALL_WORKER_BASE = "https://postback.lyad.lol";
+
+async function claimPendingOfferwallCredits(){
+  if(!currentUser) return;
+  try{
+    const res = await fetch(`${OFFERWALL_WORKER_BASE}/claim?subId=${encodeURIComponent(currentUser.uid)}`, {
+      headers: { "X-App-Secret": OFFERWALL_APP_SECRET }
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    const credits = data.credits || [];
+    if(credits.length === 0) return;
+
+    const totalReward = credits.reduce((sum, c) => sum + (Number(c.reward) || 0), 0);
+    if(totalReward <= 0) return;
+
+    points += totalReward;
+    totalPointsEarned += totalReward;
+    await saveProgress();
+    renderAll();
+    hint.textContent = `وصلتك ${totalReward.toLocaleString('ar-EG')} نقطة من جدار المهام! 🎉`;
+
+    // نأكد للـ Worker إنو هاي النقاط انضافت فعلاً، حتى يمسحها من القائمة المعلّقة
+    const transIds = credits.map(c => c.transId);
+    await fetch(`${OFFERWALL_WORKER_BASE}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-App-Secret": OFFERWALL_APP_SECRET },
+      body: JSON.stringify({ subId: currentUser.uid, transIds })
+    });
+  }catch(e){
+    console.error('claimPendingOfferwallCredits failed', e);
+  }
+}
+
 async function redeemCode(){
   const input = document.getElementById('redeemInput');
   const redeemHint = document.getElementById('redeemHint');
@@ -937,7 +973,7 @@ fbAuth.onAuthStateChanged(user => {
   updateProfileUI(user);
   if(user){
     loginGate.classList.remove('show');
-    loadProgress(user.uid);
+    loadProgress(user.uid).then(() => claimPendingOfferwallCredits());
     watchMail(user.uid);
     watchWithdrawHistory(user.uid);
   } else {
@@ -957,10 +993,12 @@ const nativeApp = window.Capacitor?.Plugins?.App;
 if(nativeApp){
   nativeApp.addListener('appStateChange', ({ isActive }) => {
     if(!isActive) saveProgress();
+    else claimPendingOfferwallCredits(); // رجع فاتح التطبيق (يمكن كان يكمّل عرض بجدار المهام)
   });
 } else {
   document.addEventListener('visibilitychange', () => {
     if(document.hidden) saveProgress();
+    else claimPendingOfferwallCredits();
   });
 }
 
