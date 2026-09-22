@@ -123,6 +123,7 @@
       <div class="tab active" id="tabRequests">📥 طلبات الشراء <span id="pendingBadge"></span></div>
       <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
       <div class="tab" id="tabStore">🛠 المتجر</div>
+      <div class="tab" id="tabEconomy">⚖️ اقتصاد اللعبة</div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
       <div class="tab" id="tabSettings">⚙️ الإعدادات</div>
     </div>
@@ -151,6 +152,32 @@
         <div class="msg" id="methodsMsg"></div>
       </div>
     </div>
+
+    <div id="viewEconomy" style="display:none;">
+      <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">تكلفة فتح الرفوف (بالنقاط)</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">أول رفّين مجانيين دايماً (0) — عدّل باقي القيم بس</div>
+        <div id="shelfCostList"></div>
+        <button class="btn" id="btnSaveShelves">حفظ تكلفة الرفوف</button>
+        <div class="msg" id="shelvesMsg"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">تكلفة واستحقاق العمال</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">"القيمة بالدولار" هي مجموع ما ينتجه العامل خلال كامل مدته — بتتحول تلقائياً لكمية عملة حسب سعر الصرف الحالي بتبويب الإعدادات، فلو غيّرت السعر لاحقاً، الإنتاج بيتعدّل لحاله على نفس القيمة الدولارية</div>
+        <div id="workersList"></div>
+        <button class="btn" id="btnSaveWorkers">حفظ إعدادات العمال</button>
+        <div class="msg" id="workersMsg"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">روابط كسب إضافية (جدران مهام/عروض جديدة)</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">تظهر كخيار إضافي بقائمة "كسب نقاط" داخل التطبيق مباشرة، بدون أي تعديل بالكود أو بناء نسخة جديدة. تُفتح داخل التطبيق. لو الرابط يحتاج معرّف المستخدم، استخدم <span style="direction:ltr; display:inline-block;">{uid}</span> بأي مكان بالرابط وبيتعوّض تلقائياً.</div>
+        <div id="earnLinksList"></div>
+        <button class="btn" id="btnAddEarnLink" style="background:var(--panel); color:var(--amber); border:1px solid var(--amber); margin-bottom:10px;">+ إضافة رابط كسب</button>
+        <button class="btn" id="btnSaveEarnLinks">حفظ روابط الكسب</button>
+        <div class="msg" id="earnLinksMsg"></div>
+      </div>
+    </div>
+
 
     <div id="viewSettings" style="display:none;">
       <div class="card">
@@ -302,15 +329,17 @@ document.getElementById('btnCopy').onclick = () => {
 const tabRequests = document.getElementById('tabRequests');
 const tabWithdraws = document.getElementById('tabWithdraws');
 const tabStore = document.getElementById('tabStore');
+const tabEconomy = document.getElementById('tabEconomy');
 const tabCodes = document.getElementById('tabCodes');
 const tabSettings = document.getElementById('tabSettings');
 const viewRequests = document.getElementById('viewRequests');
 const viewWithdraws = document.getElementById('viewWithdraws');
 const viewStore = document.getElementById('viewStore');
+const viewEconomy = document.getElementById('viewEconomy');
 const viewCodes = document.getElementById('viewCodes');
 const viewSettings = document.getElementById('viewSettings');
-const allTabs = [tabRequests, tabWithdraws, tabStore, tabCodes, tabSettings];
-const allViews = [viewRequests, viewWithdraws, viewStore, viewCodes, viewSettings];
+const allTabs = [tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings];
+const allViews = [viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
@@ -318,6 +347,7 @@ function activateTab(tab, view){
 tabRequests.onclick = () => activateTab(tabRequests, viewRequests);
 tabWithdraws.onclick = () => activateTab(tabWithdraws, viewWithdraws);
 tabStore.onclick = () => activateTab(tabStore, viewStore);
+tabEconomy.onclick = () => activateTab(tabEconomy, viewEconomy);
 tabCodes.onclick = () => activateTab(tabCodes, viewCodes);
 tabSettings.onclick = () => activateTab(tabSettings, viewSettings);
 
@@ -635,6 +665,130 @@ const DEFAULT_METHODS = [
     {name:'شبكة ERC20', label:'عنوان USDT — ERC20', code:'0xb937c9779ac1439715bf2aa91225bf9826af035c', currency:'usd'},
   ]},
 ];
+
+// ===== اقتصاد اللعبة =====
+const DEFAULT_SHELF_COST = [0, 0, 120, 350, 800, 1600];
+const WORKER_KEYS = ['btc_day','btc_week','btc_month','eth_day','eth_week','eth_month'];
+const WORKER_LABELS = {
+  btc_day:'عامل بيتكوين يومي', btc_week:'عامل بيتكوين أسبوعي', btc_month:'عامل بيتكوين شهري',
+  eth_day:'عامل إيثيريوم يومي', eth_week:'عامل إيثيريوم أسبوعي', eth_month:'عامل إيثيريوم شهري',
+};
+const DEFAULT_WORKERS = {
+  btc_day:   { cost:100,  usdPerDuration: 0.1111 },
+  btc_week:  { cost:600,  usdPerDuration: 0.6667 },
+  btc_month: { cost:2000, usdPerDuration: 2.2222 },
+  eth_day:   { cost:100,  usdPerDuration: 0.1111 },
+  eth_week:  { cost:600,  usdPerDuration: 0.6667 },
+  eth_month: { cost:2000, usdPerDuration: 2.2222 },
+};
+let shelfCostData = [];
+let workersData = {};
+let earnLinksData = [];
+
+function renderShelfCostList(){
+  const el = document.getElementById('shelfCostList');
+  el.innerHTML = '';
+  shelfCostData.forEach((cost, i) => {
+    const row = document.createElement('div');
+    row.className = 'pkg-row';
+    row.innerHTML = `
+      <div style="flex:0.8; font-size:12px; color:var(--dim);">رف ${i+1}${i<2 ? ' (مجاني)' : ''}</div>
+      <input class="pts" type="number" value="${cost}" data-i="${i}" ${i<2 ? 'disabled style="opacity:.4;"' : ''}>
+    `;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('input').forEach(inp => {
+    inp.oninput = () => { shelfCostData[+inp.dataset.i] = parseFloat(inp.value) || 0; };
+  });
+}
+document.getElementById('btnSaveShelves').onclick = async () => {
+  const msg = document.getElementById('shelvesMsg');
+  try{
+    await fbDb.collection('config').doc('gameConfig').set({ shelfUnlockCost: shelfCostData }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+
+function renderWorkersList(){
+  const el = document.getElementById('workersList');
+  el.innerHTML = '';
+  WORKER_KEYS.forEach(key => {
+    const w = workersData[key] || { cost:0, usdPerDuration:0 };
+    const row = document.createElement('div');
+    row.className = 'method-card';
+    row.innerHTML = `
+      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px;">${WORKER_LABELS[key]}</div>
+      <div class="pkg-row">
+        <input class="pts" type="number" placeholder="تكلفة بالنقاط" value="${w.cost ?? 0}" data-key="${key}" data-f="cost">
+        <input class="usd" type="number" step="0.001" placeholder="القيمة بالدولار (كامل المدة)" value="${w.usdPerDuration ?? 0}" data-key="${key}" data-f="usdPerDuration">
+      </div>
+    `;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('input').forEach(inp => {
+    inp.oninput = () => {
+      if(!workersData[inp.dataset.key]) workersData[inp.dataset.key] = {};
+      workersData[inp.dataset.key][inp.dataset.f] = parseFloat(inp.value) || 0;
+    };
+  });
+}
+document.getElementById('btnSaveWorkers').onclick = async () => {
+  const msg = document.getElementById('workersMsg');
+  try{
+    await fbDb.collection('config').doc('gameConfig').set({ workers: workersData }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق تلقائياً على أول عامل جديد يُستأجر (العمال الحاليين بضلوا بمعدّلهم القديم لحد ما تنتهي مدتهم)';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+
+function renderEarnLinksList(){
+  const el = document.getElementById('earnLinksList');
+  el.innerHTML = '';
+  earnLinksData.forEach((link, i) => {
+    const card = document.createElement('div');
+    card.className = 'method-card';
+    card.innerHTML = `
+      <div class="mhead">
+        <input placeholder="اسم العرض (مثلاً: عروض RevU)" value="${link.label || ''}" data-i="${i}" data-f="label">
+        <button class="del-btn" data-dele="${i}">✕</button>
+      </div>
+      <input placeholder="وصف مختصر" value="${link.desc || ''}" data-i="${i}" data-f="desc" style="width:100%; background:#00000030; border:1px solid var(--border); border-radius:8px; padding:9px 8px; color:var(--text); font-family:'Cairo', sans-serif; font-size:12px; margin-bottom:8px;">
+      <input placeholder="الرابط (استخدم {uid} إذا احتاج معرّف المستخدم)" value="${link.url || ''}" data-i="${i}" data-f="url" style="width:100%; background:#00000030; border:1px solid var(--border); border-radius:8px; padding:9px 8px; color:var(--text); font-family:'Cairo', sans-serif; font-size:11px; direction:ltr; text-align:right;">
+    `;
+    el.appendChild(card);
+  });
+  el.querySelectorAll('input[data-f]').forEach(inp => {
+    inp.oninput = () => { earnLinksData[+inp.dataset.i][inp.dataset.f] = inp.value; };
+  });
+  el.querySelectorAll('button[data-dele]').forEach(btn => {
+    btn.onclick = () => { earnLinksData.splice(+btn.dataset.dele, 1); renderEarnLinksList(); };
+  });
+}
+document.getElementById('btnAddEarnLink').onclick = () => {
+  earnLinksData.push({ label: '', desc: '', url: '' });
+  renderEarnLinksList();
+};
+document.getElementById('btnSaveEarnLinks').onclick = async () => {
+  const msg = document.getElementById('earnLinksMsg');
+  try{
+    await fbDb.collection('config').doc('gameConfig').set({ earnLinks: earnLinksData }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — رح يظهر بالتطبيق فوراً بدون الحاجة لنسخة جديدة';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+
+async function loadGameConfig(){
+  try{
+    const doc = await fbDb.collection('config').doc('gameConfig').get();
+    const d = doc.exists ? doc.data() : {};
+    shelfCostData = (Array.isArray(d.shelfUnlockCost) && d.shelfUnlockCost.length === DEFAULT_SHELF_COST.length) ? [...d.shelfUnlockCost] : [...DEFAULT_SHELF_COST];
+    workersData = {};
+    WORKER_KEYS.forEach(key => { workersData[key] = (d.workers && d.workers[key]) ? {...d.workers[key]} : {...DEFAULT_WORKERS[key]}; });
+    earnLinksData = Array.isArray(d.earnLinks) ? d.earnLinks.map(l => ({...l})) : [];
+    renderShelfCostList();
+    renderWorkersList();
+    renderEarnLinksList();
+  }catch(e){ console.error('game config load failed', e); }
+}
+
 async function loadStoreConfig(){
   try{
     const doc = await fbDb.collection('config').doc('storeConfig').get();
@@ -685,6 +839,7 @@ fbAuth.onAuthStateChanged(user => {
     watchWithdrawRequests();
     loadRates();
     loadStoreConfig();
+    loadGameConfig();
   } else if(user){
     gate.style.display = 'block';
     panel.style.display = 'none';
