@@ -332,6 +332,7 @@ window.onerror = function(msg, url, line, col, err){
       <div class="avatar"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#2a1a08" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4.2 3.4-6.8 7.5-6.8s7.5 2.6 7.5 6.8"/></svg></div>
       <div>
         <div class="name">لاعب مجهول (بدون تسجيل)</div>
+        <div class="acc-email" style="font-size:11px; color:var(--dim); direction:ltr; text-align:right; margin:2px 0;"></div>
         <div class="vip-badge">VIP 0</div>
       </div>
     </div>
@@ -419,7 +420,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.0.0"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.0.1"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/download/latest-debug/app-debug.apk";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -703,9 +704,13 @@ function renderExtraEarnLinks(links){
     div.className = 'option';
     div.innerHTML = `<div><div class="name">${link.label || 'عرض'}</div><div class="desc">${link.desc || ''}</div></div><div class="cost">افتح</div>`;
     div.onclick = () => {
+      if(!currentUser){
+        hint.textContent = 'لازم تسجّل دخول أول قبل ما تفتح هالعرض، حتى توصلك نقاطك صح.';
+        earnOverlay.classList.remove('show');
+        return;
+      }
       earnOverlay.classList.remove('show');
-      let url = link.url;
-      if(currentUser) url = url.replaceAll('{uid}', encodeURIComponent(currentUser.uid));
+      let url = link.url.replaceAll('{uid}', encodeURIComponent(currentUser.uid));
       if(BrowserPlugin){ BrowserPlugin.open({ url }); } else { window.open(url, "_blank"); }
     };
     box.appendChild(div);
@@ -847,14 +852,17 @@ document.getElementById('btnGoogleLoginGate').onclick = handleGoogleAuthClick;
 
 function updateProfileUI(user){
   const nameEl = document.querySelector('.profile-head .name');
+  const emailEl = document.querySelector('.profile-head .acc-email');
   const avatarEl = document.querySelector('.avatar');
   const btn = document.getElementById('btnGoogleLogin');
   if(user){
     nameEl.textContent = user.displayName || user.email;
+    if(emailEl) emailEl.textContent = user.email || '';
     if(user.photoURL){ avatarEl.style.backgroundImage = `url(${user.photoURL})`; avatarEl.style.backgroundSize = 'cover'; avatarEl.textContent = ''; }
     btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:6px;"><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/><path d="M14 12H4M11 8l4 4-4 4"/></svg>تسجيل الخروج`;
   } else {
     nameEl.textContent = 'لاعب مجهول (بدون تسجيل)';
+    if(emailEl) emailEl.textContent = '';
     avatarEl.style.backgroundImage = ''; avatarEl.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#2a1a08" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4.2 3.4-6.8 7.5-6.8s7.5 2.6 7.5 6.8"/></svg>';
     btn.innerHTML = `<span style="background:#fff; color:#4285F4; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">G</span> تسجيل الدخول عبر Google لحفظ التقدم`;
   }
@@ -1136,9 +1144,14 @@ document.getElementById('optAd').onclick = async () => {
   }
 };
 document.getElementById('optOfferwall').onclick = () => {
+  if(!currentUser){
+    hint.textContent = 'لازم تسجّل دخول أول قبل ما تفتح جدار المهام (من صفحة الملف الشخصي)، حتى توصلك نقاطك صح.';
+    earnOverlay.classList.remove('show');
+    return;
+  }
   earnOverlay.classList.remove('show');
   const apiKey = "DVi4ShFau6GZOWTjPSDyIbYatdimPk";
-  const userId = currentUser ? currentUser.uid : "guest_" + Date.now();
+  const userId = currentUser.uid;
   const offerwallUrl = `https://offerwall.me/offerwall/${apiKey}/${userId}`;
   if(BrowserPlugin){
     BrowserPlugin.open({ url: offerwallUrl });

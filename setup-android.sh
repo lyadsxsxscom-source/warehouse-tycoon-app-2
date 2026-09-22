@@ -223,3 +223,12 @@ public class MainActivity extends BridgeActivity {
 }
 EOF
 echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin و AdGemPlugin"
+
+# 14) تعطيل النسخ الاحتياطي التلقائي لأندرويد (Auto Backup) — لمنع استرجاع جلسة تسجيل دخول من جهاز آخر
+# مرتبط بنفس حساب Google على مستوى النظام، وتسريب حساب مستخدم لحساب آخر على جهاز مختلف
+if grep -q 'android:allowBackup="true"' android/app/src/main/AndroidManifest.xml; then
+  sed -i 's/android:allowBackup="true"/android:allowBackup="false"/' android/app/src/main/AndroidManifest.xml
+else
+  sed -i '\|<application|a\        android:allowBackup="false"' android/app/src/main/AndroidManifest.xml
+fi
+echo "✓ android:allowBackup تم تعطيله"
