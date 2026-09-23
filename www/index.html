@@ -234,6 +234,16 @@ window.onerror = function(msg, url, line, col, err){
   </button>
 </div>
 
+<div id="vpnGate" class="overlay" style="z-index:99; background:var(--bg);">
+  <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#E4572E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 20 6v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9.5 12 11 13.5 15 9.5"/></svg></div>
+  <h1 style="margin:0 0 4px;">فعّل VPN مكتشف</h1>
+  <div class="subtitle" style="margin-bottom:10px; text-align:center; max-width:290px;">لازم تطفي أي تطبيق VPN عشان تقدر تستخدم جدار المهام والعروض.</div>
+  <div class="subtitle" style="margin-bottom:26px; text-align:center; max-width:290px; font-size:11.5px; opacity:.75;">استخدام VPN بيعرّض حسابك لخطر الحظر من شبكات العروض — هاد إجراء حماية لحسابك إنت.</div>
+  <button class="btn-main" id="btnRecheckVpn" style="max-width:280px; background:var(--panel); color:var(--amber); border:1px solid var(--amber);">
+    🔄 تحققت، جرب مرة تانية
+  </button>
+</div>
+
 
 <h1>مستودع الأرباح</h1>
 
@@ -420,7 +430,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.0.3"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.1"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/download/latest-debug/app-debug.apk";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -450,6 +460,24 @@ document.getElementById('btnForceUpdate').onclick = () => {
   else { window.open(APP_DOWNLOAD_URL, "_blank"); }
 };
 checkForceUpdate();
+
+// ===== كشف VPN نشط (حماية الحسابات من الحظر بشبكات العروض) =====
+const NetworkCheckPlugin = window.Capacitor?.Plugins?.NetworkCheckPlugin;
+async function checkVpnStatus(){
+  if(!NetworkCheckPlugin) return false; // مش متوفر بمعاينة المتصفح العادية، بس بيتوفر جوّه تطبيق أندرويد الحقيقي
+  try{
+    const res = await NetworkCheckPlugin.isVpnActive();
+    if(res.vpnActive){
+      document.getElementById('vpnGate').classList.add('show');
+      return true;
+    } else {
+      document.getElementById('vpnGate').classList.remove('show');
+      return false;
+    }
+  }catch(e){ console.error('vpn check failed', e); return false; }
+}
+document.getElementById('btnRecheckVpn').onclick = () => { checkVpnStatus(); };
+checkVpnStatus();
 
 let currentUser = null;
 let dataLoaded = false; // يمنع الحفظ التلقائي من الكتابة فوق البيانات قبل ما التحميل يخلص فعلياً
@@ -703,12 +731,14 @@ function renderExtraEarnLinks(links){
     const div = document.createElement('div');
     div.className = 'option';
     div.innerHTML = `<div><div class="name">${link.label || 'عرض'}</div><div class="desc">${link.desc || ''}</div></div><div class="cost">افتح</div>`;
-    div.onclick = () => {
+    div.onclick = async () => {
       if(!currentUser){
         hint.textContent = 'لازم تسجّل دخول أول قبل ما تفتح هالعرض، حتى توصلك نقاطك صح.';
         earnOverlay.classList.remove('show');
         return;
       }
+      const vpnOn = await checkVpnStatus();
+      if(vpnOn){ earnOverlay.classList.remove('show'); return; }
       earnOverlay.classList.remove('show');
       let url = link.url.replaceAll('{uid}', encodeURIComponent(currentUser.uid));
       if(BrowserPlugin){ BrowserPlugin.open({ url }); } else { window.open(url, "_blank"); }
@@ -1109,12 +1139,12 @@ const nativeApp = window.Capacitor?.Plugins?.App;
 if(nativeApp){
   nativeApp.addListener('appStateChange', ({ isActive }) => {
     if(!isActive) saveProgress();
-    else claimPendingOfferwallCredits(); // رجع فاتح التطبيق (يمكن كان يكمّل عرض بجدار المهام)
+    else { claimPendingOfferwallCredits(); checkVpnStatus(); } // رجع فاتح التطبيق (يمكن كان يكمّل عرض بجدار المهام، أو فعّل VPN وهو بره)
   });
 } else {
   document.addEventListener('visibilitychange', () => {
     if(document.hidden) saveProgress();
-    else claimPendingOfferwallCredits();
+    else { claimPendingOfferwallCredits(); checkVpnStatus(); }
   });
 }
 
@@ -1143,12 +1173,14 @@ document.getElementById('optAd').onclick = async () => {
     hint.textContent = 'الإعلان لسا يتحمّل، جرب بعد شوي.';
   }
 };
-document.getElementById('optOfferwall').onclick = () => {
+document.getElementById('optOfferwall').onclick = async () => {
   if(!currentUser){
     hint.textContent = 'لازم تسجّل دخول أول قبل ما تفتح جدار المهام (من صفحة الملف الشخصي)، حتى توصلك نقاطك صح.';
     earnOverlay.classList.remove('show');
     return;
   }
+  const vpnOn = await checkVpnStatus();
+  if(vpnOn){ earnOverlay.classList.remove('show'); return; }
   earnOverlay.classList.remove('show');
   const apiKey = "DVi4ShFau6GZOWTjPSDyIbYatdimPk";
   const userId = currentUser.uid;

@@ -189,6 +189,47 @@ public class AdGemPlugin extends Plugin {
 EOF
 echo "✓ AdGemPlugin.java تمت كتابته"
 
+# 10.5) كتابة بلجن Capacitor مخصص لكشف VPN نشط (منع فتح جدار المهام تحت VPN لتجنّب حظر الحسابات)
+cat > android/app/src/main/java/com/warehousetycoon/app/NetworkCheckPlugin.java << 'EOF'
+package com.warehousetycoon.app;
+
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+@CapacitorPlugin(name = "NetworkCheckPlugin")
+public class NetworkCheckPlugin extends Plugin {
+    @PluginMethod
+    public void isVpnActive(PluginCall call) {
+        boolean vpnActive = false;
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                Network activeNetwork = cm.getActiveNetwork();
+                if (activeNetwork != null) {
+                    NetworkCapabilities caps = cm.getNetworkCapabilities(activeNetwork);
+                    if (caps != null) {
+                        vpnActive = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            vpnActive = false;
+        }
+        JSObject ret = new JSObject();
+        ret.put("vpnActive", vpnActive);
+        call.resolve(ret);
+    }
+}
+EOF
+echo "✓ NetworkCheckPlugin.java تمت كتابته"
+
 # 11) ملف إعدادات AdGem XML (يحدد App ID وسلوك جدار العروض)
 mkdir -p android/app/src/main/res/xml
 cat > android/app/src/main/res/xml/adgem_config.xml << 'EOF'
@@ -218,11 +259,12 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(UnityAdsPlugin.class);
         registerPlugin(AdGemPlugin.class);
+        registerPlugin(NetworkCheckPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
 EOF
-echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin و AdGemPlugin"
+echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin وAdGemPlugin وNetworkCheckPlugin"
 
 # 14) تعطيل النسخ الاحتياطي التلقائي لأندرويد (Auto Backup) — لمنع استرجاع جلسة تسجيل دخول من جهاز آخر
 # مرتبط بنفس حساب Google على مستوى النظام، وتسريب حساب مستخدم لحساب آخر على جهاز مختلف
