@@ -683,13 +683,10 @@ const WORKER_LABELS = {
   btc_day:'عامل بيتكوين يومي', btc_week:'عامل بيتكوين أسبوعي', btc_month:'عامل بيتكوين شهري',
   eth_day:'عامل إيثيريوم يومي', eth_week:'عامل إيثيريوم أسبوعي', eth_month:'عامل إيثيريوم شهري',
 };
-const DEFAULT_WORKERS = {
-  btc_day:   { cost:100,  usdPerDuration: 0.1111 },
-  btc_week:  { cost:600,  usdPerDuration: 0.6667 },
-  btc_month: { cost:2000, usdPerDuration: 2.2222 },
-  eth_day:   { cost:100,  usdPerDuration: 0.1111 },
-  eth_week:  { cost:600,  usdPerDuration: 0.6667 },
-  eth_month: { cost:2000, usdPerDuration: 2.2222 },
+const POINTS_PER_USD_PRODUCTION = 900; // معادلة التسعير الثابتة: 900 نقطة تكلفة = 1$ قيمة إنتاج كامل المدة
+const DEFAULT_WORKER_COST = {
+  btc_day: 100, btc_week: 600, btc_month: 2000,
+  eth_day: 100, eth_week: 600, eth_month: 2000,
 };
 let shelfCostData = [];
 let workersData = {};
@@ -723,22 +720,34 @@ function renderWorkersList(){
   const el = document.getElementById('workersList');
   el.innerHTML = '';
   WORKER_KEYS.forEach(key => {
-    const w = workersData[key] || { cost:0, usdPerDuration:0 };
+    const cost = workersData[key]?.cost ?? 0;
+    const usd = (cost / POINTS_PER_USD_PRODUCTION).toFixed(4);
     const row = document.createElement('div');
     row.className = 'method-card';
     row.innerHTML = `
       <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px;">${WORKER_LABELS[key]}</div>
       <div class="pkg-row">
-        <input class="pts" type="number" placeholder="تكلفة بالنقاط" value="${w.cost ?? 0}" data-key="${key}" data-f="cost">
-        <input class="usd" type="number" step="0.001" placeholder="القيمة بالدولار (كامل المدة)" value="${w.usdPerDuration ?? 0}" data-key="${key}" data-f="usdPerDuration">
+        <div style="flex:1;">
+          <label style="font-size:10px; color:var(--dim); display:block; margin-bottom:3px;">تكلفة بالنقاط</label>
+          <input class="pts" type="number" value="${cost}" data-key="${key}">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:10px; color:var(--dim); display:block; margin-bottom:3px;">القيمة بالدولار (تلقائي)</label>
+          <div class="usd-computed" data-computed="${key}" style="background:#00000030; border:1px solid var(--border); border-radius:8px; padding:9px 10px; color:var(--amber); font-weight:700; font-size:13px;">$${usd}</div>
+        </div>
       </div>
     `;
     el.appendChild(row);
   });
-  el.querySelectorAll('input').forEach(inp => {
+  el.querySelectorAll('input.pts').forEach(inp => {
     inp.oninput = () => {
+      const cost = parseFloat(inp.value) || 0;
       if(!workersData[inp.dataset.key]) workersData[inp.dataset.key] = {};
-      workersData[inp.dataset.key][inp.dataset.f] = parseFloat(inp.value) || 0;
+      workersData[inp.dataset.key].cost = cost;
+      const usd = cost / POINTS_PER_USD_PRODUCTION;
+      workersData[inp.dataset.key].usdPerDuration = usd;
+      const computedEl = el.querySelector(`[data-computed="${inp.dataset.key}"]`);
+      if(computedEl) computedEl.textContent = '$' + usd.toFixed(4);
     };
   });
 }
@@ -791,7 +800,10 @@ async function loadGameConfig(){
     const d = doc.exists ? doc.data() : {};
     shelfCostData = (Array.isArray(d.shelfUnlockCost) && d.shelfUnlockCost.length === DEFAULT_SHELF_COST.length) ? [...d.shelfUnlockCost] : [...DEFAULT_SHELF_COST];
     workersData = {};
-    WORKER_KEYS.forEach(key => { workersData[key] = (d.workers && d.workers[key]) ? {...d.workers[key]} : {...DEFAULT_WORKERS[key]}; });
+    WORKER_KEYS.forEach(key => {
+      const cost = (d.workers && d.workers[key] && typeof d.workers[key].cost === 'number') ? d.workers[key].cost : DEFAULT_WORKER_COST[key];
+      workersData[key] = { cost, usdPerDuration: cost / POINTS_PER_USD_PRODUCTION };
+    });
     earnLinksData = Array.isArray(d.earnLinks) ? d.earnLinks.map(l => ({...l})) : [];
     renderShelfCostList();
     renderWorkersList();
