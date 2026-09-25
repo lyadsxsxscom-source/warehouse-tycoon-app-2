@@ -63,11 +63,54 @@ import com.unity3d.ads.IUnityAdsLoadListener;
 import com.unity3d.ads.IUnityAdsShowListener;
 import com.unity3d.ads.UnityAds;
 import com.unity3d.ads.UnityAdsShowOptions;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import com.unity3d.services.banners.BannerView;
+import com.unity3d.services.banners.UnityBannerSize;
 
 @CapacitorPlugin(name = "UnityAdsPlugin")
 public class UnityAdsPlugin extends Plugin {
     private boolean adReady = false;
     private String currentAdUnitId = null;
+    private BannerView bannerView = null;
+
+    @PluginMethod
+    public void showBanner(PluginCall call) {
+        final String placementId = call.getString("placementId", "Banner_Android");
+        final int bottomOffset = call.getInt("bottomOffset", 0);
+        getActivity().runOnUiThread(() -> {
+            try {
+                float density = getContext().getResources().getDisplayMetrics().density;
+                if (bannerView == null) {
+                    bannerView = new BannerView(getActivity(), placementId, new UnityBannerSize(320, 50));
+                    FrameLayout.LayoutParams newLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+                    ViewGroup root = getActivity().findViewById(android.R.id.content);
+                    root.addView(bannerView, newLp);
+                    bannerView.load();
+                }
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) bannerView.getLayoutParams();
+                lp.bottomMargin = Math.round(bottomOffset * density);
+                bannerView.setLayoutParams(lp);
+                bannerView.setVisibility(View.VISIBLE);
+                bannerView.bringToFront();
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("banner_failed: " + e.getMessage());
+            }
+        });
+    }
+
+    @PluginMethod
+    public void hideBanner(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (bannerView != null) bannerView.setVisibility(View.GONE);
+            call.resolve();
+        });
+    }
 
     @PluginMethod
     public void initialize(PluginCall call) {

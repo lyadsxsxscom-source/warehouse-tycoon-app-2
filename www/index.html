@@ -32,6 +32,7 @@ window.onerror = function(msg, url, line, col, err){
   h1{text-align:center; font-size:22px; margin:4px 0 2px; color:#fff;}
   .subtitle{text-align:center; color:var(--dim); font-size:12px; margin-bottom:14px;}
   h3{font-size:13px; color:var(--dim); margin:14px 4px 8px; font-weight:600;}
+  body.has-banner{padding-bottom:146px;} /* مساحة للشريط الإعلاني فوق شريط التنقل حتى ما يغطي آخر المحتوى */
   .screen{display:none;}
   .screen.active{display:block; animation:fadeSlide .35s ease;}
   @keyframes fadeSlide{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
@@ -430,7 +431,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.3"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.4"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -488,6 +489,28 @@ const BrowserPlugin = window.Capacitor?.Plugins?.Browser;
 let adsReady = false;
 const UNITY_GAME_ID = '800367750';
 const REWARDED_UNIT_ID = 'Rewarded_Android';
+const BANNER_UNIT_ID = 'Banner_Android';
+let bannerWanted = false, bannerShown = false;
+
+// شريط إعلاني ثابت فوق شريط التنقل السفلي بكل الشاشات.
+// يختفي تلقائياً وقت أي نافذة منبثقة (تسجيل دخول، استئجار، كسب نقاط...) حتى ما يغطي أزرارها
+function syncBanner(){
+  if(!UnityAdsPlugin || !UnityAdsPlugin.showBanner) return;
+  const anyOverlay = !!document.querySelector('.overlay.show');
+  const shouldShow = bannerWanted && !anyOverlay;
+  if(shouldShow === bannerShown) return;
+  bannerShown = shouldShow;
+  document.body.classList.toggle('has-banner', shouldShow);
+  if(shouldShow){
+    const nav = document.querySelector('.bottomnav');
+    const offset = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+    UnityAdsPlugin.showBanner({ placementId: BANNER_UNIT_ID, bottomOffset: offset })
+      .catch(e => { console.error('Banner failed', e); bannerShown = false; document.body.classList.remove('has-banner'); });
+  } else {
+    UnityAdsPlugin.hideBanner().catch(() => {});
+  }
+}
+new MutationObserver(syncBanner).observe(document.body, { subtree:true, attributes:true, attributeFilter:['class'] });
 
 async function loadRewardedAd(){
   if(!UnityAdsPlugin) return;
@@ -506,6 +529,8 @@ async function initAds(){
   try{
     await UnityAdsPlugin.initialize({ gameId: UNITY_GAME_ID, testMode: false });
     loadRewardedAd();
+    bannerWanted = true;
+    syncBanner();
   }catch(e){ console.error('Ads init failed', e); }
 }
 initAds();
