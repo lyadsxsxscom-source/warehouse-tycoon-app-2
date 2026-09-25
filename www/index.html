@@ -431,7 +431,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.4"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.5"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -620,7 +620,11 @@ function renderTasks(){
     div.innerHTML = `<span>${t.label} ${t.target ? `(${Math.min(t.progress||0, t.target)}/${t.target})` : ''}</span>
       <button class="claim" ${(!doneNow || t.claimed) ? 'disabled' : ''}>${t.claimed ? 'تم ✓' : `+${t.reward}`}</button>`;
     div.querySelector('.claim').onclick = () => {
-      if(doneNow && !t.claimed){ t.claimed = true; points += t.reward; totalPointsEarned += t.reward; renderAll(); saveProgress(); }
+      if(!doneNow || t.claimed) return;
+      div.querySelector('.claim').disabled = true;
+      gameApi('claimTask', { taskId: t.id })
+        .then(() => { hint.textContent = `+${t.reward} نقطة!`; })
+        .catch(e => { hint.textContent = e.message; renderTasks(); });
     };
     tasksEl.appendChild(div);
   });
@@ -681,8 +685,10 @@ function render(){
       const cost = SHELF_UNLOCK_COST[s.id];
       div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div class="label">فتح: ${cost} نقطة</div>`;
       div.onclick = () => {
-        if(points >= cost){ points -= cost; s.unlocked = true; hint.textContent = 'تم فتح رف جديد!'; renderAll(); }
-        else { hint.textContent = 'نقاط غير كافية لفتح هذا الرف.'; }
+        if(points < cost){ hint.textContent = 'نقاط غير كافية لفتح هذا الرف.'; return; }
+        gameApi('unlockShelf', { shelfId: s.id })
+          .then(() => { hint.textContent = 'تم فتح رف جديد!'; })
+          .catch(e => { hint.textContent = e.message; });
       };
     } else if(s.worker && s.worker.expiresAt > now){
       div.classList.add('working');
@@ -739,15 +745,12 @@ document.getElementById('closeRent').onclick = () => rentOverlay.classList.remov
 document.querySelectorAll('#rentOverlay .option').forEach(opt => {
   opt.onclick = () => {
     const dur = opt.dataset.dur; const w = WORKERS[activeCoin + '_' + dur];
-    if(points < w.cost){ hint.textContent = 'نقاط غير كافية.'; rentOverlay.classList.remove('show'); return; }
-    points -= w.cost;
-    const s = shelves.find(x => x.id === pendingSlot);
-    s.worker = {kind:dur, coin:activeCoin, rate:w.rate, expiresAt: Date.now() + w.seconds*1000};
-    workersRented += 1;
-    { const tr = tasks.find(t=>t.id==='rent1'); tr.progress = Math.min(1, (tr.progress||0) + 1); }
     rentOverlay.classList.remove('show');
-    hint.textContent = `تم استئجار ${w.label}!`;
-    renderAll();
+    if(points < w.cost){ hint.textContent = 'نقاط غير كافية.'; return; }
+    hint.textContent = 'عم نستأجر العامل...';
+    gameApi('rent', { shelfId: pendingSlot, coin: activeCoin, kind: dur })
+      .then(() => { hint.textContent = `تم استئجار ${w.label}!`; })
+      .catch(e => { hint.textContent = e.message; });
   };
 });
 
@@ -871,25 +874,12 @@ document.getElementById('btnWithdraw').onclick = async () => {
   const btn = document.getElementById('btnWithdraw');
   btn.disabled = true;
   try{
-    wallet[activeCoin] -= amount;
-    await fbDb.collection('withdrawRequests').add({
-      uid: currentUser.uid,
-      displayName: currentUser.displayName || '',
-      email: currentUser.email || '',
-      coin: activeCoin, network: wdNetwork,
-      amount, walletAddress: address,
-      totalPointsEarnedSnapshot: totalPointsEarned,
-      workersRentedSnapshot: workersRented,
-      adsWatchedSnapshot: adsWatched,
-      status: 'pending', createdAt: Date.now(),
-    });
-    await saveProgress();
+    await gameApi('withdraw', { coin: activeCoin, network: wdNetwork, amount, address });
     document.getElementById('wdAddress').value = '';
     document.getElementById('wdAmount').value = '';
     hint.textContent = 'تم إرسال طلب السحب، رح تتم مراجعته خلال 24 ساعة.';
     renderAll();
   }catch(e){
-    wallet[activeCoin] += amount; // تراجع عن الخصم لو فشل الإرسال
     wdMsg.textContent = 'تعذّر إرسال الطلب: ' + e.message;
   }
   btn.disabled = false;
@@ -950,19 +940,8 @@ function withTimeout(promise, ms, label){
     new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT: ' + label)), ms))
   ]);
 }
-async function saveProgress(){
-  if(!currentUser || !dataLoaded) return;
-  try{
-    await withTimeout(fbDb.collection('players').doc(currentUser.uid).set({
-      points, wallet, totalPointsEarned, workersRented, adsWatched,
-      shelves: shelves.map(s => ({id:s.id, unlocked:s.unlocked, worker:s.worker})),
-      tasks, dailyDate,
-      updatedAt: Date.now()
-    }), 8000, 'saveProgress');
-  }catch(e){
-    console.error('save failed', e);
-  }
-}
+// الحفظ صار كله على السيرفر (الـWorker) — التطبيق ما بيكتب أي رقم على قاعدة البيانات
+async function saveProgress(){}
 
 function todayStr(){
   const d = new Date();
@@ -996,79 +975,65 @@ async function loadProgress(uid){
   ];
 
   try{
-    let doc;
-    try{
-      doc = await fbDb.collection('players').doc(uid).get({ source: 'server' });
-    }catch(serverErr){
-      doc = await fbDb.collection('players').doc(uid).get();
-    }
-    const today = await getServerToday();
-    if(doc.exists){
-      const d = doc.data();
-      points = d.points ?? points;
-      wallet = d.wallet ?? wallet;
-      totalPointsEarned = d.totalPointsEarned ?? totalPointsEarned;
-      workersRented = d.workersRented ?? workersRented;
-      adsWatched = d.adsWatched ?? adsWatched;
-      if(d.shelves){ d.shelves.forEach(sd => { const s = shelves.find(x => x.id === sd.id); if(s){ s.unlocked = sd.unlocked; s.worker = sd.worker; } }); }
-      if(Array.isArray(d.tasks) && (!today || d.dailyDate === today)){
-        tasks = d.tasks; // نفس اليوم — نحافظ على حالة المهام (مُستلمة/غير مُستلمة) زي ما هي
-        dailyDate = d.dailyDate;
-      } else {
-        dailyDate = today; // يوم جديد (أو أول مرة) — تصفير المهام
-        tasks = [
-          {id:'login', label:'تسجيل الدخول اليوم', reward:20, done:true, claimed:false},
-          {id:'watch3', label:'شاهد 3 إعلانات', reward:30, progress:0, target:3, claimed:false},
-          {id:'rent1', label:'استأجر عامل واحد', reward:40, progress:0, target:1, claimed:false},
-        ];
-        saveProgress();
-      }
-      hint.textContent = 'تم تحميل تقدمك المحفوظ!';
-      dataLoaded = true;
-    } else {
-      dailyDate = today || todayStr();
-      hint.textContent = 'أهلاً! هذا أول تسجيل دخول، بدأنا لك تقدم جديد.';
-      dataLoaded = true;
-      saveProgress();
-    }
+    const data = await gameApi('state');
+    hint.textContent = (data.state.totalPointsEarned > 300 || data.state.workersRented > 0) ? 'تم تحميل تقدمك المحفوظ!' : 'أهلاً! بدأنا لك تقدم جديد.';
+    dataLoaded = true;
     renderAll();
-  }catch(e){ console.error('load failed', e); }
+  }catch(e){
+    console.error('load failed', e);
+    hint.textContent = 'تعذّر تحميل تقدمك: ' + e.message;
+  }
 }
 
 // ===== سحب نقاط جدار المهام المعلّقة (Offerwall.me → Cloudflare Worker) =====
-const OFFERWALL_APP_SECRET = "IX706yUQVwUedGq9lZp5N8mMAhk3qIm8";
 const OFFERWALL_WORKER_BASE = "https://postback.ly-ad.de"; // دومين دائم جديد (بديل عن lyad.lol المعطّل بسبب Namecheap)
 
-async function claimPendingOfferwallCredits(){
-  if(!currentUser) return;
+// ===== الاتصال بسيرفر اللعبة: كل عملية بتغيّر النقاط أو المحفظة بتمر من هون =====
+async function gameApi(action, body){
+  if(!currentUser) throw new Error('لازم تسجّل دخول أول.');
+  const idToken = await currentUser.getIdToken();
+  let res, data = {};
   try{
-    const res = await fetch(`${OFFERWALL_WORKER_BASE}/claim?subId=${encodeURIComponent(currentUser.uid)}`, {
-      headers: { "X-App-Secret": OFFERWALL_APP_SECRET }
-    });
-    if(!res.ok) return;
-    const data = await res.json();
-    const credits = data.credits || [];
-    if(credits.length === 0) return;
-
-    const totalReward = credits.reduce((sum, c) => sum + (Number(c.reward) || 0), 0);
-    if(totalReward <= 0) return;
-
-    points += totalReward;
-    totalPointsEarned += totalReward;
-    await saveProgress();
-    renderAll();
-    hint.textContent = `وصلتك ${totalReward.toLocaleString('ar-EG')} نقطة من جدار المهام! 🎉`;
-
-    // نأكد للـ Worker إنو هاي النقاط انضافت فعلاً، حتى يمسحها من القائمة المعلّقة
-    const transIds = credits.map(c => c.transId);
-    await fetch(`${OFFERWALL_WORKER_BASE}/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-App-Secret": OFFERWALL_APP_SECRET },
-      body: JSON.stringify({ subId: currentUser.uid, transIds })
-    });
+    res = await withTimeout(fetch(`${OFFERWALL_WORKER_BASE}/game/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+      body: JSON.stringify(body || {})
+    }), 15000, 'gameApi');
+    data = await res.json();
   }catch(e){
-    console.error('claimPendingOfferwallCredits failed', e);
+    throw new Error('تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.');
   }
+  if(!res.ok || !data.ok) throw new Error(data.message || 'صار خطأ، جرّب كمان مرة.');
+  applyServerState(data.state);
+  return data;
+}
+
+function applyServerState(st){
+  if(!st) return;
+  points = st.points;
+  totalPointsEarned = st.totalPointsEarned;
+  wallet = { btc: st.wallet.btc || 0, eth: st.wallet.eth || 0 };
+  workersRented = st.workersRented || 0;
+  adsWatched = st.adsWatched || 0;
+  boostUntil = st.boostUntil || 0;
+  tasks = st.tasks;
+  dailyDate = st.dailyDate;
+  (st.shelves || []).forEach(sd => {
+    const sh = shelves.find(x => x.id === sd.id);
+    if(sh){ sh.unlocked = sd.unlocked; sh.worker = sd.worker; }
+  });
+  renderAll();
+}
+
+async function claimPendingOfferwallCredits(){
+  // النقاط بتنضاف على السيرفر مباشرة لحظة وصول الـpostback؛ هون بس منحدّث العرض
+  if(!currentUser || !dataLoaded) return;
+  const before = points;
+  try{
+    await gameApi('state');
+    const gained = Math.floor(points - before);
+    if(gained >= 1) hint.textContent = `وصلتك ${gained.toLocaleString('ar-EG')} نقطة! 🎉`;
+  }catch(e){ console.error('refresh state failed', e); }
 }
 
 async function redeemCode(){
@@ -1077,20 +1042,9 @@ async function redeemCode(){
   const code = input.value.trim().toUpperCase();
   if(!code){ redeemHint.textContent = 'اكتب الكود أول.'; return; }
   if(!currentUser){ alert('لازم تسجّل دخول أول.'); return; }
-  const codeRef = fbDb.collection('redeemCodes').doc(code);
-  const playerRef = fbDb.collection('players').doc(currentUser.uid);
   try{
-    const awarded = await fbDb.runTransaction(async (tx) => {
-      const codeDoc = await tx.get(codeRef);
-      if(!codeDoc.exists) throw new Error('هذا الكود غير موجود.');
-      const data = codeDoc.data();
-      if(data.used) throw new Error('هذا الكود مستخدم من قبل.');
-      tx.update(codeRef, { used: true, usedBy: currentUser.uid, usedAt: Date.now() });
-      tx.update(playerRef, { points: firebase.firestore.FieldValue.increment(data.points) });
-      return data.points;
-    });
-    points += awarded;
-    totalPointsEarned += awarded;
+    const data = await gameApi('redeem', { code });
+    const awarded = data.result.awarded;
     input.value = '';
     redeemHint.style.color = 'var(--amber)';
     redeemHint.textContent = `✓ تم الاسترداد! +${awarded} نقطة`;
@@ -1106,21 +1060,9 @@ document.getElementById('btnRedeem').onclick = redeemCode;
 let mailUnsub = null;
 async function claimMail(mailId, code, btn){
   btn.disabled = true; btn.textContent = 'جاري الاسترداد...';
-  const codeRef = fbDb.collection('redeemCodes').doc(code);
-  const playerRef = fbDb.collection('players').doc(currentUser.uid);
-  const mailRef = fbDb.collection('mail').doc(mailId);
   try{
-    const awarded = await fbDb.runTransaction(async (tx) => {
-      const codeDoc = await tx.get(codeRef);
-      if(!codeDoc.exists) throw new Error('هذا الكود غير موجود.');
-      const data = codeDoc.data();
-      if(data.used) throw new Error('تم استرداد هذا الكود مسبقاً.');
-      tx.update(codeRef, { used: true, usedBy: currentUser.uid, usedAt: Date.now() });
-      tx.update(playerRef, { points: firebase.firestore.FieldValue.increment(data.points) });
-      tx.update(mailRef, { claimed: true, read: true, claimedAt: Date.now() });
-      return data.points;
-    });
-    points += awarded; totalPointsEarned += awarded;
+    const data = await gameApi('redeem', { code, mailId });
+    const awarded = data.result.awarded;
     hint.textContent = `✓ تم استرداد ${awarded} نقطة من البريد!`;
     renderAll();
   }catch(e){
@@ -1217,11 +1159,10 @@ document.getElementById('optAd').onclick = async () => {
       adsReady = false;
       loadRewardedAd(); // تجهيز الإعلان التالي فوراً
       if(result?.completed){
-        boostUntil = Date.now() + 60000; points += 2; totalPointsEarned += 2; adsWatched += 1;
-        { const tw = tasks.find(t=>t.id==='watch3'); tw.progress = Math.min(3, (tw.progress||0) + 1); }
-        hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!';
-        renderAll();
-        saveProgress();
+        try{
+          await gameApi('adReward');
+          hint.textContent = '+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!';
+        }catch(e){ hint.textContent = e.message; }
       } else {
         hint.textContent = 'ما تم إكمال مشاهدة الإعلان بالكامل.';
       }
@@ -1286,6 +1227,9 @@ document.body.addEventListener('touchend', e => {
   newIdx = Math.max(0, Math.min(SCREEN_ORDER.length - 1, newIdx));
   if(newIdx !== idx) goToScreen(SCREEN_ORDER[newIdx]);
 }, {passive:true});
+
+// تحديث الرصيد من السيرفر كل دقيقة (يلتقط نقاط جدار المهام والإنتاج الحقيقي)
+setInterval(() => { if(document.visibilityState === 'visible') claimPendingOfferwallCredits(); }, 60000);
 
 // idle tick — يعمل كل 900ms، والإنتاج rate هو "عملة/ثانية" فعلياً، فالكسب بكل تحديث = rate × 0.9
 setInterval(() => {

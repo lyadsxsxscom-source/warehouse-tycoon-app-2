@@ -1,18 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
+    }
+
+    // بيانات اللاعب: اللاعب بيقرأها بس. الكتابة للسيرفر (Worker) والأدمن فقط.
     match /players/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
     }
+
+    // أكواد الاسترداد: السيرفر هو يلي بيتحقق منها ويستعملها
     match /redeemCodes/{code} {
-      allow get: if request.auth != null;
-      allow list: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
-      allow update: if request.auth != null
-        && resource.data.used == false
-        && request.resource.data.used == true
-        && request.resource.data.usedBy == request.auth.uid;
-      allow create, delete: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
+      allow read, write: if isAdmin();
     }
+
     match /purchaseRequests/{id} {
       allow create: if request.auth != null
         && request.auth.uid == request.resource.data.uid
@@ -20,27 +23,26 @@ service cloud.firestore {
         && request.resource.data.points is int && request.resource.data.points > 0
         && request.resource.data.usd is number && request.resource.data.usd > 0
         && request.resource.data.proofImage is string;
-      allow read, update: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
+      allow read, update: if isAdmin();
     }
+
     match /mail/{id} {
-      allow create: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2');
-      allow update: if request.auth != null && request.auth.uid == resource.data.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed', 'read', 'claimedAt']);
+      allow create: if isAdmin();
+      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin());
+      // اللاعب بيقدر يعلّم الرسالة مقروءة بس؛ الاستلام بيصير عن طريق السيرفر
+      allow update: if isAdmin() || (request.auth != null && request.auth.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
     }
+
+    // طلبات السحب: السيرفر هو يلي بينشئها بعد ما يتحقق من الرصيد
     match /withdrawRequests/{id} {
-      allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.uid
-        && request.resource.data.status == 'pending'
-        && request.resource.data.amount is number && request.resource.data.amount > 0
-        && request.resource.data.coin in ['btc', 'eth']
-        && request.resource.data.walletAddress is string;
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2');
-      allow update: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
+      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin());
+      allow update: if isAdmin();
     }
+
     match /config/{doc} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == '09DZoXtB6afGTGHtFghiUx5t71N2';
+      allow write: if isAdmin();
     }
   }
 }
