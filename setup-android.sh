@@ -76,6 +76,7 @@ public class UnityAdsPlugin extends Plugin {
     private boolean adReady = false;
     private String currentAdUnitId = null;
     private BannerView bannerView = null;
+    private FrameLayout bannerContainer = null; // شريط بعرض الشاشة كاملة، الإعلان بنصه
 
     @PluginMethod
     public void showBanner(PluginCall call) {
@@ -98,21 +99,30 @@ public class UnityAdsPlugin extends Plugin {
                             if (parent != null) parent.removeView(v);
                             v.destroy();
                             if (bannerView == v) bannerView = null;
+                            if (bannerContainer != null) bannerContainer.setVisibility(View.GONE);
                         }
                         public void onBannerLeftApplication(BannerView v) {}
                     });
-                    FrameLayout.LayoutParams newLp = new FrameLayout.LayoutParams(
+                    if (bannerContainer == null) {
+                        bannerContainer = new FrameLayout(getActivity());
+                        bannerContainer.setBackgroundColor(android.graphics.Color.parseColor("#1F1B14"));
+                        FrameLayout.LayoutParams cLp = new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, Math.round(50 * density),
+                            Gravity.BOTTOM);
+                        ViewGroup root = getActivity().findViewById(android.R.id.content);
+                        root.addView(bannerContainer, cLp);
+                    }
+                    FrameLayout.LayoutParams bLp = new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-                    ViewGroup root = getActivity().findViewById(android.R.id.content);
-                    root.addView(bannerView, newLp);
+                        Gravity.CENTER);
+                    bannerContainer.addView(bannerView, bLp);
                     bannerView.load();
                 }
-                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) bannerView.getLayoutParams();
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) bannerContainer.getLayoutParams();
                 lp.bottomMargin = Math.round(bottomOffset * density);
-                bannerView.setLayoutParams(lp);
-                bannerView.setVisibility(View.VISIBLE);
-                bannerView.bringToFront();
+                bannerContainer.setLayoutParams(lp);
+                bannerContainer.setVisibility(View.VISIBLE);
+                bannerContainer.bringToFront();
                 call.resolve();
             } catch (Exception e) {
                 call.reject("banner_failed: " + e.getMessage());
@@ -130,7 +140,7 @@ public class UnityAdsPlugin extends Plugin {
     @PluginMethod
     public void hideBanner(PluginCall call) {
         getActivity().runOnUiThread(() -> {
-            if (bannerView != null) bannerView.setVisibility(View.GONE);
+            if (bannerContainer != null) bannerContainer.setVisibility(View.GONE);
             call.resolve();
         });
     }
