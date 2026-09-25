@@ -510,6 +510,17 @@ function syncBanner(){
     UnityAdsPlugin.hideBanner().catch(() => {});
   }
 }
+// تشخيص: حالة الشريط بتظهر للأدمن بس (بسطر التلميح بالرئيسية)
+const ADMIN_UID_FOR_DEBUG = '09DZoXtB6afGTGHtFghiUx5t71N2';
+if(UnityAdsPlugin && UnityAdsPlugin.addListener){
+  UnityAdsPlugin.addListener('bannerEvent', ev => {
+    console.log('bannerEvent', ev);
+    if(typeof currentUser !== 'undefined' && currentUser && currentUser.uid === ADMIN_UID_FOR_DEBUG){
+      const h = document.getElementById('hint');
+      if(h) h.textContent = 'حالة الشريط الإعلاني: ' + ev.status + (ev.message ? ' — ' + ev.message : '');
+    }
+  });
+}
 new MutationObserver(syncBanner).observe(document.body, { subtree:true, attributes:true, attributeFilter:['class'] });
 
 async function loadRewardedAd(){

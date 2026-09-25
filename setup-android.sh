@@ -69,6 +69,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import com.unity3d.services.banners.BannerView;
 import com.unity3d.services.banners.UnityBannerSize;
+import com.unity3d.services.banners.BannerErrorInfo;
 
 @CapacitorPlugin(name = "UnityAdsPlugin")
 public class UnityAdsPlugin extends Plugin {
@@ -85,6 +86,16 @@ public class UnityAdsPlugin extends Plugin {
                 float density = getContext().getResources().getDisplayMetrics().density;
                 if (bannerView == null) {
                     bannerView = new BannerView(getActivity(), placementId, new UnityBannerSize(320, 50));
+                    // بدون @Override عمداً: حتى يترجم الكود مع أي إصدار 4.x من Unity Ads
+                    bannerView.setListener(new BannerView.IListener() {
+                        public void onBannerLoaded(BannerView v) { sendBannerEvent("loaded", ""); }
+                        public void onBannerShown(BannerView v) { sendBannerEvent("shown", ""); }
+                        public void onBannerClick(BannerView v) {}
+                        public void onBannerFailedToLoad(BannerView v, BannerErrorInfo err) {
+                            sendBannerEvent("failed", err != null ? (err.errorCode + ": " + err.errorMessage) : "unknown");
+                        }
+                        public void onBannerLeftApplication(BannerView v) {}
+                    });
                     FrameLayout.LayoutParams newLp = new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                         Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -102,6 +113,13 @@ public class UnityAdsPlugin extends Plugin {
                 call.reject("banner_failed: " + e.getMessage());
             }
         });
+    }
+
+    private void sendBannerEvent(String status, String message) {
+        JSObject data = new JSObject();
+        data.put("status", status);
+        data.put("message", message);
+        notifyListeners("bannerEvent", data);
     }
 
     @PluginMethod
