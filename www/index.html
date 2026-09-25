@@ -490,7 +490,7 @@ let adsReady = false;
 const UNITY_GAME_ID = '800367750';
 const REWARDED_UNIT_ID = 'Rewarded_Android';
 const BANNER_UNIT_ID = 'Banner_Android';
-let bannerWanted = false, bannerShown = false;
+let bannerWanted = false, bannerShown = false, bannerLoaded = false;
 
 // شريط إعلاني ثابت فوق شريط التنقل السفلي بكل الشاشات.
 // يختفي تلقائياً وقت أي نافذة منبثقة (تسجيل دخول، استئجار، كسب نقاط...) حتى ما يغطي أزرارها
@@ -500,7 +500,8 @@ function syncBanner(){
   const shouldShow = bannerWanted && !anyOverlay;
   if(shouldShow === bannerShown) return;
   bannerShown = shouldShow;
-  document.body.classList.toggle('has-banner', shouldShow);
+  // المساحة الفاضية تنحجز بس لما يكون في إعلان محمّل فعلاً
+  document.body.classList.toggle('has-banner', shouldShow && bannerLoaded);
   if(shouldShow){
     const nav = document.querySelector('.bottomnav');
     const offset = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
@@ -515,6 +516,15 @@ const ADMIN_UID_FOR_DEBUG = '09DZoXtB6afGTGHtFghiUx5t71N2';
 if(UnityAdsPlugin && UnityAdsPlugin.addListener){
   UnityAdsPlugin.addListener('bannerEvent', ev => {
     console.log('bannerEvent', ev);
+    if(ev.status === 'loaded' || ev.status === 'shown'){
+      bannerLoaded = true;
+      document.body.classList.toggle('has-banner', bannerShown);
+    } else if(ev.status === 'failed'){
+      // ما في إعلان متوفر: نشيل المساحة ونعيد المحاولة بعد دقيقة
+      bannerLoaded = false; bannerShown = false;
+      document.body.classList.remove('has-banner');
+      setTimeout(syncBanner, 60000);
+    }
     if(typeof currentUser !== 'undefined' && currentUser && currentUser.uid === ADMIN_UID_FOR_DEBUG){
       const h = document.getElementById('hint');
       if(h) h.textContent = 'حالة الشريط الإعلاني: ' + ev.status + (ev.message ? ' — ' + ev.message : '');

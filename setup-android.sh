@@ -93,6 +93,11 @@ public class UnityAdsPlugin extends Plugin {
                         public void onBannerClick(BannerView v) {}
                         public void onBannerFailedToLoad(BannerView v, BannerErrorInfo err) {
                             sendBannerEvent("failed", err != null ? (err.errorCode + ": " + err.errorMessage) : "unknown");
+                            // نشيل الشريط الفاشل حتى تنعمل محاولة جديدة نظيفة لاحقاً
+                            ViewGroup parent = (ViewGroup) v.getParent();
+                            if (parent != null) parent.removeView(v);
+                            v.destroy();
+                            if (bannerView == v) bannerView = null;
                         }
                         public void onBannerLeftApplication(BannerView v) {}
                     });
