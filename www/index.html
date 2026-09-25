@@ -923,6 +923,14 @@ function todayStr(){
   return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
 }
 
+async function getServerToday(){
+  try{
+    const r = await fetch(`${OFFERWALL_WORKER_BASE}/today`, { cache: 'no-store' });
+    const j = await r.json();
+    return j.today || null;
+  }catch(e){ return null; }
+}
+  
 async function loadProgress(uid){
   // نصفّر كل قيم اللعبة بالذاكرة قبل التحميل، حتى لا تتسرب بيانات حساب سابق (كان تسجّل خروج منه) لحساب جديد
   points = 260;
@@ -948,6 +956,7 @@ async function loadProgress(uid){
     }catch(serverErr){
       doc = await fbDb.collection('players').doc(uid).get();
     }
+    const today = await getServerToday();
     if(doc.exists){
       const d = doc.data();
       points = d.points ?? points;
@@ -956,11 +965,11 @@ async function loadProgress(uid){
       workersRented = d.workersRented ?? workersRented;
       adsWatched = d.adsWatched ?? adsWatched;
       if(d.shelves){ d.shelves.forEach(sd => { const s = shelves.find(x => x.id === sd.id); if(s){ s.unlocked = sd.unlocked; s.worker = sd.worker; } }); }
-      if(d.dailyDate === todayStr() && Array.isArray(d.tasks)){
+      if(Array.isArray(d.tasks) && (!today || d.dailyDate === today)){
         tasks = d.tasks; // نفس اليوم — نحافظ على حالة المهام (مُستلمة/غير مُستلمة) زي ما هي
         dailyDate = d.dailyDate;
       } else {
-        dailyDate = todayStr(); // يوم جديد (أو أول مرة) — تصفير المهام
+        dailyDate = today; // يوم جديد (أو أول مرة) — تصفير المهام
         tasks = [
           {id:'login', label:'تسجيل الدخول اليوم', reward:20, done:true, claimed:false},
           {id:'watch3', label:'شاهد 3 إعلانات', reward:40, progress:0, target:3, claimed:false},
@@ -971,7 +980,7 @@ async function loadProgress(uid){
       hint.textContent = 'تم تحميل تقدمك المحفوظ!';
       dataLoaded = true;
     } else {
-      dailyDate = todayStr();
+      dailyDate = today || todayStr();
       hint.textContent = 'أهلاً! هذا أول تسجيل دخول، بدأنا لك تقدم جديد.';
       dataLoaded = true;
       saveProgress();
