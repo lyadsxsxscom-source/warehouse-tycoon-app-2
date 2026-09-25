@@ -74,7 +74,7 @@ window.onerror = function(msg, url, line, col, err){
   .switch .slider:before{content:""; position:absolute; width:18px; height:18px; right:2px; top:2px; background:var(--dim); border-radius:50%; transition:.2s;}
   .switch input:checked + .slider{background:var(--amber);}
   .switch input:checked + .slider:before{transform:translateX(-18px); background:#2a1a08;}
-  .notif-row span:first-child{padding-right:20px;}
+  .notif-opt{cursor:default;}
   .card{
     background:linear-gradient(180deg, var(--panel), var(--panel2));
     border:1px solid var(--border); border-radius:14px; padding:12px 14px;
@@ -329,7 +329,7 @@ window.onerror = function(msg, url, line, col, err){
     </div>
     <div class="buy-msg" id="wdMsg" style="text-align:center; font-size:12px; color:var(--ember); min-height:16px;"></div>
     <button class="btn-main" id="btnWithdraw" style="margin-top:2px;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:4px;"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>طلب سحب</button>
-    <div class="min-note" id="wdMinNote">الحد الأدنى للسحب 20$ — مرة وحدة كل 24 ساعة</div>
+    <div class="min-note" id="wdMinNote"></div>
   </div>
   <h3>سجل السحوبات</h3>
   <div class="card" id="wdHistory">
@@ -361,12 +361,8 @@ window.onerror = function(msg, url, line, col, err){
   </div>
   <h3>الإعدادات</h3>
   <div class="card">
-    <div class="stat-row"><span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:5px;"><path d="M12 3a5 5 0 0 0-5 5v3.2L5 15h14l-2-3.8V8a5 5 0 0 0-5-5z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/></svg>الإشعارات</span><span></span></div>
-    <div class="stat-row notif-row"><span>انتهاء مدة العامل</span><label class="switch"><input type="checkbox" data-notif="worker"><span class="slider"></span></label></div>
-    <div class="stat-row notif-row"><span>مهام اليوم الجديدة</span><label class="switch"><input type="checkbox" data-notif="daily"><span class="slider"></span></label></div>
-    <div class="stat-row notif-row"><span>تذكير فتح رف جديد</span><label class="switch"><input type="checkbox" data-notif="shelf"><span class="slider"></span></label></div>
+    <div class="stat-row" id="btnNotifSettings" style="cursor:pointer;"><span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:5px;"><path d="M12 3a5 5 0 0 0-5 5v3.2L5 15h14l-2-3.8V8a5 5 0 0 0-5-5z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/></svg>الإشعارات</span><span style="color:var(--dim);">›</span></div>
     <div class="stat-row"><span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:5px;"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.3 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.3-3.8-8.5S9.5 5.8 12 3.5z"/></svg>اللغة</span><span>العربية</span></div>
-    <div class="stat-row"><span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:5px;"><path d="M9 15l6-6"/><path d="M8 12l-2 2a3 3 0 0 0 4 4l2-2"/><path d="M16 12l2-2a3 3 0 0 0-4-4l-2 2"/></svg>ربط محفظة باينانس</span><span>غير مفعّل</span></div>
     <div class="stat-row" style="border-bottom:none;"><a href="https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/privacy.html" target="_blank" style="color:var(--dim); font-size:12px; text-decoration:underline;">سياسة الخصوصية وشروط الاستخدام</a></div>
   </div>
 </div>
@@ -413,6 +409,16 @@ window.onerror = function(msg, url, line, col, err){
   </div>
 </div>
 
+<div class="overlay" id="notifOverlay">
+  <div class="modal">
+    <h4>الإشعارات</h4>
+    <div class="option notif-opt"><div><div class="name">انتهاء مدة العامل</div><div class="desc">لما يخلص عامل شغله وبدو تجديد</div></div><label class="switch"><input type="checkbox" data-notif="worker"><span class="slider"></span></label></div>
+    <div class="option notif-opt"><div><div class="name">مهام اليوم الجديدة</div><div class="desc">كل يوم الساعة 9 الصبح</div></div><label class="switch"><input type="checkbox" data-notif="daily"><span class="slider"></span></label></div>
+    <div class="option notif-opt"><div><div class="name">تذكير فتح رف جديد</div><div class="desc">لما تكفي نقاطك لفتح الرف الجاي</div></div><label class="switch"><input type="checkbox" data-notif="shelf"><span class="slider"></span></label></div>
+    <div class="close" id="closeNotif">إغلاق</div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -441,7 +447,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.6"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.7"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -655,7 +661,21 @@ const WD_NETWORKS = {
   eth: [{id:'ERC20', label:'Ethereum (ERC20)'}, {id:'BEP20', label:'BEP20 (BSC)'}],
 };
 let wdNetwork = 'BTC';
+// الحد الأدنى للسحب بعملة المحفظة المختارة (الأدمن بيحدده بالدولار، ومنحوّله حسب سعر الصرف)
+function minWithdrawInCoin(coin){
+  const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
+  const price = coin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
+  return price > 0 ? Number((minUsd / price).toPrecision(3)) : null;
+}
+function renderWdMinNote(){
+  const el = document.getElementById('wdMinNote');
+  if(!el) return;
+  const minCoin = minWithdrawInCoin(activeCoin);
+  const minTxt = minCoin !== null ? `${minCoin.toLocaleString('en-US', {maximumFractionDigits: 12})} ${activeCoin.toUpperCase()}` : '—';
+  el.textContent = `الحد الأدنى للسحب ${minTxt} — مرة وحدة كل 24 ساعة`;
+}
 function renderWithdraw(){
+  renderWdMinNote();
   document.getElementById('wdBalance').textContent = wallet[activeCoin].toFixed(12);
   document.getElementById('wdBtnBTC').classList.toggle('active', activeCoin==='btc');
   document.getElementById('wdBtnETH').classList.toggle('active', activeCoin==='eth');
@@ -775,8 +795,7 @@ async function loadPricing(){
   try{
     const doc = await fbDb.collection('config').doc('pricing').get();
     if(doc.exists) PRICING = Object.assign(PRICING, doc.data());
-    const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
-    document.getElementById('wdMinNote').textContent = `الحد الأدنى للسحب ${minUsd}$ — مرة وحدة كل 24 ساعة`;
+    renderWdMinNote();
   }catch(e){ console.error('pricing load failed', e); }
 }
 
@@ -872,7 +891,7 @@ document.getElementById('btnWithdraw').onclick = async () => {
   const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
   const priceUsd = activeCoin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
   if(priceUsd > 0 && (amount * priceUsd) < minUsd){
-    wdMsg.textContent = `الحد الأدنى للسحب ${minUsd}$ (المبلغ الحالي ≈ $${(amount*priceUsd).toFixed(2)}).`;
+    wdMsg.textContent = `الحد الأدنى للسحب ${minWithdrawInCoin(activeCoin)} ${activeCoin.toUpperCase()}.`;
     return;
   }
   const lastReq = withdrawHistoryDocs[0]; // مرتب من الأحدث للأقدم
@@ -1217,6 +1236,11 @@ document.querySelectorAll('[data-notif]').forEach(inp => {
     scheduleNotificationsSoon();
   };
 });
+
+const notifOverlay = document.getElementById('notifOverlay');
+document.getElementById('btnNotifSettings').onclick = () => notifOverlay.classList.add('show');
+document.getElementById('closeNotif').onclick = () => notifOverlay.classList.remove('show');
+notifOverlay.onclick = (e) => { if(e.target === notifOverlay) notifOverlay.classList.remove('show'); };
 
 const earnOverlay = document.getElementById('earnOverlay');
 document.getElementById('btnEarn').onclick = () => earnOverlay.classList.add('show');
