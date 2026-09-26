@@ -87,6 +87,7 @@
     "شاهد 3 إعلانات": ["3 reklam izle", "Watch 3 ads"],
     "استأجر عامل واحد": ["1 işçi kirala", "Hire 1 worker"],
     "تم ✓": ["Tamam ✓", "Done ✓"],
+    "✓ تم الاسترداد": ["✓ Kullanıldı", "✓ Redeemed"],
     "₿ Bitcoin (الأصلية)": ["₿ Bitcoin (yerel ağ)", "₿ Bitcoin (native)"],
     "₿ بيتكوين": ["₿ Bitcoin", "₿ Bitcoin"],
     "Ξ إيثيريوم": ["Ξ Ethereum", "Ξ Ethereum"],
@@ -181,6 +182,9 @@
     ["تعذّر تحميل تقدمك: {0}", "İlerlemen yüklenemedi: {0}", "Couldn't load your progress: {0}"],
     ["تعذّر الاسترداد: {0}", "Kod kullanılamadı: {0}", "Redeem failed: {0}"],
     ["حالة الشريط الإعلاني: {0}", "Banner durumu: {0}", "Banner status: {0}"],
+    ["تم تأكيد شحنتك بـ {0} نقطة! اضغط \"استرداد\" تحت لتفعيلها.", "{0} puanlık yüklemen onaylandı! Etkinleştirmek için aşağıdaki \"Kullan\" düğmesine bas.", "Your {0}-point top-up is confirmed! Tap \"Redeem\" below to activate it."],
+    ["₿ {0}", "₿ {0}", "₿ {0}"],
+    ["Ξ {0}", "Ξ {0}", "Ξ {0}"],
     ["{0} ({1}/{2})", "{0} ({1}/{2})", "{0} ({1}/{2})"],
   ];
 
