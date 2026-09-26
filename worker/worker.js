@@ -92,7 +92,7 @@ async function getGoogleAccessToken(env) {
   const sa = JSON.parse(env.FIREBASE_SA);
   const header = strToB64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claim = strToB64url(JSON.stringify({
-    iss: sa.client_email, scope: "https://www.googleapis.com/auth/datastore",
+    iss: sa.client_email, scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging",
     aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
   }));
   const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
@@ -306,6 +306,57 @@ async function mutatePlayer(env, uid, fn) {
   throw new ApiError("busy", "السيرفر مشغول، جرّب كمان مرة.", 503);
 }
 
+// ===== إشعارات السيرفر (Firebase Cloud Messaging) =====
+const PUSH_TEXT = {
+  offerwall: {
+    ar: (p) => ["وصلتك نقاط! 🎉", `انضافلك ${p.points} نقطة من جدار المهام.`],
+    tr: (p) => ["Puan kazandın! 🎉", `Görev duvarından ${p.points} puan eklendi.`],
+    en: (p) => ["You got points! 🎉", `${p.points} points were added from the offerwall.`],
+  },
+  withdraw_ok: {
+    ar: (p) => ["تم إرسال سحبك ✅", `انبعت ${p.amount} ${p.coin} لمحفظتك.`],
+    tr: (p) => ["Çekimin gönderildi ✅", `${p.amount} ${p.coin} cüzdanına gönderildi.`],
+    en: (p) => ["Withdrawal sent ✅", `${p.amount} ${p.coin} was sent to your wallet.`],
+  },
+  withdraw_rejected: {
+    ar: () => ["طلب السحب انرفض", "رجعنالك الرصيد لمحفظتك بالتطبيق."],
+    tr: () => ["Çekim talebin reddedildi", "Bakiye uygulamadaki cüzdanına iade edildi."],
+    en: () => ["Withdrawal rejected", "The balance was returned to your in-app wallet."],
+  },
+  topup: {
+    ar: (p) => ["وصلتك شحنتك 📬", `${p.points} نقطة بانتظارك بصندوق البريد.`],
+    tr: (p) => ["Yüklemen geldi 📬", `${p.points} puan Posta kutunda seni bekliyor.`],
+    en: (p) => ["Your top-up arrived 📬", `${p.points} points are waiting in your Mail box.`],
+  },
+};
+// نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders" };
+
+async function sendPush(env, uid, type, params) {
+  try {
+    const doc = await fsGetDoc(env, "pushTokens/" + uid);
+    if (!doc.exists || !doc.data.token) return;
+    const prefs = doc.data.prefs || {};
+    if (prefs[PUSH_PREF[type]] === false) return;
+    const lang = ["ar", "tr", "en"].includes(doc.data.lang) ? doc.data.lang : "ar";
+    const [title, body] = PUSH_TEXT[type][lang](params || {});
+    const token = await getGoogleAccessToken(env);
+    const r = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId(env)}/messages:send`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: {
+        token: doc.data.token,
+        notification: { title, body },
+        data: { type },
+        android: { priority: "high", notification: { icon: "ic_stat_notify", color: "#E3A83B" } },
+      } }),
+    });
+    if (!r.ok) console.warn({ message: "push failed", uid, type, status: r.status, body: await r.text() });
+  } catch (e) {
+    console.warn({ message: "push error", uid, type, error: String(e.message || e) });
+  }
+}
+
 // ===== عمليات اللعبة =====
 async function gameAction(action, body, user, env) {
   const uid = user.sub;
@@ -454,6 +505,17 @@ async function gameAction(action, body, user, env) {
       });
     }
 
+    case "registerPush": {
+      const token = String(body.token || "");
+      if (!token || token.length > 4096) throw new ApiError("bad_token", "رمز إشعارات غير صالح.");
+      const lang = ["ar", "tr", "en"].includes(body.lang) ? body.lang : "ar";
+      const prefs = { offerwall: body.prefs?.offerwall !== false, orders: body.prefs?.orders !== false };
+      await fsCommit(env, [{
+        update: { name: docName(env, "pushTokens/" + uid), fields: objToFields({ token, lang, prefs, updatedAt: Date.now() }) },
+      }]);
+      return mutatePlayer(env, uid, () => {});
+    }
+
     default:
       throw new ApiError("not_found", "عملية غير معروفة.", 404);
   }
@@ -486,7 +548,7 @@ async function handleSign(request, env) {
   return jsonResponse({ url }, 200);
 }
 
-async function handlePostback(request, env) {
+async function handlePostback(request, env, ctx) {
   const params = new URLSearchParams(await request.text());
   const subId = params.get("subId") || "";
   const transId = params.get("transId") || "";
@@ -520,7 +582,32 @@ async function handlePostback(request, env) {
     }]);
   }
   await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
+  if (amount > 0) ctx.waitUntil(sendPush(env, subId, "offerwall", { points: Math.floor(amount) }));
   return new Response("OK", { status: 200 });
+}
+
+// الأدمن بيطلب إرسال إشعار بعد ما يوافق/يرفض طلب سحب أو يأكد شحنة
+async function handleAdminNotify(request, env, ctx) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const type = body.type;
+  if (type === "withdraw_ok" || type === "withdraw_rejected") {
+    const id = String(body.requestId || "");
+    if (!id || id.includes("/")) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+    const req = await fsGetDoc(env, "withdrawRequests/" + id);
+    if (!req.exists) return jsonResponse({ ok: false, error: "not_found" }, 404);
+    ctx.waitUntil(sendPush(env, req.data.uid, type, { amount: Number(req.data.amount).toFixed(8).replace(/0+$/, "").replace(/\.$/, ""), coin: String(req.data.coin || "").toUpperCase() }));
+    return jsonResponse({ ok: true }, 200);
+  }
+  if (type === "topup") {
+    const uid = String(body.uid || "");
+    if (!uid || uid.includes("/")) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+    ctx.waitUntil(sendPush(env, uid, "topup", { points: Number(body.points) || 0 }));
+    return jsonResponse({ ok: true }, 200);
+  }
+  return jsonResponse({ ok: false, error: "bad_type" }, 400);
 }
 
 async function handleDownload() {
@@ -548,9 +635,10 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
 
-    if (url.pathname === "/" && request.method === "POST") return handlePostback(request, env);
+    if (url.pathname === "/" && request.method === "POST") return handlePostback(request, env, ctx);
     if (url.pathname === "/sign" && request.method === "POST") return handleSign(request, env);
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
+    if (url.pathname === "/admin/notify" && request.method === "POST") return handleAdminNotify(request, env, ctx);
     if (url.pathname === "/today" && request.method === "GET") return jsonResponse({ today: todaySyria() }, 200);
     if (url.pathname === "/selftest" && request.method === "GET") return handleSelftest(env);
     if (url.pathname === "/dl" && request.method === "GET") return handleDownload();

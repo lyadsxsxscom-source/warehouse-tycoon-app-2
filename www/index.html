@@ -426,6 +426,8 @@ window.onerror = function(msg, url, line, col, err){
     <div class="option notif-opt"><div><div class="name">انتهاء مدة العامل</div><div class="desc">لما يخلص عامل شغله وبدو تجديد</div></div><label class="switch"><input type="checkbox" data-notif="worker"><span class="slider"></span></label></div>
     <div class="option notif-opt"><div><div class="name">مهام اليوم الجديدة</div><div class="desc">كل يوم الساعة 9 الصبح</div></div><label class="switch"><input type="checkbox" data-notif="daily"><span class="slider"></span></label></div>
     <div class="option notif-opt"><div><div class="name">تذكير فتح رف جديد</div><div class="desc">لما تكفي نقاطك لفتح الرف الجاي</div></div><label class="switch"><input type="checkbox" data-notif="shelf"><span class="slider"></span></label></div>
+    <div class="option notif-opt"><div><div class="name">نقاط جدار المهام</div><div class="desc">لما توصلك نقاط من العروض</div></div><label class="switch"><input type="checkbox" data-notif="offerwall"><span class="slider"></span></label></div>
+    <div class="option notif-opt"><div><div class="name">طلبات السحب والشحن</div><div class="desc">لما ينقبل أو ينرفض طلب سحب، أو توصل شحنة</div></div><label class="switch"><input type="checkbox" data-notif="orders"><span class="slider"></span></label></div>
     <div class="close" id="closeNotif">إغلاق</div>
   </div>
 </div>
@@ -458,7 +460,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.7"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.8"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -1019,7 +1021,7 @@ async function loadProgress(uid){
     hint.textContent = (data.state.totalPointsEarned > 300 || data.state.workersRented > 0) ? 'تم تحميل تقدمك المحفوظ!' : 'أهلاً! بدأنا لك تقدم جديد.';
     dataLoaded = true;
     renderAll();
-    ensureNotifPermission().then(() => scheduleNotificationsSoon());
+    ensureNotifPermission().then(() => { scheduleNotificationsSoon(); registerPush(); });
   }catch(e){
     console.error('load failed', e);
     hint.textContent = 'تعذّر تحميل تقدمك: ' + e.message;
@@ -1220,22 +1222,48 @@ async function scheduleNotifications(appHidden = false){
         const w = s.worker;
         if(w && w.expiresAt > now + 5000){
           const label = (WORKERS[w.coin + '_' + w.kind] || {}).label || 'العامل';
-          list.push({ id: 100 + s.id, title: tr('انتهت مدة العامل ⏰'), body: tr(`${label} خلّص شغله، جدّده ليرجع ينتج.`), schedule: { at: new Date(w.expiresAt), allowWhileIdle: true } });
+          list.push({ id: 100 + s.id, title: tr('انتهت مدة العامل ⏰'), body: tr(`${label} خلّص شغله، جدّده ليرجع ينتج.`), schedule: { at: new Date(w.expiresAt), allowWhileIdle: true }, smallIcon: 'ic_stat_notify', largeIcon: 'ic_notif_large' });
         }
       });
     }
     if(notifEnabled('daily')){
-      list.push({ id: 200, title: tr('مهام اليوم جاهزة 🎁'), body: tr('استلم مكافأة تسجيل الدخول وكمّل مهام اليوم.'), schedule: { on: { hour: 9, minute: 0 }, allowWhileIdle: true } });
+      list.push({ id: 200, title: tr('مهام اليوم جاهزة 🎁'), body: tr('استلم مكافأة تسجيل الدخول وكمّل مهام اليوم.'), schedule: { on: { hour: 9, minute: 0 }, allowWhileIdle: true }, smallIcon: 'ic_stat_notify', largeIcon: 'ic_notif_large' });
     }
     if(notifEnabled('shelf') && appHidden){
       const next = shelves.find(s => !s.unlocked);
       if(next && points >= SHELF_UNLOCK_COST[next.id]){
-        list.push({ id: 300, title: tr('رف جديد بانتظارك 📦'), body: tr(`عندك ${Math.floor(points)} نقطة، بتكفي تفتح رف جديد وتزيد إنتاجك.`), schedule: { at: new Date(now + 2 * 3600 * 1000), allowWhileIdle: true } });
+        list.push({ id: 300, title: tr('رف جديد بانتظارك 📦'), body: tr(`عندك ${Math.floor(points)} نقطة، بتكفي تفتح رف جديد وتزيد إنتاجك.`), schedule: { at: new Date(now + 2 * 3600 * 1000), allowWhileIdle: true }, smallIcon: 'ic_stat_notify', largeIcon: 'ic_notif_large' });
       }
     }
     if(list.length) await LocalNotif.schedule({ notifications: list });
   }catch(e){ console.error('schedule notifications failed', e); }
 }
+// ===== إشعارات السيرفر (Firebase Cloud Messaging) =====
+const FbMessaging = window.Capacitor?.Plugins?.FirebaseMessaging;
+async function registerPush(){
+  if(!FbMessaging || !currentUser) return;
+  try{
+    const perm = await FbMessaging.requestPermissions();
+    if(perm.receive !== 'granted') return;
+    const { token } = await FbMessaging.getToken();
+    if(!token) return;
+    await gameApi('registerPush', {
+      token,
+      lang: window.I18N ? I18N.lang : 'ar',
+      prefs: { offerwall: notifEnabled('offerwall'), orders: notifEnabled('orders') },
+    });
+  }catch(e){ console.error('push register failed', e); }
+}
+if(FbMessaging){
+  // والتطبيق مفتوح، الإشعار ما بيطلع بالشريط، فمنحدّث الرصيد ومنعرض الرسالة جوّا التطبيق
+  FbMessaging.addListener('notificationReceived', ev => {
+    const n = ev && ev.notification;
+    if(n && n.title) hint.textContent = n.title + (n.body ? ' — ' + n.body : '');
+    claimPendingOfferwallCredits();
+  });
+  FbMessaging.addListener('tokenReceived', () => registerPush());
+}
+
 document.querySelectorAll('[data-notif]').forEach(inp => {
   inp.checked = notifEnabled(inp.dataset.notif);
   inp.onchange = async () => {
@@ -1245,6 +1273,7 @@ document.querySelectorAll('[data-notif]').forEach(inp => {
       if(!ok) hint.textContent = 'لازم تسمح للتطبيق بالإشعارات من إعدادات الجوال.';
     }
     scheduleNotificationsSoon();
+    if(inp.dataset.notif === 'offerwall' || inp.dataset.notif === 'orders') registerPush();
   };
 });
 
@@ -1266,6 +1295,7 @@ document.querySelectorAll('.lang-opt').forEach(o => {
     renderLangUI();
     langOverlay.classList.remove('show');
     scheduleNotificationsSoon(); // نصوص الإشعارات باللغة الجديدة
+    registerPush();              // والسيرفر كمان بيعرف اللغة الجديدة
   };
 });
 renderLangUI();

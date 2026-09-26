@@ -439,12 +439,26 @@ document.getElementById('requestsList').addEventListener('click', async (e) => {
       await fbDb.collection('purchaseRequests').doc(reqId).update({
         status: 'fulfilled', fulfilledAt: Date.now(), fulfilledBy: fbAuth.currentUser.uid, generatedCode: code
       });
+      notifyUser({ type: 'topup', uid, points });
     }catch(err){
       alert('تعذّر إتمام الطلب: ' + err.message);
       btn.disabled = false;
     }
   }
 });
+
+// ===== إشعار المستخدم على جواله (عن طريق السيرفر) =====
+// ما بيوقف شي لو فشل: الطلب انحفظ أصلاً، والإشعار إضافة بس
+async function notifyUser(payload){
+  try{
+    const idToken = await fbAuth.currentUser.getIdToken();
+    await fetch('https://postback.ly-ad.de/admin/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+      body: JSON.stringify(payload),
+    });
+  }catch(e){ console.warn('notify failed', e); }
+}
 
 // ===== طلبات السحب =====
 let withdrawsUnsub = null;
@@ -523,7 +537,10 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
   btn.disabled = true;
   const reqId = btn.dataset.id;
   if(btn.dataset.wdact === 'fulfill'){
-    try{ await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'fulfilled', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid }); }
+    try{
+      await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'fulfilled', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid });
+      notifyUser({ type: 'withdraw_ok', requestId: reqId });
+    }
     catch(err){ alert('تعذّر التأكيد: ' + err.message); btn.disabled = false; }
     return;
   }
@@ -534,6 +551,7 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
         [`wallet.${coin}`]: firebase.firestore.FieldValue.increment(amount)
       });
       await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'rejected', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid });
+      notifyUser({ type: 'withdraw_rejected', requestId: reqId });
     }catch(err){ alert('تعذّر الرفض: ' + err.message); btn.disabled = false; }
   }
 });

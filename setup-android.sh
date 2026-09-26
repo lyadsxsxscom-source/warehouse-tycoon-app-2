@@ -350,3 +350,23 @@ else
   sed -i '\|<application|a\        android:allowBackup="false"' android/app/src/main/AndroidManifest.xml
 fi
 echo "✓ android:allowBackup تم تعطيله"
+
+# 20) أيقونات الإشعارات: صغيرة بلون واحد (شكل مستودع + عملة) + كبيرة (صورة اللعبة)
+mkdir -p android/app/src/main/res/drawable
+cp resources/notif/ic_stat_notify.png android/app/src/main/res/drawable/ic_stat_notify.png
+cp resources/notif/ic_notif_large.png android/app/src/main/res/drawable/ic_notif_large.png
+echo "✓ أيقونات الإشعارات نُسخت"
+
+# 21) أيقونة ولون إشعارات السيرفر (Firebase Cloud Messaging)
+mkdir -p android/app/src/main/res/values
+cat > android/app/src/main/res/values/notif_colors.xml << 'COLOREOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="notif_color">#E3A83B</color>
+</resources>
+COLOREOF
+if ! grep -q "default_notification_icon" android/app/src/main/AndroidManifest.xml; then
+  sed -i '\|</application>|i\        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_notify" />' android/app/src/main/AndroidManifest.xml
+  sed -i '\|</application>|i\        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notif_color" />' android/app/src/main/AndroidManifest.xml
+  echo "✓ إعدادات إشعارات السيرفر انضافت للـManifest"
+fi
