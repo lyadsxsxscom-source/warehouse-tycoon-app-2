@@ -469,7 +469,7 @@ function watchWithdrawRequests(){
           </div>
           <div class="req-who">${escapeHtml(d.displayName || '')} ${d.email ? '· ' + escapeHtml(d.email) : ''}</div>
           <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${escapeHtml(d.walletAddress || '')}</div>
-          <div class="req-note" id="chk-${doc.id}">🔍 جاري التحقق من نشاط الحساب...</div>
+          ${d.status === 'pending' ? `<div class="req-note" id="chk-${doc.id}">🔍 جاري التحقق من نشاط الحساب...</div>` : ''}
           <div class="req-actions" ${d.status !== 'pending' ? 'style="display:none;"' : ''}>
             <button class="btn" data-wdact="fulfill" data-id="${doc.id}">✓ تم الإرسال يدوياً</button>
             <button class="btn btn-reject" data-wdact="reject" data-id="${doc.id}" data-uid="${d.uid}" data-coin="${d.coin}" data-amount="${d.amount}">رفض وإرجاع الرصيد</button>
