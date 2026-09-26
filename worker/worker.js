@@ -629,7 +629,7 @@ async function handleDownload() {
 async function handleSelftest(env) {
   try {
     const doc = await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, appVersionDocExists: doc.exists }, 200);
+    return jsonResponse({ ok: true, workerVersion: "push-2", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, appVersionDocExists: doc.exists }, 200);
   } catch (e) {
     return jsonResponse({ ok: false, error: String(e.message || e) }, 500);
   }
