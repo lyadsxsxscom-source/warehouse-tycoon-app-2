@@ -418,7 +418,11 @@ document.getElementById('requestsList').addEventListener('click', async (e) => {
   btn.disabled = true;
   const reqId = btn.dataset.id;
   if(btn.dataset.act === 'reject'){
-    try{ await fbDb.collection('purchaseRequests').doc(reqId).update({ status: 'rejected', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid }); }
+    try{
+      const reqSnap = await fbDb.collection('purchaseRequests').doc(reqId).get();
+      await fbDb.collection('purchaseRequests').doc(reqId).update({ status: 'rejected', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid });
+      if(reqSnap.exists) notifyUser({ type: 'topup_rejected', uid: reqSnap.data().uid });
+    }
     catch(err){ alert('تعذّر الرفض: ' + err.message); }
     btn.disabled = false;
     return;

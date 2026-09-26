@@ -328,9 +328,14 @@ const PUSH_TEXT = {
     tr: (p) => ["Yüklemen geldi 📬", `${p.points} puan Posta kutunda seni bekliyor.`],
     en: (p) => ["Your top-up arrived 📬", `${p.points} points are waiting in your Mail box.`],
   },
+  topup_rejected: {
+    ar: () => ["طلب الشحن انرفض", "ما قدرنا نأكد التحويل. تواصل معنا إذا في غلط."],
+    tr: () => ["Yükleme talebin reddedildi", "Transferi doğrulayamadık. Bir hata olduğunu düşünüyorsan bize ulaş."],
+    en: () => ["Top-up request rejected", "We couldn't verify the transfer. Contact us if you think this is a mistake."],
+  },
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -601,10 +606,10 @@ async function handleAdminNotify(request, env, ctx) {
     ctx.waitUntil(sendPush(env, req.data.uid, type, { amount: Number(req.data.amount).toFixed(8).replace(/0+$/, "").replace(/\.$/, ""), coin: String(req.data.coin || "").toUpperCase() }));
     return jsonResponse({ ok: true }, 200);
   }
-  if (type === "topup") {
+  if (type === "topup" || type === "topup_rejected") {
     const uid = String(body.uid || "");
     if (!uid || uid.includes("/")) return jsonResponse({ ok: false, error: "bad_request" }, 400);
-    ctx.waitUntil(sendPush(env, uid, "topup", { points: Number(body.points) || 0 }));
+    ctx.waitUntil(sendPush(env, uid, type, { points: Number(body.points) || 0 }));
     return jsonResponse({ ok: true }, 200);
   }
   return jsonResponse({ ok: false, error: "bad_type" }, 400);
