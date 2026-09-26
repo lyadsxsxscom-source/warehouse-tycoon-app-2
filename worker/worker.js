@@ -591,6 +591,55 @@ async function handlePostback(request, env, ctx) {
   return new Response("OK", { status: 200 });
 }
 
+// ===== جدار المهام التاني: OffersWalls (site.offerswalls.com) =====
+// التوقيع: HMAC-SHA256 على الرابط الكامل لحد "&signature=" بالمفتاح السري (Secret: OFFERSWALLS_SECRET)
+const OW2_REVERSAL_STATES = ["RECONCILED", "REJECTED", "REVERSED", "CHARGEBACK", "CANCELLED"];
+async function handleOffersWallsPostback(request, env, ctx) {
+  const raw = request.url;
+  const cut = raw.indexOf("&signature=");
+  if (cut < 0 || !env.OFFERSWALLS_SECRET) return new Response("missing signature", { status: 403 });
+  const params = new URL(raw).searchParams;
+  const signature = (params.get("signature") || "").toLowerCase();
+  const expected = await hmacHex(env.OFFERSWALLS_SECRET, raw.slice(0, cut));
+  if (signature !== expected) {
+    console.warn({ message: "OffersWalls invalid signature" });
+    return new Response("invalid signature", { status: 403 });
+  }
+  const uid = params.get("user_id") || "";
+  const tx = params.get("tx") || "";
+  const status = (params.get("status") || "").toLowerCase();
+  const state = (params.get("offer_state") || "").toUpperCase();
+  const amount = Math.abs(parseFloat(params.get("reward") || "0")) || 0;
+  console.info({ message: "OffersWalls postback", uid, tx, status, state, amount });
+  if (!uid || !tx || uid.includes("/") || uid.length > 128) return new Response("bad request", { status: 400 });
+
+  const reversal = status === "rejected" || OW2_REVERSAL_STATES.includes(state);
+  const approved = !reversal && status === "approved";
+  if (!approved && !reversal) return new Response("ok - ignored", { status: 200 });
+
+  const doneKey = "ow2:" + tx + (reversal ? ":rev" : ":ok");
+  if (await env.PENDING_CREDITS.get(doneKey)) return new Response("duplicate", { status: 200 });
+  if (reversal && !(await env.PENDING_CREDITS.get("ow2:" + tx + ":ok"))) {
+    // ما انضاف أصلاً، فما في شي نسحبه
+    await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
+    return new Response("ok", { status: 200 });
+  }
+  if (amount > 0) {
+    const delta = reversal ? -amount : amount;
+    await fsCommit(env, [{
+      update: { name: docName(env, "players/" + uid), fields: {} },
+      updateMask: { fieldPaths: [] },
+      updateTransforms: [
+        { fieldPath: "points", increment: { doubleValue: delta } },
+        { fieldPath: "totalPointsEarned", increment: { doubleValue: delta } },
+      ],
+    }]);
+  }
+  await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
+  if (approved && amount > 0) ctx.waitUntil(sendPush(env, uid, "offerwall", { points: Math.floor(amount) }));
+  return new Response("ok", { status: 200 });
+}
+
 // الأدمن بيطلب إرسال إشعار بعد ما يوافق/يرفض طلب سحب أو يأكد شحنة
 async function handleAdminNotify(request, env, ctx) {
   const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
@@ -629,7 +678,7 @@ async function handleDownload() {
 async function handleSelftest(env) {
   try {
     const doc = await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "push-2", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, appVersionDocExists: doc.exists }, 200);
+    return jsonResponse({ ok: true, workerVersion: "ow2-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
   } catch (e) {
     return jsonResponse({ ok: false, error: String(e.message || e) }, 500);
   }
@@ -643,6 +692,7 @@ export default {
     if (url.pathname === "/" && request.method === "POST") return handlePostback(request, env, ctx);
     if (url.pathname === "/sign" && request.method === "POST") return handleSign(request, env);
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
+    if (url.pathname === "/ow2") return handleOffersWallsPostback(request, env, ctx);
     if (url.pathname === "/admin/notify" && request.method === "POST") return handleAdminNotify(request, env, ctx);
     if (url.pathname === "/today" && request.method === "GET") return jsonResponse({ today: todaySyria() }, 200);
     if (url.pathname === "/selftest" && request.method === "GET") return handleSelftest(env);

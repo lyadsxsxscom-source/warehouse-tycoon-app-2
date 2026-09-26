@@ -289,9 +289,9 @@
     "Teknik bilgiler:",
     "Technical information:"
   ],
-  "شبكات الإعلانات وجدران المهام المدمجة بالتطبيق (متل Unity Ads وOfferwall.me وشبكات مشابهة) ممكن تجمع معرّفات إعلانية لجهازك بشكل مستقل، عشان تعرض إعلانات وتتحقق من إكمال المهام. هاي الشبكات إلها سياسات خصوصية خاصة فيها منفصلة عن سياستنا.": [
-    "Uygulamaya entegre reklam ağları ve görev duvarları (Unity Ads, Offerwall.me ve benzerleri gibi), reklam göstermek ve görevlerin tamamlandığını doğrulamak için cihazının reklam kimliklerini bağımsız olarak toplayabilir. Bu ağların bizimkinden ayrı kendi gizlilik politikaları vardır.",
-    "Ad networks and offerwalls integrated into the app (such as Unity Ads, Offerwall.me and similar networks) may independently collect your device's advertising identifiers to show ads and verify completed tasks. These networks have their own privacy policies, separate from ours."
+  "شبكات الإعلانات وجدران المهام المدمجة بالتطبيق (متل Unity Ads وOfferwall.me وOffersWalls وشبكات مشابهة) ممكن تجمع معرّفات إعلانية لجهازك بشكل مستقل، عشان تعرض إعلانات وتتحقق من إكمال المهام. هاي الشبكات إلها سياسات خصوصية خاصة فيها منفصلة عن سياستنا.": [
+    "Uygulamaya entegre reklam ağları ve görev duvarları (Unity Ads, Offerwall.me, OffersWalls ve benzerleri gibi), reklam göstermek ve görevlerin tamamlandığını doğrulamak için cihazının reklam kimliklerini bağımsız olarak toplayabilir. Bu ağların bizimkinden ayrı kendi gizlilik politikaları vardır.",
+    "Ad networks and offerwalls integrated into the app (such as Unity Ads, Offerwall.me, OffersWalls and similar networks) may independently collect your device's advertising identifiers to show ads and verify completed tasks. These networks have their own privacy policies, separate from ours."
   ],
   "2. كيف بنستخدم المعلومات": [
     "2. Bilgileri nasıl kullanırız",
