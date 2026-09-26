@@ -64,6 +64,8 @@
     "مشاهدة إعلان": ["Reklam izle", "Watch an ad"],
     "فوري + مضاعفة إنتاج 60 ثانية": ["Anında + 60 saniye 2x üretim", "Instant + 2x production for 60s"],
     "جدار المهام": ["Görev Duvarı", "Offerwall"],
+    "جدار العروض 2": ["Teklif Duvarı 2", "Offerwall 2"],
+    "عروض ومهام إضافية بمكافآت": ["Ödüllü ek teklifler ve görevler", "More offers and tasks with rewards"],
     "مهام وعروض متنوعة — كل عرض بمكافأته الخاصة": ["Çeşitli görev ve teklifler — her birinin kendi ödülü var", "Various tasks and offers — each with its own reward"],
     "افتح": ["Aç", "Open"],
     "إغلاق": ["Kapat", "Close"],
