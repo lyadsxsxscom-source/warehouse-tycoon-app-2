@@ -65,6 +65,7 @@
     "فوري + مضاعفة إنتاج 60 ثانية": ["Anında + 60 saniye 2x üretim", "Instant + 2x production for 60s"],
     "جدار المهام": ["Görev Duvarı", "Offerwall"],
     "جدار العروض 2": ["Teklif Duvarı 2", "Offerwall 2"],
+    "💡 كمّل كل عرض على نفس الإنترنت يلي بلّشته عليه (واي فاي أو بيانات الجوال)، وإلا ممكن ما تنحسب النقاط.": ["💡 Her teklifi başladığın internet bağlantısıyla (Wi-Fi veya mobil veri) tamamla, yoksa puanlar sayılmayabilir.", "💡 Finish each offer on the same connection you started it on (Wi-Fi or mobile data), or the points may not be credited."],
     "عروض ومهام إضافية بمكافآت": ["Ödüllü ek teklifler ve görevler", "More offers and tasks with rewards"],
     "مهام وعروض متنوعة — كل عرض بمكافأته الخاصة": ["Çeşitli görev ve teklifler — her birinin kendi ödülü var", "Various tasks and offers — each with its own reward"],
     "افتح": ["Aç", "Open"],
