@@ -306,7 +306,7 @@
     "Manually reviewing and confirming purchases and withdrawals"
   ],
   "التواصل معك بخصوص طلباتك (عبر إيميل تلقائي أو واتساب/تيليجرام إذا تواصلت إنت أول)": [
-    "Talepların hakkında seninle iletişim kurmak (otomatik e-posta ile veya önce sen yazdıysan WhatsApp/Telegram üzerinden)",
+    "Taleplerin hakkında seninle iletişim kurmak (otomatik e-posta ile veya önce sen yazdıysan WhatsApp/Telegram üzerinden)",
     "Contacting you about your requests (by automatic email, or WhatsApp/Telegram if you contacted us first)"
   ],
   "تحسين اللعبة ومنع الاحتيال أو إساءة الاستخدام": [
