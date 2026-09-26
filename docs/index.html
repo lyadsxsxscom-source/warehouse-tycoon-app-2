@@ -220,6 +220,7 @@
   }
   footer .stamp{margin-bottom:10px; color:var(--dim);}
 </style>
+<script src="i18n.js"></script>
 </head>
 <body>
 
@@ -433,6 +434,15 @@ async function loadStoreConfig(){
     const d = doc.exists ? doc.data() : {};
     if(Array.isArray(d.packages) && d.packages.length) PACKAGES = d.packages;
     if(Array.isArray(d.paymentMethods) && d.paymentMethods.length) METHODS = d.paymentMethods;
+    // ترجمات طرق الدفع المحفوظة من الأدمن (زر "ترجم تلقائياً")
+    if(window.I18N){
+      const map = {};
+      METHODS.forEach(m => {
+        ['name','desc'].forEach(f => { if(m[f] && (m[f+'_tr'] || m[f+'_en'])) map[m[f]] = [m[f+'_tr'], m[f+'_en']]; });
+        (m.variants || []).forEach(v => ['name','label'].forEach(f => { if(v[f] && (v[f+'_tr'] || v[f+'_en'])) map[v[f]] = [v[f+'_tr'], v[f+'_en']]; }));
+      });
+      I18N.addEntries(map);
+    }
   }catch(e){ console.error('store config load failed', e); }
   renderPayMethodsInfo();
 }

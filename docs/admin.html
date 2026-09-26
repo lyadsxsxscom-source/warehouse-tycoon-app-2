@@ -593,12 +593,32 @@ function renderMethodsList(){
         <div class="variantsList" data-mi="${mi}"></div>
         <button class="add-variant-btn" data-addv="${mi}">+ إضافة خيار</button>
       </div>
+      <button class="add-variant-btn" data-trm="${mi}" style="margin-top:8px;">🌐 ترجم تلقائياً (تركي + إنجليزي)</button>
+      <div class="tr-status" data-trs="${mi}" style="font-size:11px; margin-top:6px; color:var(--dim);">${methodHasTranslations(m) ? '✓ مترجمة' : 'غير مترجمة — رح تظهر بالعربي بالموقع لكل اللغات'}</div>
     `;
     el.appendChild(card);
     renderVariantsList(mi);
   });
   el.querySelectorAll('input[data-mf]').forEach(inp => {
-    inp.oninput = () => { methodsData[+inp.dataset.mi][inp.dataset.mf] = inp.value; };
+    inp.oninput = () => {
+      const m = methodsData[+inp.dataset.mi];
+      m[inp.dataset.mf] = inp.value;
+      delete m[inp.dataset.mf + '_tr']; delete m[inp.dataset.mf + '_en']; // النص تغيّر، الترجمة القديمة ما عادت صحيحة
+    };
+  });
+  el.querySelectorAll('button[data-trm]').forEach(btn => {
+    btn.onclick = async () => {
+      const mi = +btn.dataset.trm;
+      const status = el.querySelector(`[data-trs="${mi}"]`);
+      btn.disabled = true; status.style.color = 'var(--dim)'; status.textContent = 'عم نترجم...';
+      try{
+        await translateMethod(methodsData[mi]);
+        status.style.color = '#5fd88a'; status.textContent = '✓ تمت الترجمة — لا تنسى تضغط حفظ تحت';
+      }catch(e){
+        status.style.color = 'var(--ember)'; status.textContent = 'تعذّرت الترجمة، جرّب بعد شوي.';
+      }
+      btn.disabled = false;
+    };
   });
   el.querySelectorAll('button[data-delm]').forEach(btn => {
     btn.onclick = () => { methodsData.splice(+btn.dataset.delm, 1); renderMethodsList(); };
@@ -611,6 +631,30 @@ function renderMethodsList(){
       renderVariantsList(mi);
     };
   });
+}
+// ===== الترجمة التلقائية لطرق الدفع (خدمة MyMemory المجانية) =====
+const HAS_ARABIC = /[\u0600-\u06FF]/;
+async function autoTranslate(text, target){
+  if(!text || !HAS_ARABIC.test(text)) return text; // أسماء لاتينية وأرقام بتضل متل ما هي
+  const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=ar|' + target);
+  const j = await r.json();
+  const out = j && j.responseData && j.responseData.translatedText;
+  if(!out || Number(j.responseStatus) !== 200) throw new Error('translation failed');
+  return out;
+}
+async function translateFields(obj, fields){
+  for(const f of fields){
+    if(!obj[f]) continue;
+    obj[f + '_tr'] = await autoTranslate(obj[f], 'tr');
+    obj[f + '_en'] = await autoTranslate(obj[f], 'en');
+  }
+}
+async function translateMethod(m){
+  await translateFields(m, ['name', 'desc']);
+  for(const v of (m.variants || [])) await translateFields(v, ['name', 'label']);
+}
+function methodHasTranslations(m){
+  return !!(m.desc_en || m.name_en || (m.variants || []).some(v => v.label_en || v.name_en));
 }
 function renderVariantsList(mi){
   const box = document.querySelector(`.variantsList[data-mi="${mi}"]`);
@@ -630,7 +674,9 @@ function renderVariantsList(mi){
   `).join('');
   box.querySelectorAll('[data-vf]').forEach(el => {
     el.oninput = el.onchange = () => {
-      methodsData[+el.dataset.mi].variants[+el.dataset.vi][el.dataset.vf] = el.value;
+      const v = methodsData[+el.dataset.mi].variants[+el.dataset.vi];
+      v[el.dataset.vf] = el.value;
+      delete v[el.dataset.vf + '_tr']; delete v[el.dataset.vf + '_en'];
     };
   });
   box.querySelectorAll('button[data-delv]').forEach(btn => {
