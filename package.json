@@ -13,7 +13,8 @@
     "@capacitor-firebase/authentication": "^6.3.0",
     "@capacitor/local-notifications": "^6.1.0",
     "@capacitor-firebase/messaging": "^6.3.0",
-    "@capacitor-firebase/crashlytics": "^6.3.0"
+    "@capacitor-firebase/crashlytics": "^6.3.0",
+    "@capacitor/share": "^6.0.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2"

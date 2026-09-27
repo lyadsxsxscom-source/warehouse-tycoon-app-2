@@ -6,6 +6,27 @@
 (function(){
   // [تركي, إنجليزي]
   const EXACT = {
+    "🎁 المكافأة اليومية": ["🎁 Günlük Ödül", "🎁 Daily Reward"],
+    "استلم مكافأة اليوم": ["Bugünün ödülünü al", "Claim today's reward"],
+    "ارجع بكرا لمكافأة جديدة ✓": ["Yeni ödül için yarın gel ✓", "Come back tomorrow for a new reward ✓"],
+    "ادعُ أصحابك": ["Arkadaşlarını Davet Et", "Invite Friends"],
+    "كود الدعوة تبعك": ["Davet kodun", "Your invite code"],
+    "📤 شارك الكود": ["📤 Kodu paylaş", "📤 Share code"],
+    "أصحاب دعيتهم": ["Davet ettiğin arkadaşlar", "Friends invited"],
+    "صاروا لاعبين نشطين": ["Aktif oyuncu oldular", "Became active players"],
+    "نقاط ربحتها من الدعوات": ["Davetlerden kazandığın puanlar", "Points earned from invites"],
+    "عندك كود دعوة من صاحبك؟": ["Arkadaşından davet kodun var mı?", "Got an invite code from a friend?"],
+    "تفعيل الكود": ["Kodu etkinleştir", "Activate code"],
+    "🤝 لحتى ياخد صاحبك مكافأته:": ["🤝 Arkadaşının ödülünü alması için:", "🤝 For your friend to get their reward:"],
+    "انتسخ الكود مع الرابط ✓": ["Kod ve bağlantı kopyalandı ✓", "Code and link copied ✓"],
+    "استلمت مكافأة اليوم، ارجع بكرا!": ["Bugünün ödülünü aldın, yarın tekrar gel!", "You already claimed today's reward, come back tomorrow!"],
+    "كود الدعوة غير صحيح.": ["Davet kodu geçersiz.", "Invalid invite code."],
+    "كود الدعوة غير موجود.": ["Davet kodu bulunamadı.", "Invite code not found."],
+    "ما فيك تستخدم كودك إنت.": ["Kendi kodunu kullanamazsın.", "You can't use your own code."],
+    "استخدمت كود دعوة من قبل.": ["Zaten bir davet kodu kullandın.", "You've already used an invite code."],
+    "كود الدعوة بينكتب بس بأول يومين من التسجيل.": ["Davet kodu sadece kayıttan sonraki ilk iki gün içinde girilebilir.", "Invite codes can only be entered within the first two days after signing up."],
+    "العب \"مستودع الأرباح\" واربح بيتكوين وإيثيريوم 🪙": ["\"Kazanç Deposu\" oyna, Bitcoin ve Ethereum kazan 🪙", "Play \"Profit Warehouse\" and earn Bitcoin & Ethereum 🪙"],
+    "مثال: K7M2QX": ["Örnek: K7M2QX", "Example: K7M2QX"],
     "مستودع الأرباح": ["Kazanç Deposu", "Profit Warehouse"],
     "سجّل دخولك عشان تبدأ وتحفظ تقدمك": ["Başlamak ve ilerlemeni kaydetmek için giriş yap", "Sign in to start and save your progress"],
     "تسجيل الدخول عبر Google": ["Google ile giriş yap", "Sign in with Google"],
@@ -162,6 +183,14 @@
 
   // نصوص فيها أرقام أو أسماء متغيرة: {0} {1} {2}
   const PATTERNS = [
+    ["يوم {0}", "{0}. gün", "Day {0}"],
+    ["استلم {0} نقطة", "{0} puan al", "Claim {0} points"],
+    ["🔥 {0} أيام متتالية", "🔥 {0} gün üst üste", "🔥 {0}-day streak"],
+    ["صاحبك بياخد {0} نقطة فوراً، وإنت بتاخد {1} لما يصير نشط + {2}% دايماً من أرباحه بجدار المهام", "Arkadaşın hemen {0} puan alır, o aktif olunca sen {1} puan + görev duvarı kazancının her zaman %{2}'sini alırsın", "Your friend gets {0} points right away; you get {1} when they become active + {2}% of their offerwall earnings forever"],
+    ["افتح اللعبة {0} أيام مختلفة ({1}/{2})", "Oyunu {0} farklı günde aç ({1}/{2})", "Open the game on {0} different days ({1}/{2})"],
+    ["شاهد {0} إعلانات ({1}/{2})", "{0} reklam izle ({1}/{2})", "Watch {0} ads ({1}/{2})"],
+    ["✓ تم التفعيل! +{0} نقطة", "✓ Etkinleştirildi! +{0} puan", "✓ Activated! +{0} points"],
+    ["اكتب كود الدعوة تبعي {0} وخود نقاط هدية!", "Davet kodum {0} ile hediye puan kazan!", "Use my invite code {0} to get bonus points!"],
     ["+{0} نقطة!", "+{0} puan!", "+{0} points!"],
     ["الحد الأدنى للسحب {0} — مرة وحدة كل 24 ساعة", "Minimum çekim {0} — 24 saatte bir kez", "Minimum withdrawal {0} — once every 24 hours"],
     ["الحد الأدنى للسحب {0}$.", "Minimum çekim {0}$.", "Minimum withdrawal is ${0}."],

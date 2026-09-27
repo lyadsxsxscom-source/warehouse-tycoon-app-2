@@ -201,6 +201,20 @@
         <div class="msg" id="workersMsg"></div>
       </div>
       <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">🎁 المكافأة اليومية (سلسلة 7 أيام)</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">نقاط كل يوم من السلسلة. إذا اللاعب فوّت يوم بترجع السلسلة ليوم 1، وبعد اليوم 7 بتبلش من جديد.</div>
+        <div id="dailyList" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px;"></div>
+        <button class="btn" id="btnSaveDaily">حفظ المكافأة اليومية</button>
+        <div class="msg" id="dailyMsg"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">🤝 نظام الإحالة</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">الداعي بياخد مكافأته بس لما المدعو يوصل لشرط النشاط (حماية من الحسابات الوهمية). العمولة بتنحسب من نقاط جدار المهام تبع المدعو، وبتنسحب لو العرض انسحب.</div>
+        <div id="referralList"></div>
+        <button class="btn" id="btnSaveReferral">حفظ إعدادات الإحالة</button>
+        <div class="msg" id="referralMsg"></div>
+      </div>
+      <div class="card">
         <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">روابط كسب إضافية (جدران مهام/عروض جديدة)</div>
         <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">تظهر كخيار إضافي بقائمة "كسب نقاط" داخل التطبيق مباشرة، بدون أي تعديل بالكود أو بناء نسخة جديدة. تُفتح داخل التطبيق. لو الرابط يحتاج معرّف المستخدم، استخدم <span style="direction:ltr; display:inline-block;">{uid}</span> بأي مكان بالرابط وبيتعوّض تلقائياً.</div>
         <div id="earnLinksList"></div>
@@ -439,6 +453,8 @@ async function loadStats(){
       ['احتفاظ D7', pct(d7.back, d7.cohort) + (d7.cohort ? ` (${d7.back}/${d7.cohort})` : '')],
       ['إعلان لكل لاعب باليوم (معدل أسبوع)', active7 ? (ads7/active7).toFixed(1) : '—'],
       ['عروض مكتملة اليوم', t.offers || 0],
+      ['مكافآت يومية مستلمة اليوم', t.dailyClaims || 0],
+      ['دعوات (30 يوم) / صاروا نشطين', data.reduce((a, d) => a + (d.referrals || 0), 0) + ' / ' + data.reduce((a, d) => a + (d.referralsActivated || 0), 0)],
     ];
     document.getElementById('statGrid').innerHTML = boxes.map(([l, v]) =>
       `<div class="stat-box"><div class="v">${escapeHtml(String(v))}</div><div class="l">${escapeHtml(l)}</div></div>`).join('');
@@ -965,6 +981,53 @@ document.getElementById('btnSaveEarnLinks').onclick = async () => {
   }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
 };
 
+
+// ===== المكافأة اليومية + الإحالة =====
+const DEFAULT_DAILY = [10, 15, 20, 25, 30, 40, 60];
+const REFERRAL_FIELDS = [
+  ['inviteeBonus', 'هدية اللاعب الجديد لما يكتب كود (نقاط)', 50],
+  ['inviterReward', 'مكافأة الداعي لما المدعو يصير نشط (نقاط)', 150],
+  ['requiredDays', 'شرط النشاط: عدد الأيام المختلفة يلي فتح فيها اللعبة', 3],
+  ['requiredAds', 'شرط النشاط: عدد الإعلانات يلي حضرها', 10],
+  ['commissionPct', 'عمولة الداعي الدائمة من جدار المهام (%) — أقصى شي 50', 10],
+  ['windowHours', 'المدة المسموحة لكتابة الكود بعد أول دخول (ساعات)', 48],
+];
+let dailyData = [...DEFAULT_DAILY];
+let referralData = {};
+function renderDailyList(){
+  document.getElementById('dailyList').innerHTML = dailyData.map((v, i) => `
+    <div class="field" style="margin:0;"><label style="font-size:11px;">يوم ${i+1}</label>
+    <input type="number" min="0" data-day="${i}" value="${v}" style="margin:0;"></div>`).join('');
+  document.querySelectorAll('#dailyList input').forEach(inp => inp.oninput = () => { dailyData[+inp.dataset.day] = Number(inp.value) || 0; });
+}
+function renderReferralList(){
+  document.getElementById('referralList').innerHTML = REFERRAL_FIELDS.map(([k, label, def]) => `
+    <div class="field"><label>${label}</label>
+    <input type="number" min="0" data-ref="${k}" value="${typeof referralData[k] === 'number' ? referralData[k] : def}"></div>`).join('');
+}
+document.getElementById('btnSaveDaily').onclick = async () => {
+  const msg = document.getElementById('dailyMsg');
+  try{
+    if(dailyData.length !== 7 || dailyData.some(n => !(n >= 0))) throw new Error('لازم 7 قيم كلها أرقام موجبة');
+    await fbDb.collection('config').doc('gameConfig').set({ daily: { rewards: dailyData.map(Number) } }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق على السيرفر خلال دقيقة';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+document.getElementById('btnSaveReferral').onclick = async () => {
+  const msg = document.getElementById('referralMsg');
+  try{
+    const data = {};
+    document.querySelectorAll('#referralList input').forEach(inp => {
+      const v = Number(inp.value);
+      if(!(v >= 0)) throw new Error('كل القيم لازم تكون أرقام موجبة');
+      data[inp.dataset.ref] = v;
+    });
+    if(data.commissionPct > 50) throw new Error('العمولة أقصى شي 50%');
+    await fbDb.collection('config').doc('gameConfig').set({ referral: data }, { merge: true });
+    referralData = data;
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق على السيرفر خلال دقيقة';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
 async function loadGameConfig(){
   try{
     const doc = await fbDb.collection('config').doc('gameConfig').get();
@@ -976,6 +1039,10 @@ async function loadGameConfig(){
       workersData[key] = { cost, usdPerDuration: cost / POINTS_PER_USD_PRODUCTION };
     });
     earnLinksData = Array.isArray(d.earnLinks) ? d.earnLinks.map(l => ({...l})) : [];
+    dailyData = (d.daily && Array.isArray(d.daily.rewards) && d.daily.rewards.length === 7) ? [...d.daily.rewards] : [...DEFAULT_DAILY];
+    referralData = d.referral || {};
+    renderDailyList();
+    renderReferralList();
     renderShelfCostList();
     renderWorkersList();
     renderEarnLinksList();

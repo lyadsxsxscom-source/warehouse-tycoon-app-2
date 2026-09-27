@@ -230,6 +230,14 @@
   .mail-item .mtime{font-size:10px; color:var(--dim); margin-bottom:10px;}
   .mail-item .mclaimed{font-size:12px; color:#5fd88a; font-weight:700;}
   .mail-empty{text-align:center; color:var(--dim); font-size:13px; padding:40px 0;}
+  .daily-days{display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin:8px 0;}
+  .daily-day{background:#00000030; border:1px solid var(--border); border-radius:8px; padding:5px 0; text-align:center; font-size:10px; color:var(--dim);}
+  .daily-day b{display:block; font-size:12px; color:var(--text);}
+  .daily-day.done{background:rgba(227,168,59,0.18); border-color:var(--amber);}
+  .daily-day.today{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset;}
+  .ref-code{font-size:24px; font-weight:800; letter-spacing:3px; text-align:center; color:var(--amber); direction:ltr; margin:6px 0;}
+  .ref-bar{height:6px; background:#00000040; border-radius:4px; overflow:hidden; margin-top:4px;}
+  .ref-bar > i{display:block; height:100%; background:var(--amber);}
 </style>
 <script src="i18n.js"></script>
 </head>
@@ -285,6 +293,16 @@
         <button class="eth" id="btnETH"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="ethG1" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#B9C3FF"/><stop offset="60%" stop-color="#8A9BFF"/><stop offset="100%" stop-color="#5C6BC7"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#ethG1)" stroke="#3d4694" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#26295c" font-family="Arial, sans-serif">Ξ</text></svg> ETH</button>
       </div>
     </div>
+  </div>
+
+
+  <div class="card" id="dailyCard" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="font-weight:800; font-size:13px;">🎁 المكافأة اليومية</div>
+      <div style="font-size:11px; color:var(--dim);" id="dailyStreakLbl"></div>
+    </div>
+    <div class="daily-days" id="dailyDays"></div>
+    <button class="btn-main" id="btnDaily" style="margin:0;">استلم مكافأة اليوم</button>
   </div>
 
   <h3>الرفوف والعمال</h3>
@@ -370,6 +388,31 @@
     <div class="stat-row"><span>عدد العمال المستأجرين</span><span id="pfWorkers">0</span></div>
     <div class="stat-row"><span>الرفوف المفتوحة</span><span id="pfShelves">0/6</span></div>
     <div class="stat-row"><span>الإعلانات المشاهدة</span><span id="pfAds">0</span></div>
+  </div>
+  <h3>ادعُ أصحابك</h3>
+  <div class="card" id="refCard">
+    <div style="font-size:12px; color:var(--dim); text-align:center;">كود الدعوة تبعك</div>
+    <div class="ref-code" id="refCode" translate="no">—</div>
+    <button class="btn-main" id="btnShareRef">📤 شارك الكود</button>
+    <div class="hint" id="refRules"></div>
+    <div class="stat-row"><span>أصحاب دعيتهم</span><span id="refInvited">0</span></div>
+    <div class="stat-row"><span>صاروا لاعبين نشطين</span><span id="refActive">0</span></div>
+    <div class="stat-row" style="border-bottom:none;"><span>نقاط ربحتها من الدعوات</span><span id="refEarnings">0</span></div>
+  </div>
+  <div class="card" id="refEnterCard" style="display:none;">
+    <div class="field">
+      <label>عندك كود دعوة من صاحبك؟</label>
+      <input type="text" id="refInput" placeholder="مثال: K7M2QX" maxlength="12" style="text-transform:uppercase; direction:ltr;">
+    </div>
+    <button class="btn-main" id="btnApplyRef">تفعيل الكود</button>
+    <div class="hint" id="refEnterHint"></div>
+  </div>
+  <div class="card" id="refProgressCard" style="display:none;">
+    <div style="font-size:12px; margin-bottom:6px;">🤝 لحتى ياخد صاحبك مكافأته:</div>
+    <div style="font-size:11px; color:var(--dim);" id="refProgDays"></div>
+    <div class="ref-bar"><i id="refBarDays" style="width:0%"></i></div>
+    <div style="font-size:11px; color:var(--dim); margin-top:8px;" id="refProgAds"></div>
+    <div class="ref-bar"><i id="refBarAds" style="width:0%"></i></div>
   </div>
   <h3>الإعدادات</h3>
   <div class="card">
@@ -472,7 +515,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.9"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.0"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -773,7 +816,81 @@ function render(){
   renderWithdraw();
   renderProfile();
 }
-function renderAll(){ render(); renderTasks(); renderStore(); }
+// ===== المكافأة اليومية + الإحالة (كل الحساب عالسيرفر، هون بس العرض) =====
+let dailyInfo = null, referralInfo = null, serverToday = '';
+function renderDaily(){
+  const card = document.getElementById('dailyCard');
+  if(!dailyInfo || !serverToday){ card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const claimedToday = dailyInfo.lastClaim === serverToday;
+  // اليوم يلي رح ينستلم هلق (أو يلي انستلم اليوم)
+  const d = new Date(Date.now() + 3*3600*1000 - 86400000);
+  const yesterday = `${d.getUTCFullYear()}-${d.getUTCMonth()+1}-${d.getUTCDate()}`;
+  const alive = claimedToday || dailyInfo.lastClaim === yesterday;
+  const streak = alive ? dailyInfo.streak : 0;             // الأيام المكتملة بالسلسلة
+  const doneCount = claimedToday ? streak : (streak % 7);  // بعد اليوم 7 بتبلش من جديد
+  const nextIdx = claimedToday ? -1 : doneCount;
+  document.getElementById('dailyDays').innerHTML = dailyInfo.rewards.map((r, i) =>
+    `<div class="daily-day ${i < doneCount ? 'done' : ''} ${i === nextIdx ? 'today' : ''}">${i < doneCount ? '✓' : 'يوم ' + (i+1)}<b>${r}</b></div>`).join('');
+  document.getElementById('dailyStreakLbl').textContent = doneCount > 0 ? `🔥 ${doneCount} أيام متتالية` : '';
+  const btn = document.getElementById('btnDaily');
+  btn.disabled = claimedToday;
+  btn.textContent = claimedToday ? 'ارجع بكرا لمكافأة جديدة ✓' : `استلم ${dailyInfo.rewards[nextIdx]} نقطة`;
+  btn.style.opacity = claimedToday ? '0.5' : '1';
+}
+function renderReferral(){
+  const r = referralInfo;
+  if(!r) return;
+  document.getElementById('refCode').textContent = r.code || '—';
+  document.getElementById('refInvited').textContent = r.invited;
+  document.getElementById('refActive').textContent = r.active;
+  document.getElementById('refEarnings').textContent = Math.floor(r.earnings).toLocaleString('en-US');
+  document.getElementById('refRules').textContent =
+    `صاحبك بياخد ${r.cfg.inviteeBonus} نقطة فوراً، وإنت بتاخد ${r.cfg.inviterReward} لما يصير نشط + ${r.cfg.commissionPct}% دايماً من أرباحه بجدار المهام`;
+  document.getElementById('refEnterCard').style.display = r.canEnter ? 'block' : 'none';
+  const showProg = r.referred && !r.rewarded;
+  document.getElementById('refProgressCard').style.display = showProg ? 'block' : 'none';
+  if(showProg){
+    const dd = Math.min(r.progress.days, r.cfg.requiredDays), aa = Math.min(r.progress.ads, r.cfg.requiredAds);
+    document.getElementById('refProgDays').textContent = `افتح اللعبة ${r.cfg.requiredDays} أيام مختلفة (${dd}/${r.cfg.requiredDays})`;
+    document.getElementById('refProgAds').textContent = `شاهد ${r.cfg.requiredAds} إعلانات (${aa}/${r.cfg.requiredAds})`;
+    document.getElementById('refBarDays').style.width = (r.cfg.requiredDays ? dd*100/r.cfg.requiredDays : 100) + '%';
+    document.getElementById('refBarAds').style.width = (r.cfg.requiredAds ? aa*100/r.cfg.requiredAds : 100) + '%';
+  }
+}
+document.getElementById('btnDaily').onclick = async () => {
+  const btn = document.getElementById('btnDaily');
+  btn.disabled = true;
+  try{
+    const data = await gameApi('claimDaily');
+    hint.textContent = `+${data.result.reward} نقطة!`;
+  }catch(e){ hint.textContent = e.message; renderDaily(); }
+};
+document.getElementById('btnApplyRef').onclick = async () => {
+  const input = document.getElementById('refInput'), h = document.getElementById('refEnterHint');
+  const code = input.value.trim().toUpperCase();
+  if(!code){ h.textContent = 'اكتب الكود أول.'; return; }
+  try{
+    const data = await gameApi('applyReferral', { code });
+    input.value = '';
+    h.style.color = 'var(--amber)';
+    h.textContent = `✓ تم التفعيل! +${data.result.bonus} نقطة`;
+  }catch(e){ h.style.color = 'var(--ember)'; h.textContent = e.message; }
+};
+document.getElementById('btnShareRef').onclick = async () => {
+  const code = referralInfo?.code;
+  if(!code) return;
+  const tr = (x) => (window.I18N ? window.I18N.t(x) : x);
+  const text = tr('العب "مستودع الأرباح" واربح بيتكوين وإيثيريوم 🪙') + '\n' + tr(`اكتب كود الدعوة تبعي ${code} وخود نقاط هدية!`) + '\n' + APP_DOWNLOAD_URL;
+  const share = window.Capacitor?.Plugins?.Share;
+  try{
+    if(share){ await share.share({ title: 'مستودع الأرباح', text, dialogTitle: 'شارك الكود' }); return; }
+    if(navigator.share){ await navigator.share({ text }); return; }
+  }catch(e){ if(String(e?.message || e).toLowerCase().includes('cancel')) return; }
+  try{ await navigator.clipboard.writeText(text); hint.textContent = 'انتسخ الكود مع الرابط ✓'; }catch(e){ prompt('انسخ الرسالة:', text); }
+};
+
+function renderAll(){ render(); renderTasks(); renderStore(); renderDaily(); renderReferral(); }
 
 function refreshRentOptions(){
   document.querySelectorAll('#rentOverlay .option').forEach(opt => {
@@ -1073,6 +1190,9 @@ function applyServerState(st){
   boostUntil = st.boostUntil || 0;
   tasks = st.tasks;
   dailyDate = st.dailyDate;
+  dailyInfo = st.daily || null;
+  referralInfo = st.referral || null;
+  serverToday = st.serverToday || '';
   (st.shelves || []).forEach(sd => {
     const sh = shelves.find(x => x.id === sd.id);
     if(sh){ sh.unlocked = sd.unlocked; sh.worker = sd.worker; }

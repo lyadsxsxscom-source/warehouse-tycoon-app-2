@@ -31,6 +31,53 @@ const AD_DAILY_LIMIT = 40;          // أقصى عدد مكافآت إعلان �
 const BOOST_MS = 60000;             // مضاعفة الإنتاج ×2 بعد كل إعلان
 const WITHDRAW_COOLDOWN_MS = 86400000;
 
+// ===== المكافأة اليومية + الإحالة (القيم الافتراضية؛ الأدمن بيعدّلها من gameConfig.daily و gameConfig.referral) =====
+const DEFAULT_DAILY_REWARDS = [10, 15, 20, 25, 30, 40, 60];
+const DEFAULT_REFERRAL = {
+  inviteeBonus: 50,     // هدية فورية للاعب الجديد لما يكتب كود
+  inviterReward: 150,   // مكافأة الداعي لما المدعو يصير نشط
+  requiredDays: 3,      // شرط النشاط: كم يوم مختلف فتح فيه اللعبة
+  requiredAds: 10,      // شرط النشاط: كم إعلان حضر
+  commissionPct: 10,    // نسبة دائمة من نقاط جدار المهام تبع المدعو
+  windowHours: 48,      // المدة المسموحة لكتابة كود بعد أول دخول
+};
+const REF_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // بدون O/0 و I/1 لتجنّب اللخبطة
+function dailyRewards(cfg) {
+  const arr = cfg.game.daily && cfg.game.daily.rewards;
+  return Array.isArray(arr) && arr.length === 7 && arr.every(n => typeof n === "number" && n >= 0) ? arr : DEFAULT_DAILY_REWARDS;
+}
+function referralCfg(cfg) {
+  const r = { ...DEFAULT_REFERRAL };
+  const c = cfg.game.referral || {};
+  for (const k of Object.keys(r)) if (typeof c[k] === "number" && c[k] >= 0) r[k] = c[k];
+  r.commissionPct = Math.min(r.commissionPct, 50);
+  return r;
+}
+function newRefCode() {
+  const b = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(b, x => REF_ALPHABET[x % REF_ALPHABET.length]).join("");
+}
+// إضافة ذرّية لنقاط لاعب تاني (الداعي) بدون ما نقرأ مستنده
+function creditWrite(env, uid, pts, extra = {}) {
+  const t = [
+    { fieldPath: "points", increment: { doubleValue: pts } },
+    { fieldPath: "totalPointsEarned", increment: { doubleValue: pts } },
+  ];
+  for (const [f, v] of Object.entries(extra)) t.push({ fieldPath: f, increment: Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v } });
+  return { update: { name: docName(env, "players/" + uid), fields: {} }, updateMask: { fieldPaths: [] }, updateTransforms: t };
+}
+// إذا المدعو وصل لشرط النشاط: مكافأة الداعي (مرة وحدة بس)
+function referralRewardWrites(env, cfg, p, today) {
+  if (!p.referredBy || p.referralRewarded) return [];
+  const r = referralCfg(cfg);
+  if (p.activeDays < r.requiredDays || p.adsWatched < r.requiredAds) return [];
+  p.referralRewarded = true;
+  return [
+    creditWrite(env, p.referredBy, r.inviterReward, { referralActive: 1, referralEarnings: r.inviterReward }),
+    statsWrite(env, today, { referralsActivated: 1 }),
+  ];
+}
+
 function newTasks() {
   return [
     { id: "login",  label: "تسجيل الدخول اليوم", reward: 20, done: true, claimed: false },
@@ -243,8 +290,19 @@ function normalizePlayer(raw, now, today) {
     p.totalPointsEarned = STARTING_POINTS + (Number(p.totalPointsEarned) || 0);
     p.shelves = defaultShelves();
     p.firstSeenDate = today;
+    p.firstSeenAt = now;
   }
   if (!p.firstSeenDate) p.firstSeenDate = "legacy"; // لاعب قديم قبل نظام الإحصائيات
+  p.firstSeenAt = Number(p.firstSeenAt) || 0;
+  p.activeDays = Number(p.activeDays) || 0;
+  p.dailyStreak = Number(p.dailyStreak) || 0;
+  p.lastDailyClaim = p.lastDailyClaim || "";
+  p.referredBy = p.referredBy || "";
+  p.referralRewarded = !!p.referralRewarded;
+  p.referralCode = p.referralCode || "";
+  p.referralCount = Number(p.referralCount) || 0;
+  p.referralActive = Number(p.referralActive) || 0;
+  p.referralEarnings = Number(p.referralEarnings) || 0;
   const byId = {};
   p.shelves.forEach(s => { if (s && typeof s.id === "number") byId[s.id] = s; });
   p.shelves = Array.from({ length: SHELF_COUNT }, (_, i) => {
@@ -287,12 +345,24 @@ function settle(p, now) {
   }
   p.lastSettleAt = now;
 }
-function publicState(p, now) {
+function publicState(p, now, cfg) {
   return {
     points: p.points, totalPointsEarned: p.totalPointsEarned, wallet: p.wallet,
     shelves: p.shelves, tasks: p.tasks, dailyDate: p.dailyDate,
     adsWatched: p.adsWatched, workersRented: p.workersRented,
     boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now,
+    serverToday: todaySyria(now),
+    daily: { streak: p.dailyStreak, lastClaim: p.lastDailyClaim, rewards: cfg ? dailyRewards(cfg) : DEFAULT_DAILY_REWARDS },
+    referral: (() => {
+      const r = cfg ? referralCfg(cfg) : DEFAULT_REFERRAL;
+      return {
+        code: p.referralCode, invited: p.referralCount, active: p.referralActive, earnings: p.referralEarnings,
+        referred: !!p.referredBy, rewarded: p.referralRewarded,
+        canEnter: !p.referredBy && p.firstSeenAt > 0 && now - p.firstSeenAt < r.windowHours * 3600000,
+        progress: { days: p.activeDays, ads: p.adsWatched },
+        cfg: r,
+      };
+    })(),
   };
 }
 
@@ -349,9 +419,14 @@ const PUSH_TEXT = {
     tr: () => ["Yükleme talebin reddedildi", "Transferi doğrulayamadık. Bir hata olduğunu düşünüyorsan bize ulaş."],
     en: () => ["Top-up request rejected", "We couldn't verify the transfer. Contact us if you think this is a mistake."],
   },
+  referral: {
+    ar: (p) => ["صاحبك صار لاعب نشط! 🤝", `انضافلك ${p.points} نقطة مكافأة الدعوة.`],
+    tr: (p) => ["Arkadaşın aktif oyuncu oldu! 🤝", `Davet ödülü olarak ${p.points} puan eklendi.`],
+    en: (p) => ["Your friend is now an active player! 🤝", `${p.points} referral reward points were added.`],
+  },
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -393,11 +468,23 @@ async function gameAction(action, body, user, env) {
         const total = pending.reduce((sum, c) => sum + (Number(c.reward) || 0), 0);
         if (total > 0) { p.points += total; p.totalPointsEarned += total; }
         const today = todaySyria(now);
+        if (p.lastActiveDate !== today) p.activeDays += 1;
         p.lastActiveDate = today;
+        const writes = [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] })];
+        if (!p.referralCode) {
+          // كود دعوة فريد: مستند referralCodes/{الكود} لازم يكون جديد، ولو صار تكرار بتنعاد المحاولة بكود تاني
+          p.referralCode = newRefCode();
+          writes.push({ update: { name: docName(env, "referralCodes/" + p.referralCode), fields: objToFields({ uid, createdAt: now }) }, currentDocument: { exists: false } });
+        }
+        const refWrites = referralRewardWrites(env, cfg, p, today);
+        writes.push(...refWrites);
         return {
-          writes: [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] })],
+          writes,
           result: { credited: total },
-          after: pending.length ? () => env.PENDING_CREDITS.delete(key) : null,
+          after: async () => {
+            if (pending.length) await env.PENDING_CREDITS.delete(key);
+            if (refWrites.length) await sendPush(env, p.referredBy, "referral", { points: referralCfg(cfg).inviterReward });
+          },
         };
       });
     }
@@ -460,7 +547,12 @@ async function gameAction(action, body, user, env) {
         p.boostUntil = now + BOOST_MS;
         const t = p.tasks.find(x => x.id === "watch3");
         if (t) t.progress = Math.min(t.target || 3, (Number(t.progress) || 0) + 1);
-        return { writes: [statsWrite(env, todaySyria(now), { ads: 1 })] };
+        const today = todaySyria(now);
+        const refWrites = referralRewardWrites(env, cfg, p, today);
+        return {
+          writes: [statsWrite(env, today, { ads: 1 }), ...refWrites],
+          after: refWrites.length ? () => sendPush(env, p.referredBy, "referral", { points: referralCfg(cfg).inviterReward }) : null,
+        };
       });
     }
 
@@ -542,6 +634,47 @@ async function gameAction(action, body, user, env) {
       return mutatePlayer(env, uid, () => {});
     }
 
+    case "claimDaily": {
+      return mutatePlayer(env, uid, (p, now) => {
+        const today = todaySyria(now);
+        if (p.lastDailyClaim === today) throw new ApiError("daily_claimed", "استلمت مكافأة اليوم، ارجع بكرا!");
+        const yesterday = todaySyria(now - 86400000);
+        p.dailyStreak = p.lastDailyClaim === yesterday ? (p.dailyStreak % 7) + 1 : 1;
+        p.lastDailyClaim = today;
+        const reward = dailyRewards(cfg)[p.dailyStreak - 1];
+        p.points += reward;
+        p.totalPointsEarned += reward;
+        return { writes: [statsWrite(env, today, { dailyClaims: 1 })], result: { reward, streak: p.dailyStreak } };
+      });
+    }
+
+    case "applyReferral": {
+      const code = String(body.code || "").trim().toUpperCase();
+      if (!/^[A-Z0-9]{4,12}$/.test(code)) throw new ApiError("bad_ref_code", "كود الدعوة غير صحيح.");
+      const codeDoc = await fsGetDoc(env, "referralCodes/" + code);
+      if (!codeDoc.exists) throw new ApiError("ref_not_found", "كود الدعوة غير موجود.");
+      const inviter = codeDoc.data.uid;
+      if (inviter === uid) throw new ApiError("ref_self", "ما فيك تستخدم كودك إنت.");
+      const r = referralCfg(cfg);
+      return mutatePlayer(env, uid, (p, now) => {
+        if (p.referredBy) throw new ApiError("ref_already", "استخدمت كود دعوة من قبل.");
+        if (!(p.firstSeenAt > 0 && now - p.firstSeenAt < r.windowHours * 3600000)) throw new ApiError("ref_expired", "كود الدعوة بينكتب بس بأول يومين من التسجيل.");
+        p.referredBy = inviter;
+        p.referredAt = now;
+        p.points += r.inviteeBonus;
+        p.totalPointsEarned += r.inviteeBonus;
+        const today = todaySyria(now);
+        return {
+          writes: [
+            creditWrite(env, inviter, 0, { referralCount: 1 }),
+            statsWrite(env, today, { referrals: 1 }),
+            ...referralRewardWrites(env, cfg, p, today),
+          ],
+          result: { bonus: r.inviteeBonus },
+        };
+      });
+    }
+
     default:
       throw new ApiError("not_found", "عملية غير معروفة.", 404);
   }
@@ -553,7 +686,7 @@ async function handleGame(request, env, action) {
     let body = {};
     try { body = await request.json(); } catch (e) {}
     const { p, now, result } = await gameAction(action, body, user, env);
-    return jsonResponse({ ok: true, state: publicState(p, now), result: result || null }, 200);
+    return jsonResponse({ ok: true, state: publicState(p, now, await loadConfig(env)), result: result || null }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "game error", action, error: String(e.message || e) });
@@ -572,6 +705,22 @@ async function handleSign(request, env) {
   const url = "https://offerwall.me/offerwall/" + encodeURIComponent(OFFERWALL_PUBLIC_KEY) + "/" + encodeURIComponent(uid) +
     "?identityExpires=" + expires + "&identitySignature=" + sig;
   return jsonResponse({ url }, 200);
+}
+
+// عمولة الداعي من نقاط جدار المهام تبع المدعو (بتنعكس كمان لو العرض انسحب)
+async function commissionWrites(env, uid, delta) {
+  try {
+    const doc = await fsGetDoc(env, "players/" + uid);
+    const inviter = doc.exists && doc.data.referredBy;
+    if (!inviter) return [];
+    const pct = referralCfg(await loadConfig(env)).commissionPct;
+    const c = Math.round(delta * pct) / 100;
+    if (!c) return [];
+    return [creditWrite(env, inviter, c, { referralEarnings: c })];
+  } catch (e) {
+    console.warn({ message: "commission lookup failed", uid, error: String(e.message || e) });
+    return [];
+  }
 }
 
 async function handlePostback(request, env, ctx) {
@@ -605,7 +754,7 @@ async function handlePostback(request, env, ctx) {
         { fieldPath: "points", increment: { doubleValue: amount } },
         { fieldPath: "totalPointsEarned", increment: { doubleValue: amount } },
       ],
-    }, statsWrite(env, todaySyria(), { offers: 1, offerPoints: amount + 0.0 })]);
+    }, statsWrite(env, todaySyria(), { offers: 1, offerPoints: amount }), ...(await commissionWrites(env, subId, amount))]);
   }
   await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
   if (amount > 0) ctx.waitUntil(sendPush(env, subId, "offerwall", { points: Math.floor(amount) }));
@@ -654,7 +803,7 @@ async function handleOffersWallsPostback(request, env, ctx) {
         { fieldPath: "points", increment: { doubleValue: delta } },
         { fieldPath: "totalPointsEarned", increment: { doubleValue: delta } },
       ],
-    }, statsWrite(env, todaySyria(), reversal ? { reversals: 1, offerPoints: delta } : { offers: 1, offerPoints: delta })]);
+    }, statsWrite(env, todaySyria(), reversal ? { reversals: 1, offerPoints: delta } : { offers: 1, offerPoints: delta }), ...(await commissionWrites(env, uid, delta))]);
   }
   await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
   if (approved && amount > 0) ctx.waitUntil(sendPush(env, uid, "offerwall", { points: Math.floor(amount) }));
@@ -699,7 +848,7 @@ async function handleDownload() {
 async function handleSelftest(env) {
   try {
     const doc = await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "stats-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
+    return jsonResponse({ ok: true, workerVersion: "ref-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
   } catch (e) {
     return jsonResponse({ ok: false, error: String(e.message || e) }, 500);
   }
