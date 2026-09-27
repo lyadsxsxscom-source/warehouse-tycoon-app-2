@@ -2,9 +2,20 @@
 <html lang="ar" dir="rtl">
 <head>
 <script>
-window.onerror = function(msg, url, line, col, err){
-  alert('⚠️ خطأ برمجي:\n' + msg + '\nسطر: ' + line + '\n' + (err?.stack || ''));
-};
+// الأخطاء البرمجية بتنبعت بصمت لـ Firebase Crashlytics (بدل رسالة alert بتخوّف اللاعب)
+(function(){
+  const crash = () => window.Capacitor?.Plugins?.FirebaseCrashlytics;
+  function report(message, stack){
+    const text = String(message || 'unknown error').slice(0, 300) + (stack ? '\n' + String(stack).slice(0, 1500) : '');
+    console.error(text);
+    try{ crash()?.recordException({ message: text }); }catch(e){}
+  }
+  window.reportError = report;
+  window.onerror = function(msg, url, line, col, err){ report(msg + ' @' + line + ':' + col, err?.stack); };
+  window.addEventListener('unhandledrejection', ev => {
+    const r = ev.reason; report('Unhandled promise: ' + (r?.message || r), r?.stack);
+  });
+})();
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -461,7 +472,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "1.8"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "1.9"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -1162,6 +1173,11 @@ fbAuth.onAuthStateChanged(user => {
   currentUser = user;
   updateProfileUI(user);
   if(user){
+    try{
+      const c = window.Capacitor?.Plugins?.FirebaseCrashlytics;
+      c?.setUserId({ userId: user.uid });
+      c?.setCustomKey({ key: 'app_version', value: APP_VERSION, type: 'string' });
+    }catch(e){}
     loginGate.classList.remove('show');
     loadProgress(user.uid).then(() => claimPendingOfferwallCredits());
     watchMail(user.uid);

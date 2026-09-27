@@ -168,6 +168,20 @@ async function fsCommit(env, writes) {
   return r.json();
 }
 
+// ===== الإحصائيات اليومية (analytics/{اليوم}) =====
+// عدّادات ذرّية (increment + appendMissingElements)، ما بتتعارض مع حفظ اللاعب ولا بتحتاج قراءة.
+// uids = مين فات اليوم، newUids = مين أول يوم إله اليوم → منهن بتنحسب DAU/MAU والاحتفاظ D1/D7 بصفحة الأدمن.
+function statsWrite(env, day, incs = {}, arrays = {}) {
+  const updateTransforms = [];
+  for (const [f, v] of Object.entries(incs)) {
+    updateTransforms.push({ fieldPath: f, increment: Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v } });
+  }
+  for (const [f, vals] of Object.entries(arrays)) {
+    if (vals && vals.length) updateTransforms.push({ fieldPath: f, appendMissingElements: { values: vals.map(x => ({ stringValue: String(x) })) } });
+  }
+  return { update: { name: docName(env, "analytics/" + day), fields: {} }, updateMask: { fieldPaths: [] }, updateTransforms };
+}
+
 // إعدادات الأدمن (مع ذاكرة مؤقتة دقيقة وحدة)
 let cachedConfig = null;
 async function loadConfig(env) {
@@ -228,7 +242,9 @@ function normalizePlayer(raw, now, today) {
     p.points = STARTING_POINTS + (Number(p.points) || 0);
     p.totalPointsEarned = STARTING_POINTS + (Number(p.totalPointsEarned) || 0);
     p.shelves = defaultShelves();
+    p.firstSeenDate = today;
   }
+  if (!p.firstSeenDate) p.firstSeenDate = "legacy"; // لاعب قديم قبل نظام الإحصائيات
   const byId = {};
   p.shelves.forEach(s => { if (s && typeof s.id === "number") byId[s.id] = s; });
   p.shelves = Array.from({ length: SHELF_COUNT }, (_, i) => {
@@ -373,10 +389,13 @@ async function gameAction(action, body, user, env) {
       const key = "pending:" + uid;
       const raw = await env.PENDING_CREDITS.get(key);
       const pending = raw ? JSON.parse(raw) : [];
-      return mutatePlayer(env, uid, (p) => {
+      return mutatePlayer(env, uid, (p, now) => {
         const total = pending.reduce((sum, c) => sum + (Number(c.reward) || 0), 0);
         if (total > 0) { p.points += total; p.totalPointsEarned += total; }
+        const today = todaySyria(now);
+        p.lastActiveDate = today;
         return {
+          writes: [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] })],
           result: { credited: total },
           after: pending.length ? () => env.PENDING_CREDITS.delete(key) : null,
         };
@@ -411,6 +430,7 @@ async function gameAction(action, body, user, env) {
         p.workersRented += 1;
         const t = p.tasks.find(x => x.id === "rent1");
         if (t) t.progress = Math.min(t.target || 1, (Number(t.progress) || 0) + 1);
+        return { writes: [statsWrite(env, todaySyria(now), { rents: 1 })] };
       });
     }
 
@@ -440,6 +460,7 @@ async function gameAction(action, body, user, env) {
         p.boostUntil = now + BOOST_MS;
         const t = p.tasks.find(x => x.id === "watch3");
         if (t) t.progress = Math.min(t.target || 3, (Number(t.progress) || 0) + 1);
+        return { writes: [statsWrite(env, todaySyria(now), { ads: 1 })] };
       });
     }
 
@@ -474,7 +495,7 @@ async function gameAction(action, body, user, env) {
           writes: [{
             update: { name: docName(env, "withdrawRequests/" + randomId()), fields: objToFields(request) },
             currentDocument: { exists: false },
-          }],
+          }, statsWrite(env, todaySyria(now), { withdraws: 1 })],
         };
       });
     }
@@ -584,7 +605,7 @@ async function handlePostback(request, env, ctx) {
         { fieldPath: "points", increment: { doubleValue: amount } },
         { fieldPath: "totalPointsEarned", increment: { doubleValue: amount } },
       ],
-    }]);
+    }, statsWrite(env, todaySyria(), { offers: 1, offerPoints: amount + 0.0 })]);
   }
   await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
   if (amount > 0) ctx.waitUntil(sendPush(env, subId, "offerwall", { points: Math.floor(amount) }));
@@ -633,7 +654,7 @@ async function handleOffersWallsPostback(request, env, ctx) {
         { fieldPath: "points", increment: { doubleValue: delta } },
         { fieldPath: "totalPointsEarned", increment: { doubleValue: delta } },
       ],
-    }]);
+    }, statsWrite(env, todaySyria(), reversal ? { reversals: 1, offerPoints: delta } : { offers: 1, offerPoints: delta })]);
   }
   await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
   if (approved && amount > 0) ctx.waitUntil(sendPush(env, uid, "offerwall", { points: Math.floor(amount) }));
@@ -678,7 +699,7 @@ async function handleDownload() {
 async function handleSelftest(env) {
   try {
     const doc = await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "ow2-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
+    return jsonResponse({ ok: true, workerVersion: "stats-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
   } catch (e) {
     return jsonResponse({ ok: false, error: String(e.message || e) }, 500);
   }

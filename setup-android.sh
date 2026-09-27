@@ -202,68 +202,7 @@ public class UnityAdsPlugin extends Plugin {
 EOF
 echo "✓ UnityAdsPlugin.java تمت كتابته"
 
-# 9) إضافة مكتبة AdGem SDK (v4.0.3 — متوافقة مع compileSdk 34 الحالي، لا تحتاج ترقية أدوات البناء)
-if ! grep -q "com.adgem:adgem-android" android/app/build.gradle; then
-  sed -i "/dependencies {/a\\    implementation 'com.adgem:adgem-android:4.0.3'" android/app/build.gradle
-  echo "✓ أضيفت مكتبة AdGem SDK"
-fi
-
-# 10) كتابة بلجن Capacitor مخصص لجدار عروض AdGem
-cat > android/app/src/main/java/com/warehousetycoon/app/AdGemPlugin.java << 'EOF'
-package com.warehousetycoon.app;
-
-import com.getcapacitor.JSObject;
-import com.getcapacitor.Plugin;
-import com.getcapacitor.PluginCall;
-import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.CapacitorPlugin;
-import com.adgem.android.AdGem;
-import com.adgem.android.OfferwallCallback;
-import com.adgem.android.PlayerMetadata;
-
-@CapacitorPlugin(name = "AdGemPlugin")
-public class AdGemPlugin extends Plugin {
-    private OfferwallCallback callback;
-
-    @PluginMethod
-    public void initialize(PluginCall call) {
-        callback = new OfferwallCallback() {
-            @Override public void onOfferwallLoadingStarted() {}
-            @Override public void onOfferwallLoadingFinished() {}
-            @Override public void onOfferwallLoadingFailed(String error) {
-                JSObject ret = new JSObject();
-                ret.put("error", error);
-                notifyListeners("offerwallFailed", ret);
-            }
-            @Override public void onOfferwallRewardReceived(int amount) {
-                JSObject ret = new JSObject();
-                ret.put("amount", amount);
-                notifyListeners("offerwallReward", ret);
-            }
-            @Override public void onOfferwallClosed() {
-                notifyListeners("offerwallClosed", new JSObject());
-            }
-        };
-        AdGem.get().registerOfferwallCallback(callback);
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void setPlayerId(PluginCall call) {
-        String playerId = call.getString("playerId");
-        PlayerMetadata player = PlayerMetadata.Builder.createWithPlayerId(playerId).build();
-        AdGem.get().setPlayerMetaData(player);
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void showOfferwall(PluginCall call) {
-        getActivity().runOnUiThread(() -> AdGem.get().showOfferwall(getActivity()));
-        call.resolve();
-    }
-}
-EOF
-echo "✓ AdGemPlugin.java تمت كتابته"
+# 9-10) AdGem انشالت (استُبدلت بـ Offerwall.me عبر الويب) — تصغير حجم التطبيق
 
 # 10.5) كتابة بلجن Capacitor مخصص لكشف VPN نشط (منع فتح جدار المهام تحت VPN لتجنّب حظر الحسابات)
 cat > android/app/src/main/java/com/warehousetycoon/app/NetworkCheckPlugin.java << 'EOF'
@@ -306,24 +245,7 @@ public class NetworkCheckPlugin extends Plugin {
 EOF
 echo "✓ NetworkCheckPlugin.java تمت كتابته"
 
-# 11) ملف إعدادات AdGem XML (يحدد App ID وسلوك جدار العروض)
-mkdir -p android/app/src/main/res/xml
-cat > android/app/src/main/res/xml/adgem_config.xml << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<adgem-configuration
-    applicationId="33472"
-    offerwallEnabled="true"
-    lockOrientation="false" />
-EOF
-echo "✓ adgem_config.xml تمت كتابته"
-
-# 12) تسجيل ملف الإعدادات بـAndroidManifest.xml (نحطه قبل </application> مباشرة، مكان آمن دايماً)
-if ! grep -q "com.adgem.Config" android/app/src/main/AndroidManifest.xml; then
-  sed -i '\|</application>|i\        <meta-data android:name="com.adgem.Config" android:resource="@xml/adgem_config" />' android/app/src/main/AndroidManifest.xml
-  echo "✓ AndroidManifest.xml عُدّل"
-fi
-
-# 13) تسجيل البلجنز جوّا MainActivity.java (Unity Ads + AdGem)
+# 13) تسجيل البلجنز جوّا MainActivity.java (Unity Ads + كشف VPN)
 cat > android/app/src/main/java/com/warehousetycoon/app/MainActivity.java << 'EOF'
 package com.warehousetycoon.app;
 
@@ -334,13 +256,12 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(UnityAdsPlugin.class);
-        registerPlugin(AdGemPlugin.class);
         registerPlugin(NetworkCheckPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
 EOF
-echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin وAdGemPlugin وNetworkCheckPlugin"
+echo "✓ MainActivity.java عُدّل لتسجيل UnityAdsPlugin وNetworkCheckPlugin"
 
 # 14) تعطيل النسخ الاحتياطي التلقائي لأندرويد (Auto Backup) — لمنع استرجاع جلسة تسجيل دخول من جهاز آخر
 # مرتبط بنفس حساب Google على مستوى النظام، وتسريب حساب مستخدم لحساب آخر على جهاز مختلف
@@ -370,3 +291,21 @@ if ! grep -q "default_notification_icon" android/app/src/main/AndroidManifest.xm
   sed -i '\|</application>|i\        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notif_color" />' android/app/src/main/AndroidManifest.xml
   echo "✓ إعدادات إشعارات السيرفر انضافت للـManifest"
 fi
+
+# 22) Firebase Crashlytics — تقارير الأعطال (بتوصل على Firebase Console > Crashlytics)
+if ! grep -q "firebase-crashlytics-gradle" android/build.gradle; then
+  sed -i "/dependencies {/a\\        classpath 'com.google.firebase:firebase-crashlytics-gradle:3.0.2'" android/build.gradle
+  echo "✓ classpath الـCrashlytics أُضيف"
+fi
+if ! grep -q "com.google.firebase.crashlytics" android/app/build.gradle; then
+  echo "apply plugin: 'com.google.firebase.crashlytics'" >> android/app/build.gradle
+  echo "✓ plugin الـCrashlytics فُعّل"
+fi
+
+# 23) رقم النسخة الحقيقي بأندرويد (بدل 1.0 الافتراضية)
+#     versionName = نفس APP_VERSION بـ www/index.html ، و versionCode = رقم البناء بـ GitHub (بيزيد تلقائياً مع كل بناء)
+APP_VER=$(grep -oP 'const APP_VERSION = "\K[^"]+' www/index.html || echo "1.0")
+VER_CODE=$((100 + ${GITHUB_RUN_NUMBER:-1}))
+sed -i "s/versionCode [0-9]\+/versionCode $VER_CODE/" android/app/build.gradle
+sed -i "s/versionName \"[^\"]*\"/versionName \"$APP_VER\"/" android/app/build.gradle
+echo "✓ رقم النسخة: $APP_VER (versionCode $VER_CODE)"

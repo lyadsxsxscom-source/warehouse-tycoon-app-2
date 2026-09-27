@@ -107,6 +107,10 @@
     background:none; border:1px dashed var(--border); color:var(--dim); border-radius:8px;
     padding:7px; font-size:11px; width:100%; cursor:pointer; font-family:'Cairo', sans-serif;
   }
+  .stat-grid{display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;}
+  .stat-box{background:#00000030; border:1px solid var(--border); border-radius:10px; padding:10px; text-align:center;}
+  .stat-box .v{font-size:20px; font-weight:800; color:var(--text);}
+  .stat-box .l{font-size:11px; color:var(--dim);}
 </style>
 </head>
 <body>
@@ -120,12 +124,40 @@
 
   <div id="panel" style="display:none;">
     <div class="tabs">
+      <div class="tab" id="tabStats">📊 الإحصائيات</div>
       <div class="tab active" id="tabRequests">📥 طلبات الشراء <span id="pendingBadge"></span></div>
       <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
       <div class="tab" id="tabStore">🛠 المتجر</div>
       <div class="tab" id="tabEconomy">⚖️ اقتصاد اللعبة</div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
       <div class="tab" id="tabSettings">⚙️ الإعدادات</div>
+    </div>
+
+    <div id="viewStats" style="display:none;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:13px; color:var(--dim);">أرقام آخر 30 يوم (بتوقيت سوريا)</div>
+          <button class="copy-btn" id="btnReloadStats" style="width:auto; padding:6px 12px; margin:0;">تحديث</button>
+        </div>
+        <div class="stat-grid" id="statGrid"></div>
+        <div class="msg" id="statsMsg"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">شرح سريع</div>
+        <div style="font-size:12px; color:var(--dim); line-height:1.9;">
+          <b style="color:var(--text)">DAU</b>: كم لاعب فتح اللعبة اليوم.
+          <b style="color:var(--text)">MAU</b>: كم لاعب مختلف فتحها خلال آخر 30 يوم (هاد الرقم يلي بتطلبه شبكات العروض).
+          <b style="color:var(--text)">احتفاظ D1</b>: من اللاعبين الجداد، كم واحد رجع تاني يوم.
+          <b style="color:var(--text)">احتفاظ D7</b>: كم واحد رجع بعد أسبوع.
+        </div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:10px;">يوم بيوم (آخر 14 يوم)</div>
+        <table>
+          <thead><tr><th>اليوم</th><th>نشطين</th><th>جداد</th><th>إعلانات</th><th>عروض</th><th>نقاط العروض</th></tr></thead>
+          <tbody id="statsTable"></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="viewRequests">
@@ -337,6 +369,8 @@ document.getElementById('btnCopy').onclick = () => {
 
 // ===== Tabs =====
 const tabRequests = document.getElementById('tabRequests');
+const tabStats = document.getElementById('tabStats');
+const viewStats = document.getElementById('viewStats');
 const tabWithdraws = document.getElementById('tabWithdraws');
 const tabStore = document.getElementById('tabStore');
 const tabEconomy = document.getElementById('tabEconomy');
@@ -348,12 +382,81 @@ const viewStore = document.getElementById('viewStore');
 const viewEconomy = document.getElementById('viewEconomy');
 const viewCodes = document.getElementById('viewCodes');
 const viewSettings = document.getElementById('viewSettings');
-const allTabs = [tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings];
-const allViews = [viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings];
+const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings];
+const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
 }
+tabStats.onclick = () => { activateTab(tabStats, viewStats); loadStats(); };
+
+// ===== الإحصائيات (من analytics/{اليوم} يلي بيكتبها الـWorker) =====
+function statsDay(offset){ // نفس صيغة todaySyria بالـWorker: 2026-9-27
+  const d = new Date(Date.now() + 3*3600*1000 - offset*86400000);
+  return `${d.getUTCFullYear()}-${d.getUTCMonth()+1}-${d.getUTCDate()}`;
+}
+function pct(a, b){ return b ? Math.round(a*100/b) + '%' : '—'; }
+let statsLoading = false;
+async function loadStats(){
+  if(statsLoading) return;
+  statsLoading = true;
+  const msg = document.getElementById('statsMsg');
+  msg.style.color = 'var(--dim)'; msg.textContent = 'عم يحمّل...';
+  try{
+    const days = Array.from({length:30}, (_, i) => statsDay(i)); // [اليوم، مبارح، ...]
+    const docs = await Promise.all(days.map(id => fbDb.collection('analytics').doc(id).get()));
+    const data = docs.map(d => d.exists ? d.data() : {});
+    const uidsOf = i => new Set(data[i]?.uids || []);
+    const newOf = i => data[i]?.newUids || [];
+
+    const mau = new Set(); data.forEach(d => (d.uids || []).forEach(u => mau.add(u)));
+    const wau = new Set(); data.slice(0,7).forEach(d => (d.uids || []).forEach(u => wau.add(u)));
+
+    // الاحتفاظ: لكل يوم فيه لاعبين جداد، كم واحد منهن رجع بعد يوم / بعد 7 أيام
+    function retention(gap){
+      let cohort = 0, back = 0;
+      for(let i = gap; i < 30; i++){
+        const nu = newOf(i); if(!nu.length) continue;
+        const later = uidsOf(i - gap);
+        cohort += nu.length; back += nu.filter(u => later.has(u)).length;
+      }
+      return { cohort, back };
+    }
+    const d1 = retention(1), d7 = retention(7);
+    const t = data[0] || {};
+    const dau = (t.uids || []).length;
+    const ads7 = data.slice(0,7).reduce((a, d) => a + (d.ads || 0), 0);
+    const active7 = data.slice(0,7).reduce((a, d) => a + (d.uids || []).length, 0);
+
+    const boxes = [
+      ['DAU (اليوم)', dau],
+      ['مبارح', (data[1]?.uids || []).length],
+      ['WAU (7 أيام)', wau.size],
+      ['MAU (30 يوم)', mau.size],
+      ['لاعبين جداد اليوم', newOf(0).length],
+      ['إعلانات اليوم', t.ads || 0],
+      ['احتفاظ D1', pct(d1.back, d1.cohort) + (d1.cohort ? ` (${d1.back}/${d1.cohort})` : '')],
+      ['احتفاظ D7', pct(d7.back, d7.cohort) + (d7.cohort ? ` (${d7.back}/${d7.cohort})` : '')],
+      ['إعلان لكل لاعب باليوم (معدل أسبوع)', active7 ? (ads7/active7).toFixed(1) : '—'],
+      ['عروض مكتملة اليوم', t.offers || 0],
+    ];
+    document.getElementById('statGrid').innerHTML = boxes.map(([l, v]) =>
+      `<div class="stat-box"><div class="v">${escapeHtml(String(v))}</div><div class="l">${escapeHtml(l)}</div></div>`).join('');
+
+    document.getElementById('statsTable').innerHTML = days.slice(0,14).map((id, i) => {
+      const d = data[i];
+      return `<tr><td style="direction:ltr">${id}</td><td>${(d.uids||[]).length}</td><td>${(d.newUids||[]).length}</td><td>${d.ads||0}</td><td>${d.offers||0}</td><td>${Math.round(d.offerPoints||0)}</td></tr>`;
+    }).join('');
+
+    const anyData = data.some(d => d.uids);
+    msg.style.color = 'var(--dim)';
+    msg.textContent = anyData ? '' : 'لسا ما في بيانات — الأرقام بتبلش تتجمّع من أول ما يشتغل الـWorker الجديد.';
+  }catch(e){
+    msg.style.color = 'var(--ember)';
+    msg.textContent = 'تعذّر التحميل: ' + e.message + (String(e.message).includes('permission') ? ' — ضيف قاعدة analytics بـFirestore Rules' : '');
+  }finally{ statsLoading = false; }
+}
+document.getElementById('btnReloadStats').onclick = loadStats;
 tabRequests.onclick = () => activateTab(tabRequests, viewRequests);
 tabWithdraws.onclick = () => activateTab(tabWithdraws, viewWithdraws);
 tabStore.onclick = () => activateTab(tabStore, viewStore);
