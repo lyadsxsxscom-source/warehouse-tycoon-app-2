@@ -123,10 +123,8 @@ function bytesToB64url(bytes) {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 function strToB64url(str) { return bytesToB64url(new TextEncoder().encode(str)); }
-function randomId(len = 20) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(len));
-  return [...bytes].map(b => chars[b % chars.length]).join("");
+function randomId() {
+  return crypto.randomUUID().replace(/-/g, ""); // عشوائي بدون انحياز
 }
 
 // ===== صلاحية الـWorker على Firestore =====

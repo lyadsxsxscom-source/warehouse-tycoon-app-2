@@ -515,7 +515,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.1"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.2"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -991,10 +991,12 @@ async function loadGameConfig(){
     renderAll();
   }catch(e){ console.error('game config load failed', e); }
 }
-(async () => {
+// الإعدادات (config) بتنقرأ بس بعد تسجيل الدخول (قواعد Firestore)، فمنحمّلها أول ما يسجّل اللاعب
+let configLoadedFor = null;
+async function loadRemoteConfig(){
   await loadPricing();
   await loadGameConfig();
-})();
+}
 
 let wdUnsub = null;
 let withdrawHistoryDocs = [];
@@ -1293,6 +1295,7 @@ fbAuth.onAuthStateChanged(user => {
   currentUser = user;
   updateProfileUI(user);
   if(user){
+    if(configLoadedFor !== user.uid){ configLoadedFor = user.uid; loadRemoteConfig(); }
     try{
       const c = window.Capacitor?.Plugins?.FirebaseCrashlytics;
       c?.setUserId({ userId: user.uid });
