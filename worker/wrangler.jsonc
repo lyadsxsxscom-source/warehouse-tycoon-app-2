@@ -1,0 +1,16 @@
+// إعدادات نشر الـWorker تلقائياً من GitHub (Cloudflare Workers Builds)
+// ⚠️ أي ربط (binding) مو مكتوب هون بينشال مع كل نشر — لا تشيل PENDING_CREDITS
+// المفاتيح السرية (FIREBASE_SA, OFFERWALL_SECRET, OFFERSWALLS_SECRET) محفوظة بـCloudflare وما بتنكتب هون أبداً
+{
+  "name": "morning-lake-dfd1",
+  "main": "worker.js",
+  "compatibility_date": "2025-02-04",
+  "keep_vars": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": true }
+  },
+  "kv_namespaces": [
+    { "binding": "PENDING_CREDITS", "id": "5f91a8f51ae142eea59fb4720714a2e8" }
+  ]
+}
