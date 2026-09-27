@@ -264,12 +264,20 @@ async function verifyFirebaseToken(token) {
   const parts = (token || "").split(".");
   if (parts.length !== 3) return null;
   const [h, p, s] = parts;
-  const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(h)));
-  const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(p)));
+  let header, payload;
+  try {
+    header = JSON.parse(new TextDecoder().decode(b64urlToBytes(h)));
+    payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(p)));
+  } catch (e) { return null; }
   const now = Math.floor(Date.now() / 1000);
   if (payload.aud !== FIREBASE_PROJECT_ID) return null;
   if (payload.iss !== "https://securetoken.google.com/" + FIREBASE_PROJECT_ID) return null;
-  if (!payload.sub || payload.exp < now) return null;
+  const SKEW = 60; // سماحية فرق الساعة (ثانية)
+  if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
+  if (typeof payload.sub !== "string" || !payload.sub || payload.sub.length > 128) return null;
+  if (!Number.isFinite(payload.exp) || payload.exp < now) return null;
+  if (!Number.isFinite(payload.iat) || payload.iat > now + SKEW) return null;
+  if (!Number.isFinite(payload.auth_time) || payload.auth_time > now + SKEW) return null;
   const jwks = await getJwks();
   let jwk = jwks.keys.find(k => k.kid === header.kid);
   if (!jwk) { cachedJwks = null; jwk = (await getJwks()).keys.find(k => k.kid === header.kid); } // جوجل بدّلت مفاتيحها
@@ -471,13 +479,20 @@ async function gameAction(action, body, user, env) {
       const key = "pending:" + uid;
       const raw = await env.PENDING_CREDITS.get(key);
       const pending = raw ? JSON.parse(raw) : [];
-      return mutatePlayer(env, uid, (p, now) => {
-        const total = pending.reduce((sum, c) => sum + (Number(c.reward) || 0), 0);
+      // نقاط النظام القديم: بتنضاف مرة وحدة بس بفضل مستند pendingClaims بنفس الـcommit (KV مو قفل)
+      const claimPath = raw ? "pendingClaims/" + (await sha256Hex(uid + "|" + raw)).slice(0, 40) : null;
+      return mutatePlayer(env, uid, async (p, now) => {
+        let total = 0;
+        const claimWrites = [];
+        if (claimPath && !(await fsGetDoc(env, claimPath)).exists) {
+          total = pending.reduce((sum, c) => { const n = Number(c.reward); return sum + (Number.isFinite(n) && n > 0 ? n : 0); }, 0);
+          claimWrites.push({ update: { name: docName(env, claimPath), fields: objToFields({ uid, amount: total, type: "legacy_pending", createdAt: now }) }, currentDocument: { exists: false } });
+        }
         if (total > 0) { p.points += total; p.totalPointsEarned += total; }
         const today = todaySyria(now);
         if (p.lastActiveDate !== today) p.activeDays += 1;
         p.lastActiveDate = today;
-        const writes = [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] })];
+        const writes = [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] }), ...claimWrites];
         if (!p.referralCode) {
           // كود دعوة فريد: مستند referralCodes/{الكود} لازم يكون جديد، ولو صار تكرار بتنعاد المحاولة بكود تاني
           p.referralCode = newRefCode();
@@ -489,7 +504,7 @@ async function gameAction(action, body, user, env) {
           writes,
           result: { credited: total },
           after: async () => {
-            if (pending.length) await env.PENDING_CREDITS.delete(key);
+            if (pending.length) await env.PENDING_CREDITS.delete(key).catch(() => {}); // تنظيف بس، الحماية بـ Firestore
             if (refWrites.length) await sendPush(env, p.referredBy, "referral", { points: referralCfg(cfg).inviterReward });
           },
         };
@@ -896,9 +911,20 @@ async function handleOffersWallsPostback(request, env, ctx) {
     const okKey = "ow2:" + tx + ":ok", revKey = "ow2:" + tx + ":rev";
     const amount = validReward(Math.abs(Number(params.get("reward"))));
     if (amount && (await env.PENDING_CREDITS.get(okKey)) && !(await env.PENDING_CREDITS.get(revKey))) {
-      await env.PENDING_CREDITS.put(revKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
-      await fsCommit(env, [creditWrite(env, uid, -amount, { reversedPoints: amount }), statsWrite(env, todaySyria(), { reversals: 1, offerPoints: -amount })]);
-      result = "reversed_legacy";
+      // القفل الحقيقي: مستند offerLegacyReversal بنفس الـcommit يلي بيخصم (مرة وحدة بس)
+      const markerPath = "offerLegacyReversal/" + (await sha256Hex("offerswalls|" + tx)).slice(0, 40);
+      try {
+        await fsCommit(env, [
+          { update: { name: docName(env, markerPath), fields: objToFields({ uid, amount, createdAt: Date.now() }) }, currentDocument: { exists: false } },
+          creditWrite(env, uid, -amount, { reversedPoints: amount }),
+          statsWrite(env, todaySyria(), { reversals: 1, offerPoints: -amount }),
+        ]);
+        result = "reversed_legacy";
+        await env.PENDING_CREDITS.put(revKey, "1", { expirationTtl: 60 * 60 * 24 * 180 }).catch(() => {});
+      } catch (e) {
+        if (!isAlreadyExists(e)) throw e;
+        result = "duplicate";
+      }
     }
   }
   console.info({ message: "OffersWalls reversal", result });
@@ -941,11 +967,13 @@ async function handleDownload() {
 }
 
 async function handleSelftest(env) {
+  // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
-    const doc = await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "sec-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
+    await fsGetDoc(env, "config/appVersion");
+    return jsonResponse({ ok: true, workerVersion: "sec-2" }, 200);
   } catch (e) {
-    return jsonResponse({ ok: false, error: String(e.message || e) }, 500);
+    console.error({ message: "selftest failed", error: String(e.message || e) });
+    return jsonResponse({ ok: false }, 500);
   }
 }
 
