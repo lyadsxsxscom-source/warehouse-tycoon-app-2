@@ -1,4 +1,4 @@
-// إعدادات نشر الـWorker تلقائياً من GitHub (Cloudflare Workers Builds)
+// إعدادات نشر الـWorker تلقائياً من GitHub (Cloudflare Workers Builds) — Root directory: worker
 // ⚠️ أي ربط (binding) مو مكتوب هون بينشال مع كل نشر — لا تشيل PENDING_CREDITS
 // المفاتيح السرية (FIREBASE_SA, OFFERWALL_SECRET, OFFERSWALLS_SECRET) محفوظة بـCloudflare وما بتنكتب هون أبداً
 {
