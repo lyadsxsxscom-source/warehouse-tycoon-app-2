@@ -515,7 +515,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.0"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.1"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -832,7 +832,7 @@ function renderDaily(){
   const nextIdx = claimedToday ? -1 : doneCount;
   document.getElementById('dailyDays').innerHTML = dailyInfo.rewards.map((r, i) =>
     `<div class="daily-day ${i < doneCount ? 'done' : ''} ${i === nextIdx ? 'today' : ''}">${i < doneCount ? '✓' : 'يوم ' + (i+1)}<b>${r}</b></div>`).join('');
-  document.getElementById('dailyStreakLbl').textContent = doneCount > 0 ? `🔥 ${doneCount} أيام متتالية` : '';
+  document.getElementById('dailyStreakLbl').textContent = doneCount > 0 ? `🔥 سلسلة ${doneCount}/7` : '';
   const btn = document.getElementById('btnDaily');
   btn.disabled = claimedToday;
   btn.textContent = claimedToday ? 'ارجع بكرا لمكافأة جديدة ✓' : `استلم ${dailyInfo.rewards[nextIdx]} نقطة`;

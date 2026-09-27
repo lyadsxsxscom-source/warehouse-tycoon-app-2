@@ -80,7 +80,6 @@ function referralRewardWrites(env, cfg, p, today) {
 
 function newTasks() {
   return [
-    { id: "login",  label: "تسجيل الدخول اليوم", reward: 20, done: true, claimed: false },
     { id: "watch3", label: "شاهد 3 إعلانات",     reward: 30, progress: 0, target: 3, claimed: false },
     { id: "rent1",  label: "استأجر عامل واحد",   reward: 40, progress: 0, target: 1, claimed: false },
   ];

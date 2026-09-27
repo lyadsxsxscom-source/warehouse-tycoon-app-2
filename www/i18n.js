@@ -185,7 +185,7 @@
   const PATTERNS = [
     ["يوم {0}", "{0}. gün", "Day {0}"],
     ["استلم {0} نقطة", "{0} puan al", "Claim {0} points"],
-    ["🔥 {0} أيام متتالية", "🔥 {0} gün üst üste", "🔥 {0}-day streak"],
+    ["🔥 سلسلة {0}/7", "🔥 Seri {0}/7", "🔥 Streak {0}/7"],
     ["صاحبك بياخد {0} نقطة فوراً، وإنت بتاخد {1} لما يصير نشط + {2}% دايماً من أرباحه بجدار المهام", "Arkadaşın hemen {0} puan alır, o aktif olunca sen {1} puan + görev duvarı kazancının her zaman %{2}'sini alırsın", "Your friend gets {0} points right away; you get {1} when they become active + {2}% of their offerwall earnings forever"],
     ["افتح اللعبة {0} أيام مختلفة ({1}/{2})", "Oyunu {0} farklı günde aç ({1}/{2})", "Open the game on {0} different days ({1}/{2})"],
     ["شاهد {0} إعلانات ({1}/{2})", "{0} reklam izle ({1}/{2})", "Watch {0} ads ({1}/{2})"],
