@@ -253,6 +253,13 @@ function workerSpec(cfg, coin, kind) {
 }
 
 // ===== التحقق من هوية المستخدم (توكن Firebase) =====
+let cachedJwks = null; // مفاتيح جوجل العامة لتوقيع التوكن (بتنجدد كل ساعة)
+async function getJwks() {
+  if (cachedJwks && cachedJwks.at > Date.now() - 3600000) return cachedJwks.value;
+  const value = await (await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")).json();
+  cachedJwks = { at: Date.now(), value };
+  return value;
+}
 async function verifyFirebaseToken(token) {
   const parts = (token || "").split(".");
   if (parts.length !== 3) return null;
@@ -263,8 +270,9 @@ async function verifyFirebaseToken(token) {
   if (payload.aud !== FIREBASE_PROJECT_ID) return null;
   if (payload.iss !== "https://securetoken.google.com/" + FIREBASE_PROJECT_ID) return null;
   if (!payload.sub || payload.exp < now) return null;
-  const jwks = await (await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")).json();
-  const jwk = jwks.keys.find(k => k.kid === header.kid);
+  const jwks = await getJwks();
+  let jwk = jwks.keys.find(k => k.kid === header.kid);
+  if (!jwk) { cachedJwks = null; jwk = (await getJwks()).keys.find(k => k.kid === header.kid); } // جوجل بدّلت مفاتيحها
   if (!jwk) return null;
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(s), new TextEncoder().encode(h + "." + p));
@@ -504,7 +512,7 @@ async function gameAction(action, body, user, env) {
     case "rent": {
       const id = Number(body.shelfId);
       const coin = body.coin, kind = body.kind;
-      if (!["btc", "eth"].includes(coin) || !DURATIONS[kind]) throw new ApiError("bad_worker", "نوع عامل غير صحيح.");
+      if (!["btc", "eth"].includes(coin) || typeof kind !== "string" || !Object.hasOwn(DURATIONS, kind)) throw new ApiError("bad_worker", "نوع عامل غير صحيح.");
       return mutatePlayer(env, uid, (p, now) => {
         const s = p.shelves[id];
         if (!s || !s.unlocked) throw new ApiError("bad_shelf", "هذا الرف مقفول.");
@@ -561,8 +569,10 @@ async function gameAction(action, body, user, env) {
       const address = String(body.address || "").trim();
       const network = String(body.network || "").slice(0, 40);
       if (!["btc", "eth"].includes(coin)) throw new ApiError("bad_coin", "عملة غير صحيحة.");
+      const NETWORKS = { btc: ["BTC", "BEP20"], eth: ["ERC20", "BEP20"] }; // نفس الخيارات بالتطبيق
+      if (!NETWORKS[coin].includes(network)) throw new ApiError("bad_network", "الشبكة ما بتناسب العملة المختارة.");
       if (!address || address.length > 200) throw new ApiError("bad_address", "حط عنوان محفظة صحيح.");
-      if (!(amount > 0)) throw new ApiError("bad_amount", "حط مبلغ صحيح.");
+      if (!Number.isFinite(amount) || !(amount > 0)) throw new ApiError("bad_amount", "حط مبلغ صحيح.");
       return mutatePlayer(env, uid, (p, now) => {
         if (amount > p.wallet[coin]) throw new ApiError("not_enough_balance", "المبلغ أكبر من رصيدك المتاح.");
         const minUsd = cfg.pricing.minWithdrawUsd > 0 ? cfg.pricing.minWithdrawUsd : 20;
@@ -706,58 +716,140 @@ async function handleSign(request, env) {
   return jsonResponse({ url }, 200);
 }
 
-// عمولة الداعي من نقاط جدار المهام تبع المدعو (بتنعكس كمان لو العرض انسحب)
-async function commissionWrites(env, uid, delta) {
+// ===== جدران المهام: تسجيل دائم لكل عملية بـ Firestore (offerTx) =====
+// مهم: KV مو قفل مالي (ممكن طلبين بنفس اللحظة يمرقوا الاثنين). الحماية الحقيقية هون:
+// مستند offerTx/{المزوّد_بصمة_رقم_العملية} بينكتب بنفس الـcommit يلي بيضيف النقاط، بشرط إنه ما يكون موجود.
+// إذا وصل نفس الطلب مرتين، الـcommit التاني بيفشل كله (ولا نقطة بتنضاف) → بنعتبره مكرر.
+// والسحب العكسي بيخصم المبلغ الأصلي المسجّل عندنا، مو المبلغ يلي بيبعته المزوّد بلحظتها.
+const MAX_OFFER_REWARD = 100000; // أقصى نقاط لعرض واحد (~166$ على سعر 600 نقطة = 1$)
+function validReward(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= MAX_OFFER_REWARD ? n : null;
+}
+function validId(v, max = 128) {
+  return typeof v === "string" && v.length > 0 && v.length <= max && !v.includes("/") ? v : null;
+}
+function safeEqual(a, b) { // مقارنة توقيع بوقت ثابت
+  a = String(a); b = String(b);
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+async function sha256Hex(str) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, "0")).join("");
+}
+async function offerTxPath(provider, txId) {
+  return "offerTx/" + provider + "_" + (await sha256Hex(txId)).slice(0, 40);
+}
+function isAlreadyExists(e) {
+  return /ALREADY_EXISTS/.test(String(e && e.message)) || (e && e.conflict);
+}
+// مين الداعي وقديش عمولته (بتنحفظ بسجل العملية لحتى تنعكس بالضبط لو العرض انسحب)
+async function commissionInfo(env, uid, amount) {
   try {
     const doc = await fsGetDoc(env, "players/" + uid);
     const inviter = doc.exists && doc.data.referredBy;
-    if (!inviter) return [];
+    if (!inviter) return { inviter: "", commission: 0 };
     const pct = referralCfg(await loadConfig(env)).commissionPct;
-    const c = Math.round(delta * pct) / 100;
-    if (!c) return [];
-    return [creditWrite(env, inviter, c, { referralEarnings: c })];
+    return { inviter, commission: Math.round(amount * pct) / 100 };
   } catch (e) {
-    console.warn({ message: "commission lookup failed", uid, error: String(e.message || e) });
-    return [];
+    console.warn({ message: "commission lookup failed", error: String(e.message || e) });
+    return { inviter: "", commission: 0 };
   }
 }
 
+// إضافة نقاط عرض مرة وحدة بس. بترجع true إذا انضافت، false إذا كانت مكررة.
+async function creditOfferOnce(env, provider, txId, uid, amount) {
+  const path = await offerTxPath(provider, txId);
+  const { inviter, commission } = await commissionInfo(env, uid, amount);
+  const writes = [
+    {
+      update: { name: docName(env, path), fields: objToFields({
+        provider, transactionId: txId, uid, originalReward: amount,
+        inviter, commission, status: "credited", createdAt: Date.now(),
+      }) },
+      currentDocument: { exists: false },
+    },
+    creditWrite(env, uid, amount),
+    statsWrite(env, todaySyria(), { offers: 1, offerPoints: amount }),
+  ];
+  if (inviter && commission) writes.push(creditWrite(env, inviter, commission, { referralEarnings: commission }));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await fsCommit(env, writes);
+      return true;
+    } catch (e) {
+      if (!isAlreadyExists(e)) throw e;
+      // تأكد إنه فعلاً مكرر (مو تعارض عابر): إذا السجل موجود → مكرر، وإلا منعيد المحاولة
+      if ((await fsGetDoc(env, path)).exists) return false;
+    }
+  }
+  throw new Error("offer credit busy");
+}
+
+// سحب عكسي: بيخصم المبلغ الأصلي المسجّل مرة وحدة بس (مع عمولة الداعي).
+// الرصيد ممكن يصير بالسالب عن قصد: إذا الغشاش صرف النقاط قبل السحب، ما لازم يطلع رابح.
+async function reverseOfferOnce(env, provider, txId, uid) {
+  const path = await offerTxPath(provider, txId);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const doc = await fsGetDoc(env, path);
+    if (!doc.exists) return "not_found";
+    const t = doc.data;
+    if (t.status === "reversed") return "duplicate";
+    if (t.uid !== uid) return "uid_mismatch";
+    const amt = Number(t.originalReward) || 0;
+    const now = Date.now();
+    const writes = [
+      {
+        update: { name: docName(env, path), fields: objToFields({ status: "reversed", reversedAt: now }) },
+        updateMask: { fieldPaths: ["status", "reversedAt"] },
+        currentDocument: { updateTime: doc.updateTime },
+      },
+      creditWrite(env, uid, -amt, { reversedPoints: amt }),
+      statsWrite(env, todaySyria(), { reversals: 1, offerPoints: -amt }),
+    ];
+    const c = Number(t.commission) || 0;
+    if (t.inviter && c) writes.push(creditWrite(env, t.inviter, -c, { referralEarnings: -c }));
+    try {
+      await fsCommit(env, writes);
+      return "reversed";
+    } catch (e) {
+      if (e.conflict && attempt < 3) continue;
+      throw e;
+    }
+  }
+  return "busy";
+}
+
+// ===== جدار المهام الأول: Offerwall.me (توقيع MD5 حسب مواصفاتهم الرسمية) =====
 async function handlePostback(request, env, ctx) {
   const params = new URLSearchParams(await request.text());
-  const subId = params.get("subId") || "";
-  const transId = params.get("transId") || "";
-  const reward = params.get("reward") || "0";
+  const subId = validId(params.get("subId") || "");
+  const transId = validId(params.get("transId") || "", 200);
+  const reward = params.get("reward") || "";
   const status = params.get("status") || "";
-  const signature = params.get("signature") || "";
-  console.info({ message: "Postback received", subId, transId, reward, status });
-
+  const signature = (params.get("signature") || "").toLowerCase();
   if (!subId || !transId || !signature) return new Response("Missing fields", { status: 400 });
-  if (subId.includes("/") || subId.length > 128) return new Response("Bad subId", { status: 400 });
   const expectedSig = await md5Hex(subId + transId + reward + env.OFFERWALL_SECRET);
-  if (expectedSig !== signature) {
-    console.warn({ message: "Invalid signature", subId, transId });
+  if (!safeEqual(expectedSig, signature)) {
+    console.warn({ message: "Offerwall invalid signature" });
     return new Response("Invalid signature", { status: 403 });
   }
   if (status !== "1") return new Response("OK - not approved", { status: 200 });
-
-  const doneKey = "done:" + transId;
-  if (await env.PENDING_CREDITS.get(doneKey)) return new Response("OK - duplicate", { status: 200 });
-
-  const amount = parseFloat(reward) || 0;
-  if (amount > 0) {
-    // إضافة ذرّية مباشرة لرصيد اللاعب (بدون ما تمر بالجوال)
-    await fsCommit(env, [{
-      update: { name: docName(env, "players/" + subId), fields: {} },
-      updateMask: { fieldPaths: [] },
-      updateTransforms: [
-        { fieldPath: "points", increment: { doubleValue: amount } },
-        { fieldPath: "totalPointsEarned", increment: { doubleValue: amount } },
-      ],
-    }, statsWrite(env, todaySyria(), { offers: 1, offerPoints: amount }), ...(await commissionWrites(env, subId, amount))]);
+  const amount = validReward(reward);
+  if (!amount) {
+    console.warn({ message: "Offerwall invalid reward", reward });
+    return new Response("OK - invalid reward", { status: 200 });
   }
-  await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
-  if (amount > 0) ctx.waitUntil(sendPush(env, subId, "offerwall", { points: Math.floor(amount) }));
-  return new Response("OK", { status: 200 });
+  // عمليات قديمة انحسبت قبل نظام offerTx (كانت متسجلة بـ KV)
+  if (await env.PENDING_CREDITS.get("done:" + transId)) return new Response("OK - duplicate", { status: 200 });
+
+  const credited = await creditOfferOnce(env, "offerwall", transId, subId, amount);
+  console.info({ message: "Offerwall postback", credited, amount });
+  if (credited) ctx.waitUntil(sendPush(env, subId, "offerwall", { points: Math.floor(amount) }));
+  return new Response(credited ? "OK" : "OK - duplicate", { status: 200 });
 }
 
 // ===== جدار المهام التاني: OffersWalls (site.offerswalls.com) =====
@@ -770,42 +862,46 @@ async function handleOffersWallsPostback(request, env, ctx) {
   const params = new URL(raw).searchParams;
   const signature = (params.get("signature") || "").toLowerCase();
   const expected = await hmacHex(env.OFFERSWALLS_SECRET, raw.slice(0, cut));
-  if (signature !== expected) {
+  if (!safeEqual(signature, expected)) {
     console.warn({ message: "OffersWalls invalid signature" });
     return new Response("invalid signature", { status: 403 });
   }
-  const uid = params.get("user_id") || "";
-  const tx = params.get("tx") || "";
+  const uid = validId(params.get("user_id") || "");
+  const tx = validId(params.get("tx") || "", 200);
   const status = (params.get("status") || "").toLowerCase();
   const state = (params.get("offer_state") || "").toUpperCase();
-  const amount = Math.abs(parseFloat(params.get("reward") || "0")) || 0;
-  console.info({ message: "OffersWalls postback", uid, tx, status, state, amount });
-  if (!uid || !tx || uid.includes("/") || uid.length > 128) return new Response("bad request", { status: 400 });
+  if (!uid || !tx) return new Response("bad request", { status: 400 });
 
   const reversal = status === "rejected" || OW2_REVERSAL_STATES.includes(state);
   const approved = !reversal && status === "approved";
   if (!approved && !reversal) return new Response("ok - ignored", { status: 200 });
 
-  const doneKey = "ow2:" + tx + (reversal ? ":rev" : ":ok");
-  if (await env.PENDING_CREDITS.get(doneKey)) return new Response("duplicate", { status: 200 });
-  if (reversal && !(await env.PENDING_CREDITS.get("ow2:" + tx + ":ok"))) {
-    // ما انضاف أصلاً، فما في شي نسحبه
-    await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
-    return new Response("ok", { status: 200 });
+  if (approved) {
+    const amount = validReward(params.get("reward"));
+    if (!amount) {
+      console.warn({ message: "OffersWalls invalid reward" });
+      return new Response("ok - invalid reward", { status: 200 });
+    }
+    if (await env.PENDING_CREDITS.get("ow2:" + tx + ":ok")) return new Response("duplicate", { status: 200 }); // عملية قديمة
+    const credited = await creditOfferOnce(env, "offerswalls", tx, uid, amount);
+    console.info({ message: "OffersWalls credit", credited, amount });
+    if (credited) ctx.waitUntil(sendPush(env, uid, "offerwall", { points: Math.floor(amount) }));
+    return new Response(credited ? "ok" : "duplicate", { status: 200 });
   }
-  if (amount > 0) {
-    const delta = reversal ? -amount : amount;
-    await fsCommit(env, [{
-      update: { name: docName(env, "players/" + uid), fields: {} },
-      updateMask: { fieldPaths: [] },
-      updateTransforms: [
-        { fieldPath: "points", increment: { doubleValue: delta } },
-        { fieldPath: "totalPointsEarned", increment: { doubleValue: delta } },
-      ],
-    }, statsWrite(env, todaySyria(), reversal ? { reversals: 1, offerPoints: delta } : { offers: 1, offerPoints: delta }), ...(await commissionWrites(env, uid, delta))]);
+
+  // سحب عكسي
+  let result = await reverseOfferOnce(env, "offerswalls", tx, uid);
+  if (result === "not_found") {
+    // عملية قديمة انضافت قبل نظام offerTx: منعكسها مرة وحدة (قفل KV هون لأنه ما عنا سجل أصلي)
+    const okKey = "ow2:" + tx + ":ok", revKey = "ow2:" + tx + ":rev";
+    const amount = validReward(Math.abs(Number(params.get("reward"))));
+    if (amount && (await env.PENDING_CREDITS.get(okKey)) && !(await env.PENDING_CREDITS.get(revKey))) {
+      await env.PENDING_CREDITS.put(revKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
+      await fsCommit(env, [creditWrite(env, uid, -amount, { reversedPoints: amount }), statsWrite(env, todaySyria(), { reversals: 1, offerPoints: -amount })]);
+      result = "reversed_legacy";
+    }
   }
-  await env.PENDING_CREDITS.put(doneKey, "1", { expirationTtl: 60 * 60 * 24 * 180 });
-  if (approved && amount > 0) ctx.waitUntil(sendPush(env, uid, "offerwall", { points: Math.floor(amount) }));
+  console.info({ message: "OffersWalls reversal", result });
   return new Response("ok", { status: 200 });
 }
 
@@ -847,7 +943,7 @@ async function handleDownload() {
 async function handleSelftest(env) {
   try {
     const doc = await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "ref-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
+    return jsonResponse({ ok: true, workerVersion: "sec-1", firestore: "connected", offerwallSecret: !!env.OFFERWALL_SECRET, offerswallsSecret: !!env.OFFERSWALLS_SECRET, appVersionDocExists: doc.exists }, 200);
   } catch (e) {
     return jsonResponse({ ok: false, error: String(e.message || e) }, 500);
   }
