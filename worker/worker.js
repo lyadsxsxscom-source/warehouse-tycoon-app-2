@@ -46,6 +46,26 @@ function dailyRewards(cfg) {
   const arr = cfg.game.daily && cfg.game.daily.rewards;
   return Array.isArray(arr) && arr.length === 7 && arr.every(n => typeof n === "number" && n >= 0) ? arr : DEFAULT_DAILY_REWARDS;
 }
+// إعدادات الإعلانات والمهام اليومية (الأدمن بيعدّلها من gameConfig.ads و gameConfig.tasks)
+const DEFAULT_TASK_REWARDS = { watch3: 30, rent1: 40 };
+function adsCfg(cfg) {
+  const c = (cfg && cfg.game && cfg.game.ads) || {};
+  const pts = Number(c.rewardPoints);
+  const lim = Number(c.dailyLimit);
+  return {
+    rewardPoints: Number.isFinite(pts) && pts >= 0 && pts <= 1000 ? pts : AD_REWARD_POINTS,
+    dailyLimit: Number.isFinite(lim) && lim >= 0 && lim <= 1000 ? Math.floor(lim) : AD_DAILY_LIMIT,
+  };
+}
+function taskRewards(cfg) {
+  const c = (cfg && cfg.game && cfg.game.tasks) || {};
+  const out = { ...DEFAULT_TASK_REWARDS };
+  for (const k of Object.keys(out)) {
+    const v = Number(c[k]);
+    if (Number.isFinite(v) && v >= 0 && v <= 10000) out[k] = v;
+  }
+  return out;
+}
 function referralCfg(cfg) {
   const r = { ...DEFAULT_REFERRAL };
   const c = cfg.game.referral || {};
@@ -78,10 +98,11 @@ function referralRewardWrites(env, cfg, p, today) {
   ];
 }
 
-function newTasks() {
+function newTasks(cfg) {
+  const r = taskRewards(cfg);
   return [
-    { id: "watch3", label: "شاهد 3 إعلانات",     reward: 30, progress: 0, target: 3, claimed: false },
-    { id: "rent1",  label: "استأجر عامل واحد",   reward: 40, progress: 0, target: 1, claimed: false },
+    { id: "watch3", label: "شاهد 3 إعلانات",     reward: r.watch3, progress: 0, target: 3, claimed: false },
+    { id: "rent1",  label: "استأجر عامل واحد",   reward: r.rent1,  progress: 0, target: 1, claimed: false },
   ];
 }
 
@@ -295,7 +316,7 @@ async function requireUser(request) {
 function defaultShelves() {
   return Array.from({ length: SHELF_COUNT }, (_, i) => ({ id: i, unlocked: i < 2, worker: null }));
 }
-function normalizePlayer(raw, now, today) {
+function normalizePlayer(raw, now, today, cfg) {
   const p = raw ? { ...raw } : {};
   if (!Array.isArray(p.shelves)) {
     // لاعب جديد (أو مستند انعمل من postback قبل أول فتح): نعطيه البداية
@@ -334,7 +355,7 @@ function normalizePlayer(raw, now, today) {
   p.boostUntil = Number(p.boostUntil) || 0;
   if (!p.lastSettleAt) p.lastSettleAt = now; // لاعب قديم: الحساب السيرفري بيبلّش من هلق
   if (p.dailyDate !== today || !Array.isArray(p.tasks)) {
-    p.tasks = newTasks();
+    p.tasks = newTasks(cfg);
     p.dailyDate = today;
     p.adsToday = 0;
   }
@@ -365,6 +386,7 @@ function publicState(p, now, cfg) {
     adsWatched: p.adsWatched, workersRented: p.workersRented,
     boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now,
     serverToday: todaySyria(now),
+    ads: cfg ? adsCfg(cfg) : { rewardPoints: AD_REWARD_POINTS, dailyLimit: AD_DAILY_LIMIT },
     daily: { streak: p.dailyStreak, lastClaim: p.lastDailyClaim, rewards: cfg ? dailyRewards(cfg) : DEFAULT_DAILY_REWARDS },
     referral: (() => {
       const r = cfg ? referralCfg(cfg) : DEFAULT_REFERRAL;
@@ -385,7 +407,8 @@ async function mutatePlayer(env, uid, fn) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const doc = await fsGetDoc(env, path);
     const now = Date.now();
-    const p = normalizePlayer(doc.data, now, todaySyria(now));
+    const cfg = await loadConfig(env);
+    const p = normalizePlayer(doc.data, now, todaySyria(now), cfg);
     settle(p, now);
     const extra = (await fn(p, now)) || {};
     p.updatedAt = now;
@@ -557,9 +580,10 @@ async function gameAction(action, body, user, env) {
     case "adReward": {
       return mutatePlayer(env, uid, (p, now) => {
         if (now - p.lastAdAt < AD_MIN_INTERVAL_MS) throw new ApiError("too_fast", "استنى شوي قبل الإعلان الجاي.");
-        if (p.adsToday >= AD_DAILY_LIMIT) throw new ApiError("daily_limit", "وصلت للحد اليومي لمكافآت الإعلانات.");
-        p.points += AD_REWARD_POINTS;
-        p.totalPointsEarned += AD_REWARD_POINTS;
+        const ads = adsCfg(cfg);
+        if (p.adsToday >= ads.dailyLimit) throw new ApiError("daily_limit", "وصلت للحد اليومي لمكافآت الإعلانات.");
+        p.points += ads.rewardPoints;
+        p.totalPointsEarned += ads.rewardPoints;
         p.adsWatched += 1;
         p.adsToday += 1;
         p.lastAdAt = now;

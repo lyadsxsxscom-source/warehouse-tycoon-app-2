@@ -215,6 +215,14 @@
         <div class="msg" id="referralMsg"></div>
       </div>
       <div class="card">
+        <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">📺 الإعلانات والمهام اليومية</div>
+        <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">نقاط الإعلان والحد اليومي بيطبّقوا فوراً (خلال دقيقة). مكافآت المهام اليومية بتطبّق على مهام اليوم الجاي (المهام يلي انعملت اليوم بتضل بمكافأتها القديمة). النص بالتطبيق لسا بيعرض "+2" لحد ما ننزّل نسخة جديدة.</div>
+        <div id="adsList"></div>
+        <div id="adsEstimate" style="font-size:12px; color:var(--amber); margin:6px 0 10px; line-height:1.7;"></div>
+        <button class="btn" id="btnSaveAds">حفظ إعدادات الإعلانات والمهام</button>
+        <div class="msg" id="adsMsg"></div>
+      </div>
+      <div class="card">
         <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:6px;">روابط كسب إضافية (جدران مهام/عروض جديدة)</div>
         <div style="font-size:11px; color:var(--dim); margin-bottom:10px;">تظهر كخيار إضافي بقائمة "كسب نقاط" داخل التطبيق مباشرة، بدون أي تعديل بالكود أو بناء نسخة جديدة. تُفتح داخل التطبيق. لو الرابط يحتاج معرّف المستخدم، استخدم <span style="direction:ltr; display:inline-block;">{uid}</span> بأي مكان بالرابط وبيتعوّض تلقائياً.</div>
         <div id="earnLinksList"></div>
@@ -992,13 +1000,40 @@ const REFERRAL_FIELDS = [
   ['commissionPct', 'عمولة الداعي الدائمة من جدار المهام (%) — أقصى شي 50', 10],
   ['windowHours', 'المدة المسموحة لكتابة الكود بعد أول دخول (ساعات)', 48],
 ];
+const ADS_FIELDS = [
+  ['ads', 'rewardPoints', 'نقاط الإعلان الواحد', 2],
+  ['ads', 'dailyLimit', 'الحد اليومي لمكافآت الإعلانات (عدد الإعلانات)', 40],
+  ['tasks', 'watch3', 'مكافأة مهمة "شاهد 3 إعلانات" (نقاط)', 30],
+  ['tasks', 'rent1', 'مكافأة مهمة "استأجر عامل واحد" (نقاط)', 40],
+];
+let adsData = { ads: {}, tasks: {} };
+function adsVal(g, k, def){ const v = adsData[g] && adsData[g][k]; return typeof v === 'number' ? v : def; }
+function renderAdsEstimate(){
+  const el = document.getElementById('adsEstimate');
+  if(!el) return;
+  const read = (g, k, def) => { const inp = document.querySelector(`#adsList input[data-g="${g}"][data-k="${k}"]`); const v = inp ? Number(inp.value) : NaN; return v >= 0 ? v : def; };
+  const adPts = read('ads','rewardPoints',2) * read('ads','dailyLimit',40);
+  const taskPts = read('tasks','watch3',30) + read('tasks','rent1',40);
+  const dailyAvg = dailyData.reduce((a, b) => a + (Number(b) || 0), 0) / 7;
+  const total = adPts + taskPts + dailyAvg;
+  const usd = total / POINTS_PER_USD_PRODUCTION;
+  el.innerHTML = `أقصى نقاط مجانية للاعب ملتزم باليوم ≈ <b>${Math.round(total)}</b> نقطة (إعلانات ${Math.round(adPts)} + مهام ${taskPts} + يومية ${Math.round(dailyAvg)})`
+    + `<br>قيمتها إنتاجاً ≈ <b>${usd.toFixed(3)}$</b> باليوم، يعني ≈ <b>${(usd * 30).toFixed(2)}$</b> بالشهر`;
+}
+function renderAdsList(){
+  document.getElementById('adsList').innerHTML = ADS_FIELDS.map(([g, k, label, def]) => `
+    <div class="field"><label>${label}</label>
+    <input type="number" min="0" step="any" data-g="${g}" data-k="${k}" value="${adsVal(g, k, def)}"></div>`).join('');
+  document.querySelectorAll('#adsList input').forEach(inp => inp.oninput = renderAdsEstimate);
+  renderAdsEstimate();
+}
 let dailyData = [...DEFAULT_DAILY];
 let referralData = {};
 function renderDailyList(){
   document.getElementById('dailyList').innerHTML = dailyData.map((v, i) => `
     <div class="field" style="margin:0;"><label style="font-size:11px;">يوم ${i+1}</label>
     <input type="number" min="0" data-day="${i}" value="${v}" style="margin:0;"></div>`).join('');
-  document.querySelectorAll('#dailyList input').forEach(inp => inp.oninput = () => { dailyData[+inp.dataset.day] = Number(inp.value) || 0; });
+  document.querySelectorAll('#dailyList input').forEach(inp => inp.oninput = () => { dailyData[+inp.dataset.day] = Number(inp.value) || 0; renderAdsEstimate(); });
 }
 function renderReferralList(){
   document.getElementById('referralList').innerHTML = REFERRAL_FIELDS.map(([k, label, def]) => `
@@ -1010,6 +1045,24 @@ document.getElementById('btnSaveDaily').onclick = async () => {
   try{
     if(dailyData.length !== 7 || dailyData.some(n => !(n >= 0))) throw new Error('لازم 7 قيم كلها أرقام موجبة');
     await fbDb.collection('config').doc('gameConfig').set({ daily: { rewards: dailyData.map(Number) } }, { merge: true });
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق على السيرفر خلال دقيقة';
+  }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+};
+document.getElementById('btnSaveAds').onclick = async () => {
+  const msg = document.getElementById('adsMsg');
+  try{
+    const data = { ads: {}, tasks: {} };
+    document.querySelectorAll('#adsList input').forEach(inp => {
+      const v = Number(inp.value);
+      if(!(v >= 0)) throw new Error('كل القيم لازم تكون أرقام موجبة');
+      data[inp.dataset.g][inp.dataset.k] = v;
+    });
+    if(data.ads.rewardPoints > 1000) throw new Error('نقاط الإعلان أقصى شي 1000');
+    if(data.ads.dailyLimit > 1000) throw new Error('الحد اليومي أقصى شي 1000');
+    data.ads.dailyLimit = Math.floor(data.ads.dailyLimit);
+    await fbDb.collection('config').doc('gameConfig').set(data, { merge: true });
+    adsData = data;
+    renderAdsEstimate();
     msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق على السيرفر خلال دقيقة';
   }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
 };
@@ -1041,8 +1094,10 @@ async function loadGameConfig(){
     earnLinksData = Array.isArray(d.earnLinks) ? d.earnLinks.map(l => ({...l})) : [];
     dailyData = (d.daily && Array.isArray(d.daily.rewards) && d.daily.rewards.length === 7) ? [...d.daily.rewards] : [...DEFAULT_DAILY];
     referralData = d.referral || {};
+    adsData = { ads: d.ads || {}, tasks: d.tasks || {} };
     renderDailyList();
     renderReferralList();
+    renderAdsList();
     renderShelfCostList();
     renderWorkersList();
     renderEarnLinksList();
