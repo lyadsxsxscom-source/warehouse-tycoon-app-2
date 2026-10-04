@@ -82,6 +82,7 @@
     "أسبوع": ["1 hafta", "1 week"],
     "شهر": ["1 ay", "1 month"],
     "إلغاء": ["İptal", "Cancel"],
+    "اضغط مرة تانية للخروج": ["Çıkmak için tekrar bas", "Press again to exit"],
     "مشاهدة إعلان": ["Reklam izle", "Watch an ad"],
     "فوري + مضاعفة إنتاج 60 ثانية": ["Anında + 60 saniye 2x üretim", "Instant + 2x production for 60s"],
     "جدار المهام": ["Görev Duvarı", "Offerwall"],

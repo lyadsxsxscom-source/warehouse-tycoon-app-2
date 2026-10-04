@@ -1528,6 +1528,37 @@ document.body.addEventListener('touchend', e => {
   if(newIdx !== idx) goToScreen(SCREEN_ORDER[newIdx]);
 }, {passive:true});
 
+// ===== زر الرجوع (أندرويد): يسكّر النافذة المفتوحة، بعدين يرجّع للرئيسية، بعدين ضغطتين ورا بعض للخروج =====
+let lastBackAt = 0;
+function showExitHint(){
+  let el = document.getElementById('exitHint');
+  if(!el){
+    el = document.createElement('div'); el.id = 'exitHint';
+    el.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:rgba(20,20,20,.92);color:#fff;padding:9px 18px;border-radius:999px;font-size:14px;z-index:300;pointer-events:none;transition:opacity .2s;opacity:0;max-width:90%;text-align:center';
+    document.body.appendChild(el);
+  }
+  el.textContent = tr('اضغط مرة تانية للخروج');
+  el.style.opacity = '1';
+  clearTimeout(showExitHint._t); showExitHint._t = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+function handleBack(){
+  const GATES = ['loginGate','forceUpdateGate','vpnGate']; // بوابات إجبارية، ما بتنسكّر بزر الرجوع
+  // 1) نافذة منبثقة مفتوحة → سكّرها
+  const open = [...document.querySelectorAll('.overlay.show')].filter(o => !GATES.includes(o.id));
+  if(open.length){ open[open.length - 1].classList.remove('show'); return; }
+  // 2) مو على الشاشة الرئيسية → رجّعه للرئيسية
+  const gateOpen = GATES.some(id => document.getElementById(id)?.classList.contains('show'));
+  if(!gateOpen){
+    const cur = document.querySelector('.navbtn.active')?.dataset.screen;
+    if(cur && cur !== 'home'){ goToScreen('home'); return; }
+  }
+  // 3) ضغطتين ورا بعض (خلال ثانيتين) للخروج
+  const now = Date.now();
+  if(now - lastBackAt < 2000){ try{ saveProgress(); }catch(e){} nativeApp && nativeApp.exitApp(); }
+  else { lastBackAt = now; showExitHint(); }
+}
+if(nativeApp){ nativeApp.addListener('backButton', handleBack); }
+
 // تحديث الرصيد من السيرفر كل دقيقة (يلتقط نقاط جدار المهام والإنتاج الحقيقي)
 setInterval(() => { if(document.visibilityState === 'visible') claimPendingOfferwallCredits(); }, 60000);
 
