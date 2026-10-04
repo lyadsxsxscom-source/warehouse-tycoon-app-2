@@ -16,14 +16,14 @@ const APK_SOURCE_URL = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-
 const DURATIONS = { day: 86400, week: 604800, month: 2592000 };
 const SHELF_COUNT = 6;
 const DEFAULT_SHELF_COST = [0, 0, 120, 350, 800, 1600];
+// 3 عمال فقط (يومي/أسبوعي/شهري)، وإنتاجهم بالدولار (usd = قيمة إنتاج كامل المدة)
 const DEFAULT_WORKERS = {
-  btc_day:   { cost: 100,  rate: 0.0000000000164400 },
-  btc_week:  { cost: 600,  rate: 0.0000000000140915 },
-  btc_month: { cost: 2000, rate: 0.0000000000109600 },
-  eth_day:   { cost: 100,  rate: 0.0000000005217516 },
-  eth_week:  { cost: 600,  rate: 0.0000000004472157 },
-  eth_month: { cost: 2000, rate: 0.0000000003478344 },
+  day:   { cost: 25,  usd: 0.0278 },
+  week:  { cost: 250, usd: 0.2778 },
+  month: { cost: 600, usd: 0.6667 },
 };
+// طرق السحب: العملة ← الشبكات المسموحة (شام كاش بدون شبكة)
+const COIN_NETWORKS = { usdt: ["TRC20", "BEP20"], btc: ["BTC", "BEP20"], eth: ["ERC20", "BEP20"], shamcash: ["SHAMCASH"] };
 const STARTING_POINTS = 260;
 const AD_REWARD_POINTS = 2;
 const AD_MIN_INTERVAL_MS = 25000;   // أقل فاصل بين مكافأتين إعلان
@@ -260,15 +260,19 @@ function shelfCost(cfg, id) {
   const arr = cfg.game.shelfUnlockCost;
   return Array.isArray(arr) && typeof arr[id] === "number" ? arr[id] : DEFAULT_SHELF_COST[id];
 }
-function workerSpec(cfg, coin, kind) {
-  const key = coin + "_" + kind;
-  const def = DEFAULT_WORKERS[key];
-  const custom = (cfg.game.workers || {})[key] || {};
+function workerSpec(cfg, kind) {
+  const def = DEFAULT_WORKERS[kind];
+  const ws = (cfg.game && cfg.game.workers) || {};
+  const custom = ws[kind] || ws["btc_" + kind] || {}; // الصيغة الجديدة أو القديمة (btc_day...) اللي كان الأدمن يحفظها
   const cost = typeof custom.cost === "number" ? custom.cost : def.cost;
-  let rate = def.rate;
-  const price = coin === "btc" ? cfg.pricing.btcUsd : cfg.pricing.ethUsd;
-  if (typeof custom.usdPerDuration === "number" && price > 0) rate = custom.usdPerDuration / price / DURATIONS[kind];
-  return { cost, rate, seconds: DURATIONS[kind] };
+  const usd = typeof custom.usdPerDuration === "number" ? custom.usdPerDuration : def.usd;
+  return { cost, rateUsd: usd / DURATIONS[kind], seconds: DURATIONS[kind] };
+}
+// سعر العملة بالدولار (USDT وشام كاش = 1، والباقي من سعر الأدمن؛ 0 = غير مضبوط)
+function coinPriceUsd(cfg, coin) {
+  if (coin === "usdt" || coin === "shamcash") return 1;
+  const v = Number(coin === "btc" ? (cfg.pricing || {}).btcUsd : (cfg.pricing || {}).ethUsd);
+  return v > 0 ? v : 0;
 }
 
 // ===== التحقق من هوية المستخدم (توكن Firebase) =====
@@ -345,7 +349,23 @@ function normalizePlayer(raw, now, today, cfg) {
   });
   p.points = Number(p.points) || 0;
   p.totalPointsEarned = Number(p.totalPointsEarned) || 0;
-  p.wallet = { btc: Number((p.wallet || {}).btc) || 0, eth: Number((p.wallet || {}).eth) || 0 };
+  // رصيد موحّد بالدولار: أي رصيد قديم (BTC/ETH) بينتقل للدولار بسعر الأدمن (وبيرجع ينتقل لو الأدمن/نسخة قديمة زادت بالقديم)
+  p.balanceUsd = Number(p.balanceUsd) || 0;
+  const lw = p.wallet || {}, keep = {};
+  for (const c of ["btc", "eth"]) {
+    const amt = Number(lw[c]) || 0;
+    if (!amt) continue;
+    const pr = coinPriceUsd(cfg, c);
+    if (pr > 0) p.balanceUsd += amt * pr; else keep[c] = amt; // بدون سعر: منتركه محفوظ لحد ما ينضبط السعر
+  }
+  if (Object.keys(keep).length) p.wallet = keep; else delete p.wallet;
+  // عمال قديمين إنتاجهم بعملة → بنحوّلهم لإنتاج بالدولار (rate بالدولار/ثانية)
+  p.shelves.forEach(sh => {
+    const w = sh.worker;
+    if (!w || w.unit === "usd") return;
+    const pr = coinPriceUsd(cfg, w.coin);
+    if (pr > 0) { w.rate = (Number(w.rate) || 0) * pr; w.unit = "usd"; delete w.coin; }
+  });
   p.adsWatched = Number(p.adsWatched) || 0;
   p.workersRented = Number(p.workersRented) || 0;
   p.adsToday = Number(p.adsToday) || 0;
@@ -374,14 +394,15 @@ function settle(p, now) {
       let gain = w.rate * (segEnd - segStart) / 1000;
       const bs = Math.max(segStart, p.boostFrom), be = Math.min(segEnd, p.boostUntil);
       if (be > bs) gain += w.rate * (be - bs) / 1000;
-      if (w.coin === "btc" || w.coin === "eth") p.wallet[w.coin] += gain;
+      if (w.unit === "usd") p.balanceUsd += gain;
     }
   }
   p.lastSettleAt = now;
 }
 function publicState(p, now, cfg) {
   return {
-    points: p.points, totalPointsEarned: p.totalPointsEarned, wallet: p.wallet,
+    points: p.points, totalPointsEarned: p.totalPointsEarned, balanceUsd: p.balanceUsd,
+    wallet: { btc: cfg && coinPriceUsd(cfg, "btc") > 0 ? p.balanceUsd / coinPriceUsd(cfg, "btc") : 0, eth: 0 }, // للنسخ القديمة من التطبيق
     shelves: p.shelves, tasks: p.tasks, dailyDate: p.dailyDate,
     adsWatched: p.adsWatched, workersRented: p.workersRented,
     boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now,
@@ -436,9 +457,9 @@ const PUSH_TEXT = {
     en: (p) => ["You got points! 🎉", `${p.points} points were added from the offerwall.`],
   },
   withdraw_ok: {
-    ar: (p) => ["تم إرسال سحبك ✅", `انبعت ${p.amount} ${p.coin} لمحفظتك.`],
-    tr: (p) => ["Çekimin gönderildi ✅", `${p.amount} ${p.coin} cüzdanına gönderildi.`],
-    en: (p) => ["Withdrawal sent ✅", `${p.amount} ${p.coin} was sent to your wallet.`],
+    ar: (p) => p.method === "shamcash" ? ["تم تحويل سحبك ✅", `انحوّل لك ${p.amount} ${p.currency === "SYP" ? "ل.س" : "$"} على شام كاش.`] : ["تم إرسال سحبك ✅", `انبعت ${p.amount} ${p.coin} لمحفظتك.`],
+    tr: (p) => p.method === "shamcash" ? ["Çekimin gönderildi ✅", `${p.amount} ${p.currency === "SYP" ? "SYP" : "USD"} Sham Cash hesabına gönderildi.`] : ["Çekimin gönderildi ✅", `${p.amount} ${p.coin} cüzdanına gönderildi.`],
+    en: (p) => p.method === "shamcash" ? ["Withdrawal sent ✅", `${p.amount} ${p.currency === "SYP" ? "SYP" : "USD"} was sent to your Sham Cash account.`] : ["Withdrawal sent ✅", `${p.amount} ${p.coin} was sent to your wallet.`],
   },
   withdraw_rejected: {
     ar: () => ["طلب السحب انرفض", "رجعنالك الرصيد لمحفظتك بالتطبيق."],
@@ -547,16 +568,16 @@ async function gameAction(action, body, user, env) {
 
     case "rent": {
       const id = Number(body.shelfId);
-      const coin = body.coin, kind = body.kind;
-      if (!["btc", "eth"].includes(coin) || typeof kind !== "string" || !Object.hasOwn(DURATIONS, kind)) throw new ApiError("bad_worker", "نوع عامل غير صحيح.");
+      const kind = body.kind; // العملة ما عادت جزء من العامل (النسخ القديمة ممكن تبعتها، منتجاهلها)
+      if (typeof kind !== "string" || !Object.hasOwn(DURATIONS, kind)) throw new ApiError("bad_worker", "نوع عامل غير صحيح.");
       return mutatePlayer(env, uid, (p, now) => {
         const s = p.shelves[id];
         if (!s || !s.unlocked) throw new ApiError("bad_shelf", "هذا الرف مقفول.");
         if (s.worker && s.worker.expiresAt > now) throw new ApiError("busy_shelf", "هذا العامل شغّال حالياً.");
-        const spec = workerSpec(cfg, coin, kind);
+        const spec = workerSpec(cfg, kind);
         if (p.points < spec.cost) throw new ApiError("not_enough_points", "نقاط غير كافية.");
         p.points -= spec.cost;
-        s.worker = { kind, coin, rate: spec.rate, startAt: now, expiresAt: now + spec.seconds * 1000 };
+        s.worker = { kind, unit: "usd", rate: spec.rateUsd, startAt: now, expiresAt: now + spec.seconds * 1000 };
         p.workersRented += 1;
         const t = p.tasks.find(x => x.id === "rent1");
         if (t) t.progress = Math.min(t.target || 1, (Number(t.progress) || 0) + 1);
@@ -604,26 +625,27 @@ async function gameAction(action, body, user, env) {
       const coin = body.coin;
       const amount = Number(body.amount);
       const address = String(body.address || "").trim();
-      const network = String(body.network || "").slice(0, 40);
-      if (!["btc", "eth"].includes(coin)) throw new ApiError("bad_coin", "عملة غير صحيحة.");
-      const NETWORKS = { btc: ["BTC", "BEP20"], eth: ["ERC20", "BEP20"] }; // نفس الخيارات بالتطبيق
-      if (!NETWORKS[coin].includes(network)) throw new ApiError("bad_network", "الشبكة ما بتناسب العملة المختارة.");
-      if (!address || address.length > 200) throw new ApiError("bad_address", "حط عنوان محفظة صحيح.");
+      if (typeof coin !== "string" || !Object.hasOwn(COIN_NETWORKS, coin)) throw new ApiError("bad_coin", "عملة غير صحيحة.");
+      const network = String(body.network || (coin === "shamcash" ? "SHAMCASH" : "")).slice(0, 40);
+      if (!COIN_NETWORKS[coin].includes(network)) throw new ApiError("bad_network", "الشبكة ما بتناسب العملة المختارة."); // نفس الخيارات بالتطبيق
+      if (!address || address.length > 200) throw new ApiError("bad_address", coin === "shamcash" ? "حط رقم حساب شام كاش." : "حط عنوان محفظة صحيح.");
       if (!Number.isFinite(amount) || !(amount > 0)) throw new ApiError("bad_amount", "حط مبلغ صحيح.");
+      const price = coinPriceUsd(cfg, coin);
+      if (!(price > 0)) throw new ApiError("no_price", "سعر هالعملة مو مضبوط حالياً، جرّب بعد شوي.");
+      const amountUsd = amount * price; // USDT وشام كاش: المبلغ بالدولار نفسه
       return mutatePlayer(env, uid, (p, now) => {
-        if (amount > p.wallet[coin]) throw new ApiError("not_enough_balance", "المبلغ أكبر من رصيدك المتاح.");
+        if (amountUsd > p.balanceUsd * (1 + 1e-9) + 1e-9) throw new ApiError("not_enough_balance", "المبلغ أكبر من رصيدك المتاح.");
         const minUsd = cfg.pricing.minWithdrawUsd > 0 ? cfg.pricing.minWithdrawUsd : 20;
-        const price = coin === "btc" ? cfg.pricing.btcUsd : cfg.pricing.ethUsd;
-        if (price > 0 && amount * price < minUsd) throw new ApiError("below_min", `الحد الأدنى للسحب ${minUsd}$.`);
+        if (amountUsd < minUsd) throw new ApiError("below_min", `الحد الأدنى للسحب ${minUsd}$.`);
         if (now - p.lastWithdrawAt < WITHDRAW_COOLDOWN_MS) {
           const h = Math.ceil((WITHDRAW_COOLDOWN_MS - (now - p.lastWithdrawAt)) / 3600000);
           throw new ApiError("cooldown", `تقدر تسحب مرة كل 24 ساعة بس — جرّب بعد حوالي ${h} ساعة.`);
         }
-        p.wallet[coin] -= amount;
+        p.balanceUsd = Math.max(0, p.balanceUsd - amountUsd);
         p.lastWithdrawAt = now;
         const request = {
           uid, displayName: user.name || "", email: user.email || "",
-          coin, network, amount, walletAddress: address,
+          coin, network, amount, amountUsd, priceUsd: price, walletAddress: address,
           totalPointsEarnedSnapshot: p.totalPointsEarned,
           workersRentedSnapshot: p.workersRented,
           adsWatchedSnapshot: p.adsWatched,
@@ -977,6 +999,64 @@ async function handleAdminNotify(request, env, ctx) {
   return jsonResponse({ ok: false, error: "bad_type" }, 400);
 }
 
+// الأدمن بيعالج طلب سحب: إرسال (مع تفاصيل شام كاش) أو رفض مع إرجاع الرصيد بشكل ذرّي (ما بيتكرر الإرجاع)
+function refundUsdOf(r, cfg) {
+  if (Number(r.amountUsd) > 0) return Number(r.amountUsd);
+  return (Number(r.amount) || 0) * coinPriceUsd(cfg, r.coin); // طلبات قديمة: بسعر الأدمن الحالي
+}
+async function handleAdminWithdraw(request, env, ctx) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const id = String(body.requestId || "");
+  const action = body.action;
+  if (!id || id.includes("/") || !["fulfill", "reject"].includes(action)) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+  const path = "withdrawRequests/" + id;
+  const req = await fsGetDoc(env, path);
+  if (!req.exists) return jsonResponse({ ok: false, error: "not_found" }, 404);
+  if (req.data.status !== "pending") return jsonResponse({ ok: false, error: "already_processed" }, 409);
+  const now = Date.now();
+  const pushAmount = (v) => Number(v).toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
+  try {
+    if (action === "fulfill") {
+      const patch = { status: "fulfilled", reviewedAt: now, reviewedBy: user.sub };
+      let params = { amount: pushAmount(req.data.amount), coin: String(req.data.coin || "").toUpperCase() };
+      if (req.data.coin === "shamcash") {
+        const cur = body.payoutCurrency === "SYP" ? "SYP" : body.payoutCurrency === "USD" ? "USD" : null;
+        const amt = Number(body.payoutAmount);
+        if (!cur || !Number.isFinite(amt) || !(amt > 0)) return jsonResponse({ ok: false, error: "bad_payout" }, 400);
+        patch.payoutCurrency = cur; patch.payoutAmount = amt;
+        params = { method: "shamcash", currency: cur, amount: cur === "SYP" ? String(Math.round(amt)) : String(amt) };
+      }
+      await fsCommit(env, [{
+        update: { name: docName(env, path), fields: objToFields(patch) },
+        updateMask: { fieldPaths: Object.keys(patch) },
+        currentDocument: { updateTime: req.updateTime },
+      }]);
+      ctx.waitUntil(sendPush(env, req.data.uid, "withdraw_ok", params));
+    } else {
+      const cfg = await loadConfig(env);
+      const refund = refundUsdOf(req.data, cfg);
+      if (!(refund > 0)) return jsonResponse({ ok: false, error: "no_refund_value" }, 400);
+      const patch = { status: "rejected", reviewedAt: now, reviewedBy: user.sub, refundedUsd: refund };
+      await mutatePlayer(env, req.data.uid, (p) => {
+        p.balanceUsd += refund;
+        return { writes: [{
+          update: { name: docName(env, path), fields: objToFields(patch) },
+          updateMask: { fieldPaths: Object.keys(patch) },
+          currentDocument: { updateTime: req.updateTime },
+        }] };
+      });
+      ctx.waitUntil(sendPush(env, req.data.uid, "withdraw_rejected", {}));
+    }
+  } catch (e) {
+    console.error({ message: "admin withdraw failed", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: e.conflict ? "conflict" : "failed" }, 500);
+  }
+  return jsonResponse({ ok: true }, 200);
+}
+
 async function handleDownload() {
   const resp = await fetch(APK_SOURCE_URL, { redirect: "follow" });
   if (!resp.ok) return new Response("تعذّر تحميل الملف حالياً (" + resp.status + ")", { status: 502 });
@@ -992,7 +1072,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "sec-2" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "wallet-1" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);
@@ -1009,6 +1089,7 @@ export default {
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
     if (url.pathname === "/ow2") return handleOffersWallsPostback(request, env, ctx);
     if (url.pathname === "/admin/notify" && request.method === "POST") return handleAdminNotify(request, env, ctx);
+    if (url.pathname === "/admin/withdraw" && request.method === "POST") return handleAdminWithdraw(request, env, ctx);
     if (url.pathname === "/today" && request.method === "GET") return jsonResponse({ today: todaySyria() }, 200);
     if (url.pathname === "/selftest" && request.method === "GET") return handleSelftest(env);
     if (url.pathname === "/dl" && request.method === "GET") return handleDownload();

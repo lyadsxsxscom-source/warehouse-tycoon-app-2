@@ -26,7 +26,7 @@
   :root{
     --bg:#14110D; --panel:#1F1B14; --panel2:#262117;
     --amber:#E3A83B; --steel:#5B7B99; --ember:#E4572E;
-    --btc:#F7931A; --eth:#8A9BFF;
+    --btc:#F7931A; --eth:#8A9BFF; --usdt:#26A17B;
     --text:#EFE6D2; --dim:#948A72; --border:#332C1F;
   }
   *{box-sizing:border-box;}
@@ -102,10 +102,11 @@
   }
   .wallet-toggle button.active.btc{background:linear-gradient(135deg, var(--btc), #ffb95c); color:#2a1500; border-color:var(--btc); box-shadow:0 0 12px rgba(247,147,26,0.5);}
   .wallet-toggle button.active.eth{background:linear-gradient(135deg, var(--eth), #c2ccff); color:#131a3d; border-color:var(--eth); box-shadow:0 0 12px rgba(138,155,255,0.5);}
+  .wallet-toggle button.active.usdt{background:linear-gradient(135deg, var(--usdt), #6fe0bd); color:#04241a; border-color:var(--usdt); box-shadow:0 0 12px rgba(38,161,123,0.5);}
   .coin-spin{vertical-align:-4px; margin-left:5px;}
   .wallet-toggle button.active .coin-spin{animation:coinFlip 3.2s ease-in-out infinite;}
   @keyframes coinFlip{0%,80%,100%{transform:scaleX(1);} 90%{transform:scaleX(0.15);}}
-  .wallet-toggle button.active:not(.btc):not(.eth){background:linear-gradient(135deg, var(--amber), #ffcf7a); color:#2a1500; border-color:var(--amber); box-shadow:0 0 12px rgba(227,168,59,0.5);}
+  .wallet-toggle button.active:not(.btc):not(.eth):not(.usdt){background:linear-gradient(135deg, var(--amber), #ffcf7a); color:#2a1500; border-color:var(--amber); box-shadow:0 0 12px rgba(227,168,59,0.5);}
   .float-plus{position:absolute; top:8px; left:12px; font-size:11px; font-weight:800; color:var(--amber); opacity:0; pointer-events:none;}
   @keyframes floatUp{0%{opacity:0; transform:translateY(6px);} 20%{opacity:1; transform:translateY(0);} 100%{opacity:0; transform:translateY(-16px);}}
   .float-plus.show{animation:floatUp 1.1s ease-out;}
@@ -289,7 +290,8 @@
       <div class="stat-num" id="walletNum">0.00000000</div>
       <div class="stat-sub" id="walletRate">+0/ثانية</div>
       <div class="wallet-toggle">
-        <button class="active btc" id="btnBTC"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="btcG1" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#FFD98A"/><stop offset="60%" stop-color="#F7931A"/><stop offset="100%" stop-color="#C9701A"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#btcG1)" stroke="#8a5312" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#8a5312" font-family="Arial, sans-serif">₿</text></svg> BTC</button>
+        <button class="active usdt" id="btnUSDT"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="usdtG1" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#9BEBD1"/><stop offset="60%" stop-color="#26A17B"/><stop offset="100%" stop-color="#17705a"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#usdtG1)" stroke="#0e5444" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#04241a" font-family="Arial, sans-serif">₮</text></svg> USDT</button>
+        <button class="btc" id="btnBTC"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="btcG1" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#FFD98A"/><stop offset="60%" stop-color="#F7931A"/><stop offset="100%" stop-color="#C9701A"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#btcG1)" stroke="#8a5312" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#8a5312" font-family="Arial, sans-serif">₿</text></svg> BTC</button>
         <button class="eth" id="btnETH"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="ethG1" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#B9C3FF"/><stop offset="60%" stop-color="#8A9BFF"/><stop offset="100%" stop-color="#5C6BC7"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#ethG1)" stroke="#3d4694" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#26295c" font-family="Arial, sans-serif">Ξ</text></svg> ETH</button>
       </div>
     </div>
@@ -336,8 +338,10 @@
 <div class="screen" id="screen-withdraw">
   <div class="card">
     <div class="wallet-toggle" style="margin-top:0;">
-      <button class="active btc" id="wdBtnBTC"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="btcG2" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#FFD98A"/><stop offset="60%" stop-color="#F7931A"/><stop offset="100%" stop-color="#C9701A"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#btcG2)" stroke="#8a5312" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#8a5312" font-family="Arial, sans-serif">₿</text></svg> BTC</button>
+      <button class="active usdt" id="wdBtnUSDT"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="usdtG2" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#9BEBD1"/><stop offset="60%" stop-color="#26A17B"/><stop offset="100%" stop-color="#17705a"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#usdtG2)" stroke="#0e5444" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#04241a" font-family="Arial, sans-serif">₮</text></svg> USDT</button>
+      <button class="btc" id="wdBtnBTC"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="btcG2" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#FFD98A"/><stop offset="60%" stop-color="#F7931A"/><stop offset="100%" stop-color="#C9701A"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#btcG2)" stroke="#8a5312" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#8a5312" font-family="Arial, sans-serif">₿</text></svg> BTC</button>
       <button class="eth" id="wdBtnETH"><svg class="coin-spin" viewBox="0 0 24 24" width="17" height="17"><defs><radialGradient id="ethG2" cx="35%" cy="30%" r="75%"><stop offset="0%" stop-color="#B9C3FF"/><stop offset="60%" stop-color="#8A9BFF"/><stop offset="100%" stop-color="#5C6BC7"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#ethG2)" stroke="#3d4694" stroke-width="1"/><text x="12" y="16.3" text-anchor="middle" font-size="13" font-weight="900" fill="#26295c" font-family="Arial, sans-serif">Ξ</text></svg> ETH</button>
+      <button id="wdBtnSHAM">شام كاش</button>
     </div>
     <div class="wd-balance">
       <div class="amt" id="wdBalance">0.00000000</div>
@@ -345,21 +349,22 @@
     </div>
   </div>
   <div class="card">
-    <div class="field">
+    <div class="field" id="wdNetworkField">
       <label>الشبكة</label>
       <div class="wallet-toggle" id="wdNetworkToggle" style="margin-top:0;"></div>
     </div>
     <div class="field">
-      <label>عنوان محفظة باينانس (بنفس العملة والشبكة المختارة)</label>
+      <label id="wdAddressLabel">عنوان محفظة باينانس (بنفس العملة والشبكة المختارة)</label>
       <input type="text" id="wdAddress" placeholder="مثال: bc1q... أو 0x...">
     </div>
     <div class="field">
-      <label>المبلغ</label>
+      <label id="wdAmountLabel">المبلغ</label>
       <input type="text" id="wdAmount" placeholder="0.00000000">
     </div>
     <div class="buy-msg" id="wdMsg" style="text-align:center; font-size:12px; color:var(--ember); min-height:16px;"></div>
     <button class="btn-main" id="btnWithdraw" style="margin-top:2px;"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:4px;"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>طلب سحب</button>
     <div class="min-note" id="wdMinNote"></div>
+    <div class="min-note" id="wdSypNote"></div>
   </div>
   <h3>سجل السحوبات</h3>
   <div class="card" id="wdHistory">
@@ -430,7 +435,7 @@
 
 <div class="note">
   عرض توضيحي: النقاط تُكسب من الإعلان/جدار المهام خلف زر واحد، وتُصرف على الرفوف والعمال.
-  العملة ينتجها العمال تلقائياً وتتراكم مباشرة بالمحفظة، وتقدر تختار BTC أو ETH.
+  العملة ينتجها العمال تلقائياً وتتراكم مباشرة بالمحفظة بقيمة موحّدة بالدولار، وتقدر تعرض رصيدك بـ USDT أو BTC أو ETH.
 </div>
 
 <!-- Bottom nav -->
@@ -515,7 +520,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.2"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.3"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -649,13 +654,11 @@ initAds();
 // rate هو معدل الإنتاج بالثانية، seconds هي مدة الإيجار الحقيقية (يوم/أسبوع/شهر فعلية)
 const DAY_S = 86400, WEEK_S = 604800, MONTH_S = 2592000;
 const WORKERS = {
-  btc_day:   {label:'عامل بيتكوين يومي',   coin:'btc', cost:100,  rate:0.0000000000164400, seconds:DAY_S},
-  btc_week:  {label:'عامل بيتكوين أسبوعي', coin:'btc', cost:600,  rate:0.0000000000140915, seconds:WEEK_S},
-  btc_month: {label:'عامل بيتكوين شهري',   coin:'btc', cost:2000, rate:0.0000000000109600, seconds:MONTH_S},
-  eth_day:   {label:'عامل إيثيريوم يومي',   coin:'eth', cost:100,  rate:0.0000000005217516, seconds:DAY_S},
-  eth_week:  {label:'عامل إيثيريوم أسبوعي', coin:'eth', cost:600,  rate:0.0000000004472157, seconds:WEEK_S},
-  eth_month: {label:'عامل إيثيريوم شهري',   coin:'eth', cost:2000, rate:0.0000000003478344, seconds:MONTH_S},
+  day:   {label:'عامل يومي',   cost:25,  usd:0.0278, seconds:DAY_S},
+  week:  {label:'عامل أسبوعي', cost:250, usd:0.2778, seconds:WEEK_S},
+  month: {label:'عامل شهري',   cost:600, usd:0.6667, seconds:MONTH_S},
 };
+// الرصيد موحّد بالدولار، وبتختار تعرضه بـ USDT أو BTC أو ETH (بسعر الأدمن). العمال إنتاجهم بالدولار.
 const SHELF_COUNT = 6;
 // index 0-1: مفتوحة مجاناً | index 2-5: تُفتح بالنقاط
 // (الرفوف الحصرية من المتجر مؤجّلة لما بعد النشر — تُضاف لاحقاً لو صار طلب عليها)
@@ -663,8 +666,12 @@ const SHELF_UNLOCK_COST = [0, 0, 120, 350, 800, 1600];
 
 let points = 260;
 let totalPointsEarned = 260;
-let wallet = { btc: 0, eth: 0 };
-let activeCoin = 'btc';
+let balanceUsd = 0;                 // الرصيد الموحّد بالدولار
+let activeCoin = 'usdt';            // عملة عرض الرصيد: usdt | btc | eth
+let wdCoin = 'usdt';                // طريقة السحب: usdt | btc | eth | shamcash
+const DEC = { usdt: 8, btc: 12, eth: 12 };
+function coinPrice(c){ return (c === 'usdt' || c === 'shamcash') ? 1 : ((c === 'btc' ? PRICING.btcUsd : PRICING.ethUsd) || 0); }
+function fromUsd(usd, c){ const pr = coinPrice(c); return pr > 0 ? usd / pr : 0; }
 let boostUntil = 0;
 let pendingSlot = null;
 let adsWatched = 0;
@@ -687,12 +694,13 @@ const rentOverlay = document.getElementById('rentOverlay');
 const rentSlotLabel = document.getElementById('rentSlotLabel');
 const tasksEl = document.getElementById('tasks');
 const floatPlus = document.getElementById('floatPlus');
+const btnUSDT = document.getElementById('btnUSDT');
 const btnBTC = document.getElementById('btnBTC');
 const btnETH = document.getElementById('btnETH');
 
-function currentRate(coin){
+function currentRate(){ // إنتاج العمال الحالي بالدولار/ثانية
   const now = Date.now();
-  return shelves.reduce((sum, s) => (s.worker && s.worker.coin === coin && s.worker.expiresAt > now) ? sum + s.worker.rate : sum, 0);
+  return shelves.reduce((sum, s) => (s.worker && s.worker.unit === 'usd' && s.worker.expiresAt > now) ? sum + s.worker.rate : sum, 0);
 }
 
 function renderTasks(){
@@ -725,33 +733,45 @@ function renderProfile(){
 }
 
 const WD_NETWORKS = {
+  usdt: [{id:'TRC20', label:'TRC20 (Tron)'}, {id:'BEP20', label:'BEP20 (BSC)'}],
   btc: [{id:'BTC', label:'₿ Bitcoin (الأصلية)'}, {id:'BEP20', label:'BEP20 (BSC)'}],
   eth: [{id:'ERC20', label:'Ethereum (ERC20)'}, {id:'BEP20', label:'BEP20 (BSC)'}],
+  shamcash: [],
 };
-let wdNetwork = 'BTC';
-// الحد الأدنى للسحب بعملة المحفظة المختارة (الأدمن بيحدده بالدولار، ومنحوّله حسب سعر الصرف)
+let wdNetwork = 'TRC20';
+// الحد الأدنى للسحب بعملة طريقة السحب المختارة (الأدمن بيحدده بالدولار، ومنحوّله حسب سعر الصرف)
 function minWithdrawInCoin(coin){
   const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
-  const price = coin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
+  const price = coinPrice(coin);
   return price > 0 ? Number((minUsd / price).toPrecision(3)) : null;
 }
+function wdUnit(coin){ return coin === 'shamcash' ? '$' : coin.toUpperCase(); }
 function renderWdMinNote(){
   const el = document.getElementById('wdMinNote');
   if(!el) return;
-  const minCoin = minWithdrawInCoin(activeCoin);
-  const minTxt = minCoin !== null ? `${minCoin.toLocaleString('en-US', {maximumFractionDigits: 12})} ${activeCoin.toUpperCase()}` : '—';
+  const minCoin = minWithdrawInCoin(wdCoin);
+  const minTxt = minCoin !== null ? `${minCoin.toLocaleString('en-US', {maximumFractionDigits: 12})} ${wdUnit(wdCoin)}` : '—';
   el.textContent = `الحد الأدنى للسحب ${minTxt} — مرة وحدة كل 24 ساعة`;
 }
 function renderWithdraw(){
   renderWdMinNote();
-  document.getElementById('wdBalance').textContent = wallet[activeCoin].toFixed(12);
-  document.getElementById('wdBtnBTC').classList.toggle('active', activeCoin==='btc');
-  document.getElementById('wdBtnETH').classList.toggle('active', activeCoin==='eth');
-  const nets = WD_NETWORKS[activeCoin];
-  if(!nets.find(n => n.id === wdNetwork)) wdNetwork = nets[0].id;
-  const toggle = document.getElementById('wdNetworkToggle');
-  toggle.innerHTML = nets.map(n => `<button data-net="${n.id}" class="${n.id===wdNetwork?'active':''}">${n.label}</button>`).join('');
-  toggle.querySelectorAll('button').forEach(b => { b.onclick = () => { wdNetwork = b.dataset.net; renderWithdraw(); }; });
+  const isSham = wdCoin === 'shamcash';
+  document.getElementById('wdBalance').textContent = isSham ? balanceUsd.toFixed(2) + ' $' : fromUsd(balanceUsd, wdCoin).toFixed(DEC[wdCoin]);
+  ['usdt','btc','eth'].forEach(c => document.getElementById('wdBtn' + c.toUpperCase()).classList.toggle('active', wdCoin === c));
+  document.getElementById('wdBtnSHAM').classList.toggle('active', isSham);
+  document.getElementById('wdNetworkField').style.display = isSham ? 'none' : '';
+  const nets = WD_NETWORKS[wdCoin];
+  if(nets.length){
+    if(!nets.find(n => n.id === wdNetwork)) wdNetwork = nets[0].id;
+    const toggle = document.getElementById('wdNetworkToggle');
+    toggle.innerHTML = nets.map(n => `<button data-net="${n.id}" class="${n.id===wdNetwork?'active':''}">${n.label}</button>`).join('');
+    toggle.querySelectorAll('button').forEach(b => { b.onclick = () => { wdNetwork = b.dataset.net; renderWithdraw(); }; });
+  }
+  document.getElementById('wdAddressLabel').textContent = isSham ? 'رقم حساب شام كاش (الرقم يلي بيوصله التحويل)' : 'عنوان محفظة باينانس (بنفس العملة والشبكة المختارة)';
+  document.getElementById('wdAddress').placeholder = isSham ? '09XXXXXXXX' : tr('مثال: bc1q... أو 0x...');
+  document.getElementById('wdAmountLabel').textContent = isSham ? 'المبلغ بالدولار' : (wdCoin === 'usdt' ? 'المبلغ بالدولار (USDT)' : 'المبلغ');
+  const sn = document.getElementById('wdSypNote');
+  if(sn) sn.textContent = isSham ? (PRICING.usdToSyp > 0 ? `التحويل بالدولار أو بالليرة السورية حسب سعر الصرف المعتمد (حالياً 1$ = ${PRICING.usdToSyp} ل.س).` : 'التحويل بالدولار أو بالليرة السورية حسب سعر الصرف المعتمد.') : '';
 }
 
 function formatRemain(ms){
@@ -770,7 +790,7 @@ function bumpEl(el){
 }
 
 let lastPointsShown = points;
-let lastWalletShown = wallet[activeCoin];
+let lastWalletShown = fromUsd(balanceUsd, activeCoin);
 
 function render(){
   const now = Date.now();
@@ -791,7 +811,7 @@ function render(){
     } else if(s.worker && s.worker.expiresAt > now){
       div.classList.add('working');
       const remain = Math.max(0, s.worker.expiresAt - now);
-      div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M5.5 21v-3.5a6.5 6.5 0 0 1 13 0V21"/><rect x="9" y="12.2" width="6" height="4.3" rx="1"/></svg></div><div class="name">${s.worker.coin==='btc'?'₿':'Ξ'} ${WORKERS[s.worker.coin+'_'+s.worker.kind].label}</div><div class="timer">${formatRemain(remain)} متبقي</div>`;
+      div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M5.5 21v-3.5a6.5 6.5 0 0 1 13 0V21"/><rect x="9" y="12.2" width="6" height="4.3" rx="1"/></svg></div><div class="name">${(WORKERS[s.worker.kind] || {}).label || 'عامل'}</div><div class="timer">${formatRemain(remain)} متبقي</div>`;
       div.onclick = () => { hint.textContent = 'هذا العامل شغّال حالياً.'; };
     } else if(s.worker && s.worker.expiresAt <= now){
       div.classList.add('expired');
@@ -805,12 +825,15 @@ function render(){
   });
 
   const boosted = now < boostUntil;
-  const rate = currentRate(activeCoin) * (boosted ? 2 : 1);
-  walletRate.textContent = `+${rate.toFixed(12)}/ثانية ${activeCoin.toUpperCase()} ${boosted ? '×2' : ''}`;
+  const rate = fromUsd(currentRate() * (boosted ? 2 : 1), activeCoin);
+  walletRate.textContent = `+${rate.toFixed(DEC[activeCoin])}/ثانية ${activeCoin.toUpperCase()} ${boosted ? '×2' : ''}`;
   if(Math.floor(points) !== lastPointsShown){ bumpEl(pointsNum); lastPointsShown = Math.floor(points); }
   pointsNum.textContent = Math.floor(points).toLocaleString('en-US');
-  if(wallet[activeCoin] > lastWalletShown + 0.0000005){ bumpEl(walletNum); lastWalletShown = wallet[activeCoin]; }
-  walletNum.textContent = wallet[activeCoin].toFixed(12);
+  const walletNow = fromUsd(balanceUsd, activeCoin);
+  if(walletNow > lastWalletShown + 0.0000005){ bumpEl(walletNum); }
+  lastWalletShown = walletNow;
+  walletNum.textContent = walletNow.toFixed(DEC[activeCoin]);
+  btnUSDT.classList.toggle('active', activeCoin==='usdt');
   btnBTC.classList.toggle('active', activeCoin==='btc');
   btnETH.classList.toggle('active', activeCoin==='eth');
   renderWithdraw();
@@ -895,9 +918,9 @@ function renderAll(){ render(); renderTasks(); renderStore(); renderDaily(); ren
 function refreshRentOptions(){
   document.querySelectorAll('#rentOverlay .option').forEach(opt => {
     const dur = opt.dataset.dur;
-    const w = WORKERS[activeCoin + '_' + dur];
+    const w = WORKERS[dur];
     opt.querySelector('.name').textContent = (dur==='day' ? 'يوم واحد' : dur==='week' ? 'أسبوع' : 'شهر');
-    opt.querySelector('.desc').textContent = `إنتاج ${w.rate.toFixed(12)} ${activeCoin.toUpperCase()}/ث`;
+    opt.querySelector('.desc').textContent = `قيمة الإنتاج ${w.usd.toFixed(3)}$`;
     opt.querySelector('.cost').textContent = `${w.cost} نقطة`;
   });
 }
@@ -908,29 +931,33 @@ const WORKER_IMG = {
 function openRent(slotId){
   pendingSlot = slotId;
   rentSlotLabel.textContent = slotId + 1;
-  document.getElementById('rentCoinLabel').textContent = activeCoin==='btc' ? '₿ بيتكوين' : 'Ξ إيثيريوم';
-  document.getElementById('rentWorkerImg').src = WORKER_IMG[activeCoin];
+  document.getElementById('rentCoinLabel').textContent = '';
+  document.getElementById('rentWorkerImg').src = WORKER_IMG[activeCoin === 'eth' ? 'eth' : 'btc'];
   refreshRentOptions();
   rentOverlay.classList.add('show');
 }
 document.getElementById('closeRent').onclick = () => rentOverlay.classList.remove('show');
 document.querySelectorAll('#rentOverlay .option').forEach(opt => {
   opt.onclick = () => {
-    const dur = opt.dataset.dur; const w = WORKERS[activeCoin + '_' + dur];
+    const dur = opt.dataset.dur; const w = WORKERS[dur];
     rentOverlay.classList.remove('show');
     if(points < w.cost){ hint.textContent = 'نقاط غير كافية.'; return; }
     hint.textContent = 'عم نستأجر العامل...';
-    gameApi('rent', { shelfId: pendingSlot, coin: activeCoin, kind: dur })
+    gameApi('rent', { shelfId: pendingSlot, kind: dur })
       .then(() => { hint.textContent = `تم استئجار ${w.label}!`; })
       .catch(e => { hint.textContent = e.message; });
   };
 });
 
-function setCoin(c){ activeCoin = c; render(); }
+function setCoin(c){ activeCoin = c; wdCoin = c; lastWalletShown = fromUsd(balanceUsd, c); render(); }
+function setWdCoin(c){ wdCoin = c; if(c !== 'shamcash'){ activeCoin = c; lastWalletShown = fromUsd(balanceUsd, c); } render(); }
+btnUSDT.onclick = () => setCoin('usdt');
 btnBTC.onclick = () => setCoin('btc');
 btnETH.onclick = () => setCoin('eth');
-document.getElementById('wdBtnBTC').onclick = () => setCoin('btc');
-document.getElementById('wdBtnETH').onclick = () => setCoin('eth');
+document.getElementById('wdBtnUSDT').onclick = () => setWdCoin('usdt');
+document.getElementById('wdBtnBTC').onclick = () => setWdCoin('btc');
+document.getElementById('wdBtnETH').onclick = () => setWdCoin('eth');
+document.getElementById('wdBtnSHAM').onclick = () => setWdCoin('shamcash');
 // ===== سعر الصرف/الأسعار من الأدمن (لحساب الحد الأدنى بالدولار) =====
 let PRICING = { usdToSyp: 0, btcUsd: 0, ethUsd: 0 };
 async function loadPricing(){
@@ -976,15 +1003,10 @@ async function loadGameConfig(){
     }
     if(d.workers){
       Object.keys(WORKERS).forEach(key => {
-        const w = d.workers[key];
+        const w = d.workers[key] || d.workers['btc_' + key];
         if(!w) return;
         if(typeof w.cost === 'number') WORKERS[key].cost = w.cost;
-        if(typeof w.usdPerDuration === 'number'){
-          const priceUsd = WORKERS[key].coin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
-          if(priceUsd > 0){
-            WORKERS[key].rate = w.usdPerDuration / priceUsd / WORKERS[key].seconds;
-          }
-        }
+        if(typeof w.usdPerDuration === 'number') WORKERS[key].usd = w.usdPerDuration;
       });
     }
     renderExtraEarnLinks(d.earnLinks);
@@ -1009,7 +1031,11 @@ function renderWithdrawHistory(docs){
     const label = d.status === 'fulfilled' ? '✓ تم الإرسال' : d.status === 'rejected' ? '✕ مرفوض (استرجع الرصيد)' : '⏳ قيد المراجعة';
     const row = document.createElement('div');
     row.className = 'history-item';
-    row.innerHTML = `<span>${d.amount.toFixed(12)} ${d.coin.toUpperCase()}${d.network ? ' ('+d.network+')' : ''}</span><span>${label}</span>`;
+    const isSham = d.coin === 'shamcash';
+    const amtTxt = isSham ? `${Number(d.amountUsd || d.amount).toFixed(2)} $` : `${d.amount.toFixed(d.coin === 'usdt' ? 8 : 12)} ${d.coin.toUpperCase()}`;
+    const netTxt = isSham ? ' (شام كاش)' : (d.network ? ' ('+d.network+')' : '');
+    const paidTxt = (isSham && d.status === 'fulfilled' && d.payoutCurrency) ? ` ← ${d.payoutCurrency === 'SYP' ? Math.round(d.payoutAmount).toLocaleString('en-US') + ' ل.س' : d.payoutAmount + ' $'}` : '';
+    row.innerHTML = `<span>${amtTxt}${netTxt}${paidTxt}</span><span>${label}</span>`;
     el.appendChild(row);
   });
 }
@@ -1031,11 +1057,14 @@ document.getElementById('btnWithdraw').onclick = async () => {
   if(!currentUser){ wdMsg.textContent = 'لازم تسجّل دخول أول.'; return; }
   if(!address){ wdMsg.textContent = 'حط عنوان المحفظة.'; return; }
   if(!amount || amount <= 0){ wdMsg.textContent = 'حط مبلغ صحيح.'; return; }
-  if(amount > wallet[activeCoin]){ wdMsg.textContent = 'المبلغ أكبر من رصيدك المتاح.'; return; }
+  const isSham = wdCoin === 'shamcash';
+  const priceUsd = coinPrice(wdCoin);
+  if(!(priceUsd > 0)){ wdMsg.textContent = 'سعر هالعملة مو مضبوط حالياً، جرّب بعد شوي.'; return; }
+  const amountUsd = amount * priceUsd;
+  if(amountUsd > balanceUsd * (1 + 1e-9) + 1e-9){ wdMsg.textContent = 'المبلغ أكبر من رصيدك المتاح.'; return; }
   const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
-  const priceUsd = activeCoin === 'btc' ? PRICING.btcUsd : PRICING.ethUsd;
-  if(priceUsd > 0 && (amount * priceUsd) < minUsd){
-    wdMsg.textContent = `الحد الأدنى للسحب ${minWithdrawInCoin(activeCoin)} ${activeCoin.toUpperCase()}.`;
+  if(amountUsd < minUsd){
+    wdMsg.textContent = `الحد الأدنى للسحب ${minWithdrawInCoin(wdCoin)} ${wdUnit(wdCoin)}.`;
     return;
   }
   const lastReq = withdrawHistoryDocs[0]; // مرتب من الأحدث للأقدم
@@ -1047,7 +1076,7 @@ document.getElementById('btnWithdraw').onclick = async () => {
   const btn = document.getElementById('btnWithdraw');
   btn.disabled = true;
   try{
-    await gameApi('withdraw', { coin: activeCoin, network: wdNetwork, amount, address });
+    await gameApi('withdraw', { coin: wdCoin, network: isSham ? 'SHAMCASH' : wdNetwork, amount, address });
     document.getElementById('wdAddress').value = '';
     document.getElementById('wdAmount').value = '';
     hint.textContent = 'تم إرسال طلب السحب، رح تتم مراجعته خلال 24 ساعة.';
@@ -1133,8 +1162,9 @@ async function loadProgress(uid){
   // نصفّر كل قيم اللعبة بالذاكرة قبل التحميل، حتى لا تتسرب بيانات حساب سابق (كان تسجّل خروج منه) لحساب جديد
   points = 260;
   totalPointsEarned = 260;
-  wallet = { btc: 0, eth: 0 };
-  activeCoin = 'btc';
+  balanceUsd = 0;
+  activeCoin = 'usdt';
+  wdCoin = 'usdt';
   boostUntil = 0;
   pendingSlot = null;
   adsWatched = 0;
@@ -1186,7 +1216,7 @@ function applyServerState(st){
   if(!st) return;
   points = st.points;
   totalPointsEarned = st.totalPointsEarned;
-  wallet = { btc: st.wallet.btc || 0, eth: st.wallet.eth || 0 };
+  balanceUsd = Number.isFinite(st.balanceUsd) ? st.balanceUsd : ((st.wallet && st.wallet.btc || 0) * (PRICING.btcUsd || 0));
   workersRented = st.workersRented || 0;
   adsWatched = st.adsWatched || 0;
   boostUntil = st.boostUntil || 0;
@@ -1361,7 +1391,7 @@ async function scheduleNotifications(appHidden = false){
       shelves.forEach(s => {
         const w = s.worker;
         if(w && w.expiresAt > now + 5000){
-          const label = (WORKERS[w.coin + '_' + w.kind] || {}).label || 'العامل';
+          const label = (WORKERS[w.kind] || {}).label || 'العامل';
           list.push({ id: 100 + s.id, title: tr('انتهت مدة العامل ⏰'), body: tr(`${label} خلّص شغله، جدّده ليرجع ينتج.`), schedule: { at: new Date(w.expiresAt), allowWhileIdle: true }, smallIcon: 'ic_stat_notify', largeIcon: 'ic_notif_large' });
         }
       });
@@ -1567,13 +1597,11 @@ setInterval(() => {
   const now = Date.now();
   const boosted = now < boostUntil;
   const boostMul = boosted ? 2 : 1;
-  const btcGain = currentRate('btc') * boostMul * 0.9;
-  const ethGain = currentRate('eth') * boostMul * 0.9;
-  wallet.btc += btcGain;
-  wallet.eth += ethGain;
-  const activeGain = activeCoin === 'btc' ? btcGain : ethGain;
+  const gainUsd = currentRate() * boostMul * 0.9;
+  balanceUsd += gainUsd;
+  const activeGain = fromUsd(gainUsd, activeCoin);
   if(activeGain > 0){
-    floatPlus.textContent = `+${activeGain.toFixed(12)}`;
+    floatPlus.textContent = `+${activeGain.toFixed(DEC[activeCoin])}`;
     floatPlus.classList.remove('show'); void floatPlus.offsetWidth; floatPlus.classList.add('show');
   }
   render();

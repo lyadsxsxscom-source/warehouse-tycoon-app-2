@@ -593,6 +593,31 @@ async function notifyUser(payload){
 
 // ===== طلبات السحب =====
 let withdrawsUnsub = null;
+let pricingCache = null;
+async function getPricing(){
+  if(pricingCache) return pricingCache;
+  try{ const doc = await fbDb.collection('config').doc('pricing').get(); pricingCache = doc.exists ? doc.data() : {}; }catch(e){ pricingCache = {}; }
+  return pricingCache;
+}
+function wdAmountText(d){
+  if(d.coin === 'shamcash') return `$${Number(d.amountUsd || d.amount).toFixed(2)} — شام كاش`;
+  const usd = d.amountUsd ? ` ≈ $${Number(d.amountUsd).toFixed(2)}` : '';
+  return `${d.amount.toFixed(d.coin === 'usdt' ? 8 : 8)} ${d.coin.toUpperCase()}${d.network ? ' ('+d.network+')' : ''}${usd}`;
+}
+async function adminWithdraw(payload){
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const r = await fetch('https://postback.ly-ad.de/admin/withdraw', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok || !j.ok){
+    const names = { already_processed: 'الطلب انعالج من قبل', not_found: 'الطلب غير موجود', bad_payout: 'اكتب عملة ومبلغ التحويل', unauthorized: 'غير مصرّح', conflict: 'تعارض، جرّب كمان مرة', no_refund_value: 'ما في قيمة لإرجاعها (راجع سعر العملة بالإعدادات)' };
+    throw new Error(names[j.error] || j.error || ('HTTP ' + r.status));
+  }
+  return j;
+}
 function watchWithdrawRequests(){
   const list = document.getElementById('withdrawsList');
   if(withdrawsUnsub) withdrawsUnsub();
@@ -609,19 +634,33 @@ function watchWithdrawRequests(){
         card.className = 'req-card';
         card.innerHTML = `
           <div class="req-top">
-            <span class="amt">${d.amount.toFixed(8)} ${d.coin.toUpperCase()}${d.network ? ' ('+d.network+')' : ''}</span>
+            <span class="amt">${wdAmountText(d)}</span>
             <span class="req-status ${d.status}">${statusLabel}</span>
           </div>
           <div class="req-who">${escapeHtml(d.displayName || '')} ${d.email ? '· ' + escapeHtml(d.email) : ''}</div>
-          <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${escapeHtml(d.walletAddress || '')}</div>
+          <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${d.coin === 'shamcash' ? 'شام كاش: ' : ''}${escapeHtml(d.walletAddress || '')}</div>
+          ${d.coin === 'shamcash' && d.status === 'fulfilled' && d.payoutCurrency ? `<div class="req-note">تم التحويل: ${d.payoutCurrency === 'SYP' ? Math.round(d.payoutAmount).toLocaleString('en-US') + ' ل.س' : '$' + d.payoutAmount}</div>` : ''}
+          ${d.coin === 'shamcash' && d.status === 'pending' ? `<div class="req-note" data-pay="${doc.id}" style="display:flex; gap:6px; align-items:center;">
+            <select data-paycur="${doc.id}" style="flex:1;"><option value="USD">دولار</option><option value="SYP">ليرة سورية</option></select>
+            <input type="number" step="any" data-payamt="${doc.id}" value="${Number(d.amountUsd || d.amount).toFixed(2)}" style="flex:1;">
+          </div>` : ''}
           ${d.status === 'pending' ? `<div class="req-note" id="chk-${doc.id}">🔍 جاري التحقق من نشاط الحساب...</div>` : ''}
           <div class="req-actions" ${d.status !== 'pending' ? 'style="display:none;"' : ''}>
             <button class="btn" data-wdact="fulfill" data-id="${doc.id}">✓ تم الإرسال يدوياً</button>
-            <button class="btn btn-reject" data-wdact="reject" data-id="${doc.id}" data-uid="${d.uid}" data-coin="${d.coin}" data-amount="${d.amount}">رفض وإرجاع الرصيد</button>
+            <button class="btn btn-reject" data-wdact="reject" data-id="${doc.id}">رفض وإرجاع الرصيد</button>
           </div>
         `;
         list.appendChild(card);
         if(d.status === 'pending') checkWithdrawPlausibility(doc.id, d);
+        const curSel = list.querySelector(`[data-paycur="${doc.id}"]`);
+        if(curSel){
+          curSel.onchange = async () => {
+            const amtEl = list.querySelector(`[data-payamt="${doc.id}"]`);
+            const usd = Number(d.amountUsd || d.amount);
+            const rate = Number((await getPricing()).usdToSyp) || 0;
+            amtEl.value = curSel.value === 'SYP' ? (rate > 0 ? Math.round(usd * rate) : '') : usd.toFixed(2);
+          };
+        }
       });
       updateWdBadge(pendingCount);
     }, err => {
@@ -639,7 +678,7 @@ async function checkWithdrawPlausibility(reqId, d){
   try{
     const pricingDoc = await fbDb.collection('config').doc('pricing').get();
     const pricing = pricingDoc.exists ? pricingDoc.data() : {};
-    const priceUsd = d.coin === 'btc' ? (pricing.btcUsd || 0) : (pricing.ethUsd || 0);
+    const priceUsd = (d.coin === 'usdt' || d.coin === 'shamcash') ? 1 : (d.coin === 'btc' ? (pricing.btcUsd || 0) : (pricing.ethUsd || 0));
     const playerDoc = await fbDb.collection('players').doc(d.uid).get();
     if(!playerDoc.exists){
       el.textContent = '⚠️ ما لقيت بيانات هذا الحساب — راجع يدوياً.';
@@ -648,7 +687,7 @@ async function checkWithdrawPlausibility(reqId, d){
     }
     const p = playerDoc.data();
     const earned = p.totalPointsEarned || 0;
-    const requestedUsd = priceUsd > 0 ? d.amount * priceUsd : 0;
+    const requestedUsd = d.amountUsd > 0 ? d.amountUsd : (priceUsd > 0 ? d.amount * priceUsd : 0);
     const maxExpectedUsd = earned / 900; // نفس نسبة الاقتصاد المتفق عليها: 900 نقطة تقريباً = 1$ إنتاج
     el.innerHTML = `إجمالي نقاط الحساب من البداية: ${earned.toLocaleString('en-US')} — يعادل حد أقصى تقريبي ${maxExpectedUsd.toFixed(2)}$`;
     if(requestedUsd > maxExpectedUsd * 1.5){
@@ -667,24 +706,18 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
   if(!btn) return;
   btn.disabled = true;
   const reqId = btn.dataset.id;
+  const payload = { requestId: reqId, action: btn.dataset.wdact };
   if(btn.dataset.wdact === 'fulfill'){
-    try{
-      await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'fulfilled', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid });
-      notifyUser({ type: 'withdraw_ok', requestId: reqId });
+    const curEl = document.querySelector(`[data-paycur="${reqId}"]`);
+    if(curEl){ // سحب شام كاش: لازم عملة ومبلغ التحويل الفعلي
+      payload.payoutCurrency = curEl.value;
+      payload.payoutAmount = Number(document.querySelector(`[data-payamt="${reqId}"]`).value);
+      if(!(payload.payoutAmount > 0)){ alert('اكتب مبلغ التحويل.'); btn.disabled = false; return; }
+      if(!confirm(`تأكيد: تم تحويل ${payload.payoutAmount} ${payload.payoutCurrency === 'SYP' ? 'ل.س' : '$'} عبر شام كاش؟`)){ btn.disabled = false; return; }
     }
-    catch(err){ alert('تعذّر التأكيد: ' + err.message); btn.disabled = false; }
-    return;
   }
-  if(btn.dataset.wdact === 'reject'){
-    const uid = btn.dataset.uid, coin = btn.dataset.coin, amount = parseFloat(btn.dataset.amount);
-    try{
-      await fbDb.collection('players').doc(uid).update({
-        [`wallet.${coin}`]: firebase.firestore.FieldValue.increment(amount)
-      });
-      await fbDb.collection('withdrawRequests').doc(reqId).update({ status: 'rejected', reviewedAt: Date.now(), reviewedBy: fbAuth.currentUser.uid });
-      notifyUser({ type: 'withdraw_rejected', requestId: reqId });
-    }catch(err){ alert('تعذّر الرفض: ' + err.message); btn.disabled = false; }
-  }
+  try{ await adminWithdraw(payload); }
+  catch(err){ alert((btn.dataset.wdact === 'fulfill' ? 'تعذّر التأكيد: ' : 'تعذّر الرفض: ') + err.message); btn.disabled = false; }
 });
 
 // ===== إدارة المتجر: الباقات =====
@@ -873,16 +906,10 @@ const DEFAULT_METHODS = [
 
 // ===== اقتصاد اللعبة =====
 const DEFAULT_SHELF_COST = [0, 0, 120, 350, 800, 1600];
-const WORKER_KEYS = ['btc_day','btc_week','btc_month','eth_day','eth_week','eth_month'];
-const WORKER_LABELS = {
-  btc_day:'عامل بيتكوين يومي', btc_week:'عامل بيتكوين أسبوعي', btc_month:'عامل بيتكوين شهري',
-  eth_day:'عامل إيثيريوم يومي', eth_week:'عامل إيثيريوم أسبوعي', eth_month:'عامل إيثيريوم شهري',
-};
+const WORKER_KEYS = ['day','week','month'];
+const WORKER_LABELS = { day:'عامل يومي', week:'عامل أسبوعي', month:'عامل شهري' };
 const POINTS_PER_USD_PRODUCTION = 900; // معادلة التسعير الثابتة: 900 نقطة تكلفة = 1$ قيمة إنتاج كامل المدة
-const DEFAULT_WORKER_COST = {
-  btc_day: 100, btc_week: 600, btc_month: 2000,
-  eth_day: 100, eth_week: 600, eth_month: 2000,
-};
+const DEFAULT_WORKER_COST = { day: 25, week: 250, month: 600 };
 let shelfCostData = [];
 let workersData = {};
 let earnLinksData = [];
@@ -950,7 +977,7 @@ document.getElementById('btnSaveWorkers').onclick = async () => {
   const msg = document.getElementById('workersMsg');
   try{
     await fbDb.collection('config').doc('gameConfig').set({ workers: workersData }, { merge: true });
-    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق تلقائياً على أول عامل جديد يُستأجر (العمال الحاليين بضلوا بمعدّلهم القديم لحد ما تنتهي مدتهم)';
+    msg.style.color = '#5fd88a'; msg.textContent = '✓ تم الحفظ — بيطبّق تلقائياً على أول عامل جديد يُستأجر (العمال الحاليين بضلوا بمعدّلهم لحد ما تنتهي مدتهم). العمال الجداد: يومي/أسبوعي/شهري، وإنتاجهم بالدولار.';
   }catch(e){ msg.style.color = 'var(--ember)'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
 };
 
@@ -1088,7 +1115,8 @@ async function loadGameConfig(){
     shelfCostData = (Array.isArray(d.shelfUnlockCost) && d.shelfUnlockCost.length === DEFAULT_SHELF_COST.length) ? [...d.shelfUnlockCost] : [...DEFAULT_SHELF_COST];
     workersData = {};
     WORKER_KEYS.forEach(key => {
-      const cost = (d.workers && d.workers[key] && typeof d.workers[key].cost === 'number') ? d.workers[key].cost : DEFAULT_WORKER_COST[key];
+      const src = d.workers && (d.workers[key] || d.workers['btc_' + key]); // الصيغة القديمة (btc_day...) كاحتياط
+      const cost = (src && typeof src.cost === 'number') ? src.cost : DEFAULT_WORKER_COST[key];
       workersData[key] = { cost, usdPerDuration: cost / POINTS_PER_USD_PRODUCTION };
     });
     earnLinksData = Array.isArray(d.earnLinks) ? d.earnLinks.map(l => ({...l})) : [];
