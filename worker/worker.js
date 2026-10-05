@@ -399,11 +399,19 @@ function settle(p, now) {
   }
   p.lastSettleAt = now;
 }
+// شكل العامل للتطبيق: rateUsd (إنتاج بالدولار/ثانية) للنسخ الجديدة، وcoin + rate (إنتاج بالـBTC/ثانية) كمان للنسخ القديمة (2.2) حتى ما ينكسر عرضها
+function shelfForClient(sh, cfg) {
+  const w = sh.worker;
+  if (!w || w.unit !== "usd") return sh;
+  const usd = Number(w.rate) || 0;
+  const bp = cfg ? coinPriceUsd(cfg, "btc") : 0;
+  return { id: sh.id, unlocked: sh.unlocked, worker: { kind: w.kind, coin: "btc", rate: bp > 0 ? usd / bp : 0, rateUsd: usd, startAt: w.startAt, expiresAt: w.expiresAt } };
+}
 function publicState(p, now, cfg) {
   return {
     points: p.points, totalPointsEarned: p.totalPointsEarned, balanceUsd: p.balanceUsd,
     wallet: { btc: cfg && coinPriceUsd(cfg, "btc") > 0 ? p.balanceUsd / coinPriceUsd(cfg, "btc") : 0, eth: 0 }, // للنسخ القديمة من التطبيق
-    shelves: p.shelves, tasks: p.tasks, dailyDate: p.dailyDate,
+    shelves: p.shelves.map(sh => shelfForClient(sh, cfg)), tasks: p.tasks, dailyDate: p.dailyDate,
     adsWatched: p.adsWatched, workersRented: p.workersRented,
     boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now,
     serverToday: todaySyria(now),
@@ -1072,7 +1080,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "wallet-1" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "wallet-2" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);

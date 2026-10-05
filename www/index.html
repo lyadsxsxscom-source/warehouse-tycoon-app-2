@@ -520,7 +520,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.3"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.4"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -700,7 +700,12 @@ const btnETH = document.getElementById('btnETH');
 
 function currentRate(){ // إنتاج العمال الحالي بالدولار/ثانية
   const now = Date.now();
-  return shelves.reduce((sum, s) => (s.worker && s.worker.unit === 'usd' && s.worker.expiresAt > now) ? sum + s.worker.rate : sum, 0);
+  return shelves.reduce((sum, s) => {
+    const w = s.worker;
+    if(!w || !(w.expiresAt > now)) return sum;
+    const r = w.rateUsd != null ? w.rateUsd : (w.unit === 'usd' ? w.rate : 0); // السيرفر بيبعت rateUsd (والنسخ القديمة بتقرأ coin+rate)
+    return sum + (Number(r) || 0);
+  }, 0);
 }
 
 function renderTasks(){
