@@ -129,6 +129,7 @@
       <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
       <div class="tab" id="tabStore">🛠 المتجر</div>
       <div class="tab" id="tabEconomy">⚖️ اقتصاد اللعبة</div>
+      <div class="tab" id="tabErrors">🐞 الأخطاء <span id="errBadge"></span></div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
       <div class="tab" id="tabSettings">⚙️ الإعدادات</div>
     </div>
@@ -166,6 +167,15 @@
 
     <div id="viewWithdraws" style="display:none;">
       <div id="withdrawsList"></div>
+    </div>
+
+    <div id="viewErrors" style="display:none;">
+      <div class="req-note" id="errSummary" style="margin-bottom:10px;">اضغط "تحديث" لعرض أخطاء التطبيق.</div>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button class="btn" id="btnErrRefresh" style="flex:1;">تحديث</button>
+        <button class="btn btn-reject" id="btnErrClear" style="flex:1;">مسح الكل</button>
+      </div>
+      <div id="errorsList"></div>
     </div>
 
     <div id="viewStore" style="display:none;">
@@ -404,8 +414,10 @@ const viewStore = document.getElementById('viewStore');
 const viewEconomy = document.getElementById('viewEconomy');
 const viewCodes = document.getElementById('viewCodes');
 const viewSettings = document.getElementById('viewSettings');
-const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings];
-const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings];
+const tabErrors = document.getElementById('tabErrors');
+const viewErrors = document.getElementById('viewErrors');
+const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors];
+const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
@@ -718,6 +730,75 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
   }
   try{ await adminWithdraw(payload); }
   catch(err){ alert((btn.dataset.wdact === 'fulfill' ? 'تعذّر التأكيد: ' : 'تعذّر الرفض: ') + err.message); btn.disabled = false; }
+});
+
+// ===== أخطاء التطبيق (بتجي من السيرفر مع إيميل اللاعب الحقيقي المربوط بحسابه) =====
+async function adminErrors(payload){
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const r = await fetch('https://postback.ly-ad.de/admin/errors', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+function timeAgoAr(ms){
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if(s < 60) return 'هلق';
+  const m = Math.floor(s / 60); if(m < 60) return `قبل ${m} دقيقة`;
+  const h = Math.floor(m / 60); if(h < 24) return `قبل ${h} ساعة`;
+  return `قبل ${Math.floor(h / 24)} يوم`;
+}
+const ERR_SOURCE_LABEL = { js: 'خطأ بالتطبيق', promise: 'عملية فشلت', api: 'خطأ من السيرفر' };
+function renderErrors(list){
+  const box = document.getElementById('errorsList');
+  const sum = document.getElementById('errSummary');
+  document.getElementById('errBadge').textContent = list.length ? list.length : '';
+  if(!list.length){ box.innerHTML = '<div class="empty-note">ما في أخطاء مسجّلة ✓</div>'; sum.textContent = 'ما في أخطاء.'; return; }
+  const users = new Set(list.map(e => e.uid));
+  const total = list.reduce((a, e) => a + (Number(e.count) || 1), 0);
+  sum.textContent = `${list.length} نوع خطأ · ${users.size} لاعب · ${total} مرة بالمجموع (مرتبة من الأحدث)`;
+  box.innerHTML = '';
+  list.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'req-card';
+    const who = e.email ? escapeHtml(e.email) : '<span style="color:var(--dim)">بدون إيميل</span>';
+    card.innerHTML = `
+      <div class="req-top">
+        <span class="amt" style="font-size:13px; direction:ltr; text-align:left; word-break:break-word;">${escapeHtml(e.message || '')}</span>
+        <span class="req-status pending">${Number(e.count) || 1}×</span>
+      </div>
+      <div class="req-who">📧 ${who}${e.name ? ' · ' + escapeHtml(e.name) : ''}</div>
+      <div class="req-note">
+        ${ERR_SOURCE_LABEL[e.source] || 'خطأ'} · نسخة ${escapeHtml(e.appVersion || '؟')} · شاشة: ${escapeHtml(e.screen || '؟')}<br>
+        📱 ${escapeHtml(e.device || '؟')}<br>
+        آخر مرة: ${e.lastAt ? timeAgoAr(e.lastAt) : '؟'} · أول مرة: ${e.firstAt ? timeAgoAr(e.firstAt) : '؟'}
+      </div>
+      ${e.stack ? `<details style="margin-bottom:8px;"><summary style="font-size:12px; color:var(--amber); cursor:pointer;">التفاصيل التقنية</summary><pre style="direction:ltr; text-align:left; white-space:pre-wrap; word-break:break-all; font-size:11px; background:#00000040; border-radius:8px; padding:8px; margin-top:6px;">${escapeHtml(e.stack)}</pre></details>` : ''}
+      <div class="req-actions"><button class="btn btn-reject" data-errdel="${escapeHtml(e.id)}">حذف</button></div>`;
+    box.appendChild(card);
+  });
+}
+async function loadErrors(){
+  const sum = document.getElementById('errSummary');
+  sum.textContent = 'جاري التحميل...';
+  try{ const j = await adminErrors({ action: 'list' }); renderErrors(j.errors || []); }
+  catch(e){ sum.textContent = 'تعذّر تحميل الأخطاء: ' + e.message; }
+}
+tabErrors.onclick = () => { activateTab(tabErrors, viewErrors); loadErrors(); };
+document.getElementById('btnErrRefresh').onclick = loadErrors;
+document.getElementById('btnErrClear').onclick = async () => {
+  if(!confirm('تمسح كل الأخطاء المسجّلة؟')) return;
+  try{ await adminErrors({ action: 'clear' }); await loadErrors(); }catch(e){ alert('تعذّر المسح: ' + e.message); }
+};
+document.getElementById('errorsList').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-errdel]');
+  if(!btn) return;
+  btn.disabled = true;
+  try{ await adminErrors({ action: 'delete', id: btn.dataset.errdel }); btn.closest('.req-card').remove(); await loadErrors(); }
+  catch(e){ alert('تعذّر الحذف: ' + e.message); btn.disabled = false; }
 });
 
 // ===== إدارة المتجر: الباقات =====

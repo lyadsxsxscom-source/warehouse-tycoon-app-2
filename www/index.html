@@ -243,6 +243,25 @@
 <script src="i18n.js"></script>
 </head>
 <body>
+<script>
+// ===== التقاط أخطاء التطبيق (بتنبعت للسيرفر بعد تسجيل الدخول وبتظهر بصفحة الأدمن مع إيميل اللاعب) =====
+window.__errQueue = [];
+(function(){
+  const seen = new Set(); let total = 0;
+  window.__pushClientError = function(source, message, stack){
+    try{
+      const msg = String(message || '').trim().slice(0, 400);
+      if(!msg || /^Script error\.?$/i.test(msg) || /ResizeObserver loop/i.test(msg)) return;
+      const key = source + '|' + msg.slice(0, 120);
+      if(seen.has(key) || total >= 8) return; // نفس الخطأ مرة وحدة بالجلسة، وحد أقصى 8
+      seen.add(key); total++;
+      window.__errQueue.push({ source, message: msg, stack: String(stack || '').slice(0, 2000), screen: (document.querySelector('.navbtn.active') || {}).dataset ? (document.querySelector('.navbtn.active').dataset.screen || '') : '' });
+    }catch(e){}
+  };
+  window.addEventListener('error', e => window.__pushClientError('js', e.message, e.error && e.error.stack));
+  window.addEventListener('unhandledrejection', e => { const r = e.reason; window.__pushClientError('promise', (r && r.message) || String(r), r && r.stack); });
+})();
+</script>
 
 <div id="loginGate" class="overlay show" style="z-index:50; background:radial-gradient(circle at 50% 20%, rgba(227,168,59,0.12), transparent 50%), var(--bg);">
   <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#E3A83B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 7 12 11 4 7z"/><path d="M4 7v9l8 4V11z"/><path d="M20 7v9l-8 4V11z"/></svg></div>
@@ -520,7 +539,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.4"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.5"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -1212,6 +1231,7 @@ async function gameApi(action, body){
   }catch(e){
     throw new Error('تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.');
   }
+  if(res.status >= 500 && window.__pushClientError) window.__pushClientError('api', `${action}: HTTP ${res.status} ${data.error || ''}`.trim(), '');
   if(!res.ok || !data.ok) throw new Error(data.message || 'صار خطأ، جرّب كمان مرة.');
   applyServerState(data.state);
   return data;
@@ -1593,6 +1613,32 @@ function handleBack(){
   else { lastBackAt = now; showExitHint(); }
 }
 if(nativeApp){ nativeApp.addListener('backButton', handleBack); }
+
+// ===== إرسال الأخطاء الملتقطة للسيرفر (بعد تسجيل الدخول، دفعة صغيرة كل 8 ثواني) =====
+function deviceLabel(){
+  const m = (navigator.userAgent || '').match(/Android ([\d.]+); ([^)]*?)(?: Build|\))/);
+  return m ? ('Android ' + m[1] + ' · ' + m[2].trim()).slice(0, 80) : (navigator.userAgent || '').slice(0, 80);
+}
+let flushingErrors = false;
+async function flushClientErrors(){
+  if(flushingErrors || !currentUser || !window.__errQueue || !window.__errQueue.length) return;
+  flushingErrors = true;
+  try{
+    const idToken = await currentUser.getIdToken();
+    while(window.__errQueue.length){
+      const item = window.__errQueue[0];
+      const res = await fetch(`${OFFERWALL_WORKER_BASE}/report-error`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+        body: JSON.stringify(Object.assign({ version: APP_VERSION, device: deviceLabel() }, item)),
+      });
+      if(!res.ok && res.status !== 400) break; // مشكلة مؤقتة: منعيد المحاولة بالدفعة الجاية
+      window.__errQueue.shift();
+    }
+  }catch(e){}
+  flushingErrors = false;
+}
+setInterval(flushClientErrors, 8000);
 
 // تحديث الرصيد من السيرفر كل دقيقة (يلتقط نقاط جدار المهام والإنتاج الحقيقي)
 setInterval(() => { if(document.visibilityState === 'visible') claimPendingOfferwallCredits(); }, 60000);

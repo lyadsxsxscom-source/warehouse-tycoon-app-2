@@ -233,6 +233,19 @@ async function fsCommit(env, writes) {
   return r.json();
 }
 
+// استعلام بسيط: آخر N مستند من مجموعة، مرتبة حسب حقل تنازلياً
+async function fsRunQuery(env, collectionId, orderField, limit) {
+  const token = await getGoogleAccessToken(env);
+  const r = await fetch(fsUrl(env, ":runQuery"), {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], orderBy: [{ field: { fieldPath: orderField }, direction: "DESCENDING" }], limit } }),
+  });
+  if (!r.ok) throw new Error("fsQuery " + r.status + ": " + (await r.text()));
+  const rows = await r.json();
+  return rows.filter(x => x.document).map(x => ({ id: x.document.name.split("/").pop(), data: fieldsToObj(x.document.fields || {}) }));
+}
+
 // ===== الإحصائيات اليومية (analytics/{اليوم}) =====
 // عدّادات ذرّية (increment + appendMissingElements)، ما بتتعارض مع حفظ اللاعب ولا بتحتاج قراءة.
 // uids = مين فات اليوم، newUids = مين أول يوم إله اليوم → منهن بتنحسب DAU/MAU والاحتفاظ D1/D7 بصفحة الأدمن.
@@ -1065,6 +1078,67 @@ async function handleAdminWithdraw(request, env, ctx) {
   return jsonResponse({ ok: true }, 200);
 }
 
+// ===== سجل أخطاء التطبيق (بيوصل للأدمن مع إيميل اللاعب) =====
+const ERR_DAILY_CAP = 40;       // أقصى عدد تقارير لكل لاعب باليوم
+const ERR_LIST_LIMIT = 150;
+function cleanStr(v, max) { return typeof v === "string" ? v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, max) : ""; }
+async function handleReportError(request, env) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const message = cleanStr(body.message, 400).trim();
+  if (!message) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+  const stack = cleanStr(body.stack, 2000);
+  const source = ["js", "promise", "api"].includes(body.source) ? body.source : "js";
+  const appVersion = cleanStr(body.version, 20), screen = cleanStr(body.screen, 30), device = cleanStr(body.device, 80);
+  const now = Date.now(), uid = user.sub;
+  try {
+    const capKey = "err:" + uid + ":" + todaySyria(now);
+    const used = Number(await env.PENDING_CREDITS.get(capKey)) || 0;
+    if (used >= ERR_DAILY_CAP) return jsonResponse({ ok: true, limited: true }, 200);
+    await env.PENDING_CREDITS.put(capKey, String(used + 1), { expirationTtl: 60 * 60 * 48 }).catch(() => {});
+    const firstLine = (stack.split("\n")[1] || stack.split("\n")[0] || "").trim();
+    const id = (await sha256Hex(uid + "|" + appVersion + "|" + message.slice(0, 200) + "|" + firstLine)).slice(0, 32);
+    const path = "clientErrors/" + id;
+    const cur = await fsGetDoc(env, path);
+    const doc = cur.exists
+      ? { ...cur.data, count: (Number(cur.data.count) || 1) + 1, lastAt: now, screen, device, status: "open" }
+      : { uid, email: user.email || "", name: user.name || "", message, stack, source, appVersion, screen, device, count: 1, firstAt: now, lastAt: now, status: "open" };
+    await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(doc) } }]);
+  } catch (e) {
+    console.warn({ message: "report error failed", error: String(e.message || e) });
+  }
+  return jsonResponse({ ok: true }, 200);
+}
+async function handleAdminErrors(request, env) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  try {
+    if (body.action === "list") {
+      const rows = await fsRunQuery(env, "clientErrors", "lastAt", ERR_LIST_LIMIT);
+      return jsonResponse({ ok: true, errors: rows.map(r => ({ id: r.id, ...r.data })) }, 200);
+    }
+    if (body.action === "delete") {
+      const id = String(body.id || "");
+      if (!id || id.includes("/")) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+      await fsCommit(env, [{ delete: docName(env, "clientErrors/" + id) }]);
+      return jsonResponse({ ok: true }, 200);
+    }
+    if (body.action === "clear") {
+      const rows = await fsRunQuery(env, "clientErrors", "lastAt", ERR_LIST_LIMIT);
+      if (rows.length) await fsCommit(env, rows.map(r => ({ delete: docName(env, "clientErrors/" + r.id) })));
+      return jsonResponse({ ok: true, deleted: rows.length }, 200);
+    }
+  } catch (e) {
+    console.error({ message: "admin errors failed", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "failed" }, 500);
+  }
+  return jsonResponse({ ok: false, error: "bad_request" }, 400);
+}
+
 async function handleDownload() {
   const resp = await fetch(APK_SOURCE_URL, { redirect: "follow" });
   if (!resp.ok) return new Response("تعذّر تحميل الملف حالياً (" + resp.status + ")", { status: 502 });
@@ -1080,7 +1154,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "wallet-2" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "errlog-1" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);
@@ -1098,6 +1172,8 @@ export default {
     if (url.pathname === "/ow2") return handleOffersWallsPostback(request, env, ctx);
     if (url.pathname === "/admin/notify" && request.method === "POST") return handleAdminNotify(request, env, ctx);
     if (url.pathname === "/admin/withdraw" && request.method === "POST") return handleAdminWithdraw(request, env, ctx);
+    if (url.pathname === "/report-error" && request.method === "POST") return handleReportError(request, env);
+    if (url.pathname === "/admin/errors" && request.method === "POST") return handleAdminErrors(request, env);
     if (url.pathname === "/today" && request.method === "GET") return jsonResponse({ today: todaySyria() }, 200);
     if (url.pathname === "/selftest" && request.method === "GET") return handleSelftest(env);
     if (url.pathname === "/dl" && request.method === "GET") return handleDownload();
