@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://ly-ad.de/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://ly-ad.de/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://ly-ad.de/tr/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://ly-ad.de/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ly-ad.de/"/>
+  </url>
+  <url>
+    <loc>https://ly-ad.de/tr/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://ly-ad.de/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://ly-ad.de/tr/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://ly-ad.de/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ly-ad.de/"/>
+  </url>
+  <url>
+    <loc>https://ly-ad.de/en/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://ly-ad.de/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://ly-ad.de/tr/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://ly-ad.de/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ly-ad.de/"/>
+  </url>
+</urlset>
