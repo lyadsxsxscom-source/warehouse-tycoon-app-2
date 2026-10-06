@@ -1,7 +1,7 @@
 {
   "name": "warehouse-tycoon",
   "version": "1.0.0",
-  "description": "تطبيق مستودع الأرباح - idle tycoon",
+  "description": "Yardova - idle warehouse game",
   "scripts": {
     "sync": "cap sync"
   },

@@ -19,7 +19,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>مستودع الأرباح</title>
+<title>Yardova</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
@@ -265,7 +265,7 @@ window.__errQueue = [];
 
 <div id="loginGate" class="overlay show" style="z-index:50; background:radial-gradient(circle at 50% 20%, rgba(227,168,59,0.12), transparent 50%), var(--bg);">
   <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#E3A83B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 7 12 11 4 7z"/><path d="M4 7v9l8 4V11z"/><path d="M20 7v9l-8 4V11z"/></svg></div>
-  <h1 style="margin:0 0 4px;">مستودع الأرباح</h1>
+  <h1 style="margin:0 0 4px;">Yardova</h1>
   <div class="subtitle" style="margin-bottom:26px;">سجّل دخولك عشان تبدأ وتحفظ تقدمك</div>
   <button class="btn-main" id="btnGoogleLoginGate" style="max-width:320px; background:linear-gradient(135deg, #4285F4, #34A853); color:#fff; display:flex; align-items:center; justify-content:center; gap:8px;">
     <span style="background:#fff; color:#4285F4; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">G</span>
@@ -293,7 +293,7 @@ window.__errQueue = [];
 </div>
 
 
-<h1>مستودع الأرباح</h1>
+<h1>Yardova</h1>
 
 <!-- ===== HOME ===== -->
 <div class="screen active" id="screen-home">
@@ -539,7 +539,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.5"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.6"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -928,10 +928,10 @@ document.getElementById('btnShareRef').onclick = async () => {
   const code = referralInfo?.code;
   if(!code) return;
   const tr = (x) => (window.I18N ? window.I18N.t(x) : x);
-  const text = tr('العب "مستودع الأرباح" واربح بيتكوين وإيثيريوم 🪙') + '\n' + tr(`اكتب كود الدعوة تبعي ${code} وخود نقاط هدية!`) + '\n' + APP_DOWNLOAD_URL;
+  const text = tr('جرّب "Yardova" — لعبة إدارة مستودع مجانية 🏭') + '\n' + tr(`اكتب كود الدعوة تبعي ${code} وخود نقاط هدية!`) + '\n' + APP_DOWNLOAD_URL;
   const share = window.Capacitor?.Plugins?.Share;
   try{
-    if(share){ await share.share({ title: 'مستودع الأرباح', text, dialogTitle: 'شارك الكود' }); return; }
+    if(share){ await share.share({ title: 'Yardova', text, dialogTitle: 'شارك الكود' }); return; }
     if(navigator.share){ await navigator.share({ text }); return; }
   }catch(e){ if(String(e?.message || e).toLowerCase().includes('cancel')) return; }
   try{ await navigator.clipboard.writeText(text); hint.textContent = 'انتسخ الكود مع الرابط ✓'; }catch(e){ prompt('انسخ الرسالة:', text); }

@@ -25,9 +25,12 @@
     "ما فيك تستخدم كودك إنت.": ["Kendi kodunu kullanamazsın.", "You can't use your own code."],
     "استخدمت كود دعوة من قبل.": ["Zaten bir davet kodu kullandın.", "You've already used an invite code."],
     "كود الدعوة بينكتب بس بأول يومين من التسجيل.": ["Davet kodu sadece kayıttan sonraki ilk iki gün içinde girilebilir.", "Invite codes can only be entered within the first two days after signing up."],
-    "العب \"مستودع الأرباح\" واربح بيتكوين وإيثيريوم 🪙": ["\"Kazanç Deposu\" oyna, Bitcoin ve Ethereum kazan 🪙", "Play \"Profit Warehouse\" and earn Bitcoin & Ethereum 🪙"],
+    "جرّب \"Yardova\" — لعبة إدارة مستودع مجانية 🏭": [
+    "\"Yardova\" oyna — ücretsiz depo yönetim oyunu 🏭",
+    "Try \"Yardova\" — a free warehouse management game 🏭"
+  ],
     "مثال: K7M2QX": ["Örnek: K7M2QX", "Example: K7M2QX"],
-    "مستودع الأرباح": ["Kazanç Deposu", "Profit Warehouse"],
+    "Yardova": ["Yardova", "Yardova"],
     "سجّل دخولك عشان تبدأ وتحفظ تقدمك": ["Başlamak ve ilerlemeni kaydetmek için giriş yap", "Sign in to start and save your progress"],
     "تسجيل الدخول عبر Google": ["Google ile giriş yap", "Sign in with Google"],
     "تسجيل الدخول عبر Google لحفظ التقدم": ["İlerlemeni kaydetmek için Google ile giriş yap", "Sign in with Google to save progress"],

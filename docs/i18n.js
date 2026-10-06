@@ -5,13 +5,13 @@
 (function(){
   // [تركي, إنجليزي]
   const EXACT = {
-  "مستودع الأرباح — التحميل والشحن": [
-    "Kazanç Deposu — İndir ve Yükle",
-    "Profit Warehouse — Download & Top-up"
+  "Yardova — التحميل والشحن": [
+    "Yardova — İndir ve Yükle",
+    "Yardova — Download & Top-up"
   ],
-  "مستودع الأرباح": [
-    "Kazanç Deposu",
-    "Profit Warehouse"
+  "Yardova": [
+    "Yardova",
+    "Yardova"
   ],
   "لعبة إدارة مستودع idle — وظّف عمّالك، اجمع النقاط، وشاهد المحفظة تتراكم وحدها.": [
     "Idle depo yönetim oyunu — işçilerini çalıştır, puan topla ve cüzdanının kendiliğinden dolmasını izle.",
@@ -45,9 +45,9 @@
     "İşçi, sözleşmesi boyunca otomatik olarak kripto üretir",
     "The worker produces coins automatically for its whole contract"
   ],
-  "العملة تتجمّع بالمحفظة — اختر BTC أو ETH": [
-    "Kripto cüzdanda birikir — BTC veya ETH seç",
-    "Coins collect in your wallet — choose BTC or ETH"
+  "الرصيد يتجمّع بالمحفظة — اعرضه بـ USDT أو BTC أو ETH": [
+    "Bakiye cüzdanda birikir — USDT, BTC veya ETH olarak görüntüle",
+    "Your balance collects in your wallet — view it as USDT, BTC or ETH"
   ],
   "اشحن نقاط": [
     "Puan yükle",
@@ -233,21 +233,21 @@
     "Talep gönderiliyor...",
     "Sending request..."
   ],
-  "سياسة الخصوصية — مستودع الأرباح": [
-    "Gizlilik Politikası — Kazanç Deposu",
-    "Privacy Policy — Profit Warehouse"
+  "سياسة الخصوصية — Yardova": [
+    "Gizlilik Politikası — Yardova",
+    "Privacy Policy — Yardova"
   ],
   "🔒 سياسة الخصوصية": [
     "🔒 Gizlilik Politikası",
     "🔒 Privacy Policy"
   ],
-  "مستودع الأرباح — لعبة إدارة مستودع": [
-    "Kazanç Deposu — Depo yönetim oyunu",
-    "Profit Warehouse — A warehouse management game"
+  "Yardova — لعبة إدارة مستودع": [
+    "Yardova — Depo yönetim oyunu",
+    "Yardova — A warehouse management game"
   ],
-  "هاي السياسة بتشرحلك شو معلومات بنجمعها لما تستخدم تطبيق \"مستودع الأرباح\" وموقعنا المرتبط فيه، وكيف بنستخدمها، ومين ممكن يشوفها. باستخدامك للتطبيق أو الموقع، معناها موافق على هاي السياسة.": [
-    "Bu politika, \"Kazanç Deposu\" uygulamasını ve bağlı web sitemizi kullandığında hangi bilgileri topladığımızı, bunları nasıl kullandığımızı ve kimlerin görebileceğini açıklar. Uygulamayı veya siteyi kullanarak bu politikayı kabul etmiş olursun.",
-    "This policy explains what information we collect when you use the \"Profit Warehouse\" app and its website, how we use it, and who can see it. By using the app or the website, you agree to this policy."
+  "هاي السياسة بتشرحلك شو معلومات بنجمعها لما تستخدم تطبيق \"Yardova\" وموقعنا المرتبط فيه، وكيف بنستخدمها، ومين ممكن يشوفها. باستخدامك للتطبيق أو الموقع، معناها موافق على هاي السياسة.": [
+    "Bu politika, \"Yardova\" uygulamasını ve bağlı web sitemizi kullandığında hangi bilgileri topladığımızı, bunları nasıl kullandığımızı ve kimlerin görebileceğini açıklar. Uygulamayı veya siteyi kullanarak bu politikayı kabul etmiş olursun.",
+    "This policy explains what information we collect when you use the \"Yardova\" app and its website, how we use it, and who can see it. By using the app or the website, you agree to this policy."
   ],
   "1. المعلومات يلي بنجمعها": [
     "1. Topladığımız bilgiler",
@@ -265,9 +265,9 @@
     "Oyun verileri:",
     "Game data:"
   ],
-  "نقاطك، رصيد محفظتك (BTC/ETH)، الرفوف والعمال يلي عندك، وسجل نشاطك بالتطبيق.": [
-    "Puanların, cüzdan bakiyen (BTC/ETH), sahip olduğun raflar ve işçiler ile uygulamadaki etkinlik geçmişin.",
-    "Your points, wallet balance (BTC/ETH), your shelves and workers, and your in-app activity history."
+  "نقاطك، رصيد محفظتك بالدولار، الرفوف والعمال يلي عندك، وسجل نشاطك بالتطبيق.": [
+    "Puanların, dolar cinsinden cüzdan bakiyen, sahip olduğun raflar ve işçiler ile uygulamadaki etkinlik geçmişin.",
+    "Your points, your wallet balance in dollars, your shelves and workers, and your in-app activity history."
   ],
   "طلبات الشراء:": [
     "Satın alma talepleri:",
@@ -281,9 +281,17 @@
     "Çekim talepleri:",
     "Withdrawal requests:"
   ],
-  "عنوان محفظة Binance يلي بتزوّدنا فيه، المبلغ، والشبكة المختارة.": [
-    "Bize verdiğin Binance cüzdan adresi, tutar ve seçilen ağ.",
-    "The Binance wallet address you provide, the amount, and the selected network."
+  "تقارير الأخطاء:": [
+    "Hata raporları:",
+    "Error reports:"
+  ],
+  "إذا صار خطأ بالتطبيق، بنسجّل رسالة الخطأ، نسخة التطبيق، ونوع جهازك مع بريدك الإلكتروني المرتبط بحسابك، عشان نصلّح المشكلة. وبنستخدم خدمة Firebase Crashlytics لنفس الغرض.": [
+    "Uygulamada bir hata olursa, sorunu düzeltebilmek için hata mesajını, uygulama sürümünü ve cihaz türünü hesabına bağlı e-posta adresinle birlikte kaydederiz. Aynı amaçla Firebase Crashlytics hizmetini de kullanırız.",
+    "If an error occurs in the app, we record the error message, the app version and your device type together with the email linked to your account, so we can fix the problem. We also use Firebase Crashlytics for the same purpose."
+  ],
+  "عنوان محفظتك (أو رقم حساب شام كاش) يلي بتزوّدنا فيه، المبلغ، والشبكة المختارة.": [
+    "Bize verdiğin cüzdan adresi (veya Sham Cash hesap numarası), tutar ve seçilen ağ.",
+    "The wallet address (or Sham Cash account number) you provide, the amount, and the selected network."
   ],
   "معلومات تقنية:": [
     "Teknik bilgiler:",
@@ -369,29 +377,29 @@
     "Telegram:",
     "Telegram:"
   ],
-  "آخر تحديث: سبتمبر 2026": [
-    "Son güncelleme: Eylül 2026",
-    "Last updated: September 2026"
+  "آخر تحديث: أكتوبر 2026": [
+    "Son güncelleme: Ekim 2026",
+    "Last updated: October 2026"
   ],
-  "شروط الاستخدام — مستودع الأرباح": [
-    "Kullanım Şartları — Kazanç Deposu",
-    "Terms of Use — Profit Warehouse"
+  "شروط الاستخدام — Yardova": [
+    "Kullanım Şartları — Yardova",
+    "Terms of Use — Yardova"
   ],
   "📜 شروط الاستخدام": [
     "📜 Kullanım Şartları",
     "📜 Terms of Use"
   ],
-  "باستخدامك تطبيق \"مستودع الأرباح\" أو الموقع المرتبط فيه، معناها موافق على هاي الشروط. إذا ما موافق، ما تستخدم التطبيق.": [
-    "\"Kazanç Deposu\" uygulamasını veya bağlı web sitesini kullanarak bu şartları kabul etmiş olursun. Kabul etmiyorsan uygulamayı kullanma.",
-    "By using the \"Profit Warehouse\" app or its website, you agree to these terms. If you don't agree, please don't use the app."
+  "باستخدامك تطبيق \"Yardova\" أو الموقع المرتبط فيه، معناها موافق على هاي الشروط. إذا ما موافق، ما تستخدم التطبيق.": [
+    "\"Yardova\" uygulamasını veya bağlı web sitesini kullanarak bu şartları kabul etmiş olursun. Kabul etmiyorsan uygulamayı kullanma.",
+    "By using the \"Yardova\" app or its website, you agree to these terms. If you don't agree, please don't use the app."
   ],
   "1. طبيعة الخدمة": [
     "1. Hizmetin niteliği",
     "1. Nature of the service"
   ],
-  "\"مستودع الأرباح\" لعبة idle مجانية: تكسب نقاط داخل اللعبة (من الإعلانات، المهام، أو الشراء)، وتستخدمها لاستئجار عمال ينتجون رصيد بعملة BTC أو ETH داخل محفظتك بالتطبيق، وتقدر تطلب سحب هالرصيد لمحفظة Binance خاصتك.": [
-    "\"Kazanç Deposu\" ücretsiz bir idle oyundur: oyun içinde puan kazanırsın (reklamlardan, görevlerden veya satın alarak) ve bunları uygulamadaki cüzdanında BTC veya ETH bakiyesi üreten işçileri kiralamak için kullanırsın; bu bakiyenin kendi Binance cüzdanına çekilmesini talep edebilirsin.",
-    "\"Profit Warehouse\" is a free idle game: you earn in-game points (from ads, tasks or purchases) and use them to hire workers who produce a BTC or ETH balance in your in-app wallet, which you can request to withdraw to your own Binance wallet."
+  "\"Yardova\" لعبة idle مجانية: تكسب نقاط داخل اللعبة (من الإعلانات، المهام، أو الشراء)، وتستخدمها لاستئجار عمال ينتجون رصيداً بقيمة الدولار داخل محفظتك بالتطبيق، تعرضه بـ USDT أو BTC أو ETH، وتقدر تطلب سحبه بعملة رقمية لمحفظتك الخاصة أو عبر شام كاش.": [
+    "\"Yardova\" ücretsiz bir idle oyundur: oyun içinde puan kazanırsın (reklamlardan, görevlerden veya satın alarak) ve bunları uygulamadaki cüzdanında dolar değerinde bakiye üreten işçileri kiralamak için kullanırsın. Bakiyeni USDT, BTC veya ETH olarak görüntüleyebilir, kripto olarak kendi cüzdanına veya Sham Cash ile çekilmesini talep edebilirsin.",
+    "\"Yardova\" is a free idle game: you earn in-game points (from ads, tasks or purchases) and use them to hire workers who produce a dollar-valued balance in your in-app wallet. You can view it as USDT, BTC or ETH, and request to withdraw it as crypto to your own wallet or via Sham Cash."
   ],
   "2. الحساب": [
     "2. Hesap",
@@ -441,21 +449,25 @@
     "24 saatte yalnızca bir çekim talebine izin verilir",
     "One withdrawal request is allowed every 24 hours"
   ],
-  "لازم تتأكد إن عنوان المحفظة والشبكة يلي بتزوّدنا فيهم صحيحين — إحنا مو مسؤولين عن أي خسارة بسبب عنوان أو شبكة غلط منك": [
-    "Verdiğin cüzdan adresinin ve ağın doğru olduğundan emin olmalısın — senin hatalı adres veya ağ girmenden kaynaklanan kayıplardan sorumlu değiliz",
-    "Make sure the wallet address and network you provide are correct — we are not responsible for any loss caused by a wrong address or network on your side"
+  "لازم تتأكد إن عنوان المحفظة (أو رقم حساب شام كاش) والشبكة يلي بتزوّدنا فيهم صحيحين — إحنا مو مسؤولين عن أي خسارة بسبب عنوان أو رقم أو شبكة غلط منك": [
+    "Verdiğin cüzdan adresinin (veya Sham Cash hesap numarasının) ve ağın doğru olduğundan emin olmalısın — senin hatalı adres, numara veya ağ girmenden kaynaklanan kayıplardan sorumlu değiliz",
+    "Make sure the wallet address (or Sham Cash account number) and network you provide are correct — we are not responsible for any loss caused by a wrong address, number or network on your side"
   ],
   "طلبات السحب بتتم مراجعتها وإرسالها يدوياً خلال 24 ساعة": [
     "Çekim talepleri 24 saat içinde manuel olarak incelenir ve gönderilir",
     "Withdrawal requests are reviewed and sent manually within 24 hours"
   ],
+  "التحويل عبر شام كاش بيتم بالدولار أو بالليرة السورية حسب سعر الصرف المعتمد عندنا وقت التحويل": [
+    "Sham Cash ile transfer, transfer anında bizim belirlediğimiz kura göre dolar veya Suriye lirası olarak yapılır",
+    "Transfers via Sham Cash are made in dollars or Syrian pounds at the exchange rate we set at the time of transfer"
+  ],
   "5. إخلاء مسؤولية مهم": [
     "5. Önemli sorumluluk reddi",
     "5. Important disclaimer"
   ],
-  "قيمة العملات المشفرة (BTC/ETH) متقلبة وبتتغير باستمرار. القيمة بالدولار يلي بتشوفها داخل اللعبة تقريبية وبتُحدَّث يدوياً من طرفنا — مو سعر سوق لحظي. إحنا ما نضمن أي ربح، وما نتحمل مسؤولية أي خسارة ناتجة عن تقلب الأسعار أو تأخير بالتحديث.": [
-    "Kripto paraların (BTC/ETH) değeri dalgalıdır ve sürekli değişir. Oyunda gördüğün dolar değeri yaklaşıktır ve tarafımızdan manuel olarak güncellenir — anlık piyasa fiyatı değildir. Hiçbir kazanç garanti etmeyiz ve fiyat dalgalanmaları ya da güncelleme gecikmelerinden doğan kayıplardan sorumlu değiliz.",
-    "The value of cryptocurrencies (BTC/ETH) is volatile and changes constantly. The dollar value you see in the game is approximate and updated manually by us — it is not a live market price. We don't guarantee any profit and are not liable for any loss caused by price swings or update delays."
+  "رصيدك محسوب بالدولار. وعرضه بعملة BTC أو ETH بيعتمد على سعر صرف بنحدّثه يدوياً من طرفنا — مو سعر سوق لحظي — وقيمة العملات المشفرة متقلبة وبتتغير باستمرار. أما USDT وشام كاش فبتتحسب بالدولار مباشرة. إحنا ما نضمن أي ربح، وما نتحمل مسؤولية أي خسارة ناتجة عن تقلب الأسعار أو تأخير بالتحديث.": [
+    "Bakiyen dolar olarak hesaplanır. BTC veya ETH olarak görüntülenmesi, tarafımızdan manuel olarak güncellenen bir kura dayanır — anlık piyasa fiyatı değildir — ve kripto paraların değeri dalgalıdır, sürekli değişir. USDT ve Sham Cash ise doğrudan dolar üzerinden hesaplanır. Hiçbir kazanç garanti etmeyiz ve fiyat dalgalanmaları ya da güncelleme gecikmelerinden doğan kayıplardan sorumlu değiliz.",
+    "Your balance is counted in dollars. Showing it as BTC or ETH relies on an exchange rate that we update manually — it is not a live market price — and the value of cryptocurrencies is volatile and changes constantly. USDT and Sham Cash are calculated directly in dollars. We don't guarantee any profit and are not liable for any loss caused by price swings or update delays."
   ],
   "6. الاستخدام المحظور": [
     "6. Yasaklı kullanım",

@@ -1,5 +1,5 @@
 // =====================================================================
-// Warehouse Tycoon — Cloudflare Worker (morning-lake-dfd1)
+// Yardova — Cloudflare Worker (morning-lake-dfd1)
 // السيرفر هو المرجع الوحيد لاقتصاد اللعبة: النقاط، المحفظة، الرفوف، العمال، المهام، السحب.
 // ⚠️ لا تحط أي مفتاح سري بهالملف (المستودع عام). المفاتيح كلها Secrets بـ Cloudflare:
 //    FIREBASE_SA       — مفتاح حساب الخدمة (JSON كامل)
@@ -1144,7 +1144,7 @@ async function handleDownload() {
   if (!resp.ok) return new Response("تعذّر تحميل الملف حالياً (" + resp.status + ")", { status: 502 });
   const headers = new Headers();
   headers.set("Content-Type", "application/vnd.android.package-archive");
-  headers.set("Content-Disposition", 'attachment; filename="warehouse-tycoon.apk"');
+  headers.set("Content-Disposition", 'attachment; filename="yardova.apk"');
   headers.set("Cache-Control", "no-store");
   headers.set("Access-Control-Allow-Origin", "*");
   return new Response(resp.body, { status: 200, headers });
