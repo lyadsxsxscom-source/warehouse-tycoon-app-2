@@ -25,7 +25,7 @@ def crate(size, width_frac, fg=None):
 def full_icon(size, width_frac=0.656):
     im = corrugation(size).convert("RGBA"); im.alpha_composite(crate(size, width_frac)); return im.convert("RGB")
 
-def foreground(size, width_frac=0.60):  # للأيقونة التكيّفية: داخل المنطقة الآمنة (66%)
+def foreground(size, width_frac=0.46):  # للأيقونة التكيّفية: أطراف الصندوق لازم تبقى داخل دائرة قطرها 61% من القماشة (المنطقة الآمنة)
     return crate(size, width_frac)
 
 def splash(size=2732, width_frac=0.30):
