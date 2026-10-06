@@ -47,6 +47,7 @@
 }
 html[lang="tr"],html[lang="en"]{ --f-head:"Big Shoulders Display","Segoe UI",Arial,sans-serif; --f-body:"IBM Plex Sans","Segoe UI",Arial,sans-serif; }
 *,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.75}
 a{color:inherit}
@@ -116,12 +117,39 @@ footer{background:var(--teal-d);color:#D6E2DC;padding-block:26px;font-size:.92re
 footer .wrap{display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:space-between;align-items:center}
 footer ul{display:flex;flex-wrap:wrap;gap:8px 20px;margin:0;padding:0;list-style:none}
 footer a{text-underline-offset:3px}
+@media (max-width:480px){
+  .top .wrap{flex-wrap:wrap;row-gap:8px}
+  .langs{flex-wrap:wrap;gap:5px}
+  .langs a{padding:3px 10px;font-size:.85rem}
+  .brand{font-size:1.35rem}
+}
 @media (max-width:760px){
   .steps{grid-template-columns:1fr}
   .steps li{border-inline-start:0;border-top:2px dashed var(--steel)}
   .steps li:first-child{border-top:0}
   .tag{box-shadow:5px 5px 0 #10211C}
 }
+/* صفحات داخلية (من نحن / التحقق) */
+.pagehead{position:relative;background:var(--teal);color:#F3F5EE;background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 3px,rgba(0,0,0,0) 3px 26px)}
+.pagehead::before,.pagehead::after{content:"";display:block;height:14px;background:repeating-linear-gradient(-45deg,var(--tape) 0 16px,#10211C 16px 32px)}
+.pagehead h1{font-family:var(--f-head);font-weight:700;font-size:clamp(1.9rem,6vw,3rem);line-height:1.2;margin:0;padding-block:clamp(26px,5vw,44px)}
+.prose{max-width:780px;padding-block:clamp(28px,5vw,48px)}
+.prose h2{margin:34px 0 12px}
+.prose h2:first-child{margin-top:0}
+.prose p,.prose li{max-width:68ch}
+.prose ul{padding-inline-start:1.3em;margin:0 0 16px}
+.prose li{margin-bottom:6px}
+.prose a{text-underline-offset:3px}
+.note{margin:14px 0;padding:12px 16px;border-inline-start:6px solid var(--tape);background:rgba(244,194,31,.16);font-size:.95rem}
+.step{position:relative;border:2px solid var(--ink);background:var(--panel);padding:20px clamp(16px,3vw,26px);margin:0 0 20px}
+.step .n{font-family:var(--f-stencil);font-weight:800;font-size:2.8rem;line-height:1;color:var(--teal);direction:ltr}
+.step h2{margin:6px 0 12px;font-size:1.3rem}
+@media (prefers-color-scheme: dark){ .step .n{color:var(--tape)} }
+.live dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0 0 14px}
+.live dt{font-weight:600}
+.live dd{margin:0;min-width:0}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction:ltr;unicode-bidi:isolate}
+.hash{display:block;background:rgba(127,127,127,.14);border:1px solid var(--line);padding:8px 10px;word-break:break-all;text-align:left}
 @media (prefers-reduced-motion:no-preference){
   .tag{animation:drop .7s cubic-bezier(.2,.9,.3,1.2) both}
   @keyframes drop{from{opacity:0;transform:translateY(-26px) rotate(-5deg)}}
@@ -146,6 +174,7 @@ footer a{text-underline-offset:3px}
         <a class="btn alt" href="https://apkpure.com/p/com.warehousetycoon.app" rel="noopener">Get it on ApkPure</a>
       </div>
       <p class="small">Free. Android only. For ages 18 and over.</p>
+      <p class="small"><a href="/en/verify/">Verify the file before installing</a></p>
     </div>
   </div></div>
   <section><div class="wrap">
@@ -174,6 +203,8 @@ footer a{text-underline-offset:3px}
 </main>
 <footer><div class="wrap">
   <ul>
+    <li><a href="/en/about/">About</a></li>
+    <li><a href="/en/verify/">Verify the file</a></li>
     <li><a href="https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/" rel="noopener">Store</a></li>
     <li><a href="https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/privacy.html" rel="noopener">Privacy policy</a></li>
     <li><a href="https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/terms.html" rel="noopener">Terms of use</a></li>

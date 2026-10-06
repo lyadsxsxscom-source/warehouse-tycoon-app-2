@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://yardova.ly-ad.de/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-07</lastmod>
     <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/"/>
     <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/"/>
@@ -10,7 +10,7 @@
   </url>
   <url>
     <loc>https://yardova.ly-ad.de/tr/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-07</lastmod>
     <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/"/>
     <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/"/>
@@ -18,10 +18,58 @@
   </url>
   <url>
     <loc>https://yardova.ly-ad.de/en/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-07</lastmod>
     <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/"/>
     <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/"/>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/about/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/about/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/about/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/about/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/about/"/>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/tr/about/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/about/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/about/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/about/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/about/"/>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/en/about/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/about/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/about/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/about/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/about/"/>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/verify/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/verify/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/verify/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/verify/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/verify/"/>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/tr/verify/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/verify/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/verify/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/verify/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/verify/"/>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/en/verify/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://yardova.ly-ad.de/verify/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://yardova.ly-ad.de/tr/verify/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/verify/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/verify/"/>
   </url>
 </urlset>
