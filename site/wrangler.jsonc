@@ -1,0 +1,6 @@
+// بديل لو ما لقيت خيار Pages: Workers ← Import a repository ← Root directory = site (نشر ملفات ثابتة فقط)
+{
+  "name": "cratelo",
+  "compatibility_date": "2025-02-04",
+  "assets": { "directory": "./" }
+}
