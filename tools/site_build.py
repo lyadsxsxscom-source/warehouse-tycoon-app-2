@@ -570,20 +570,12 @@ def write(path, data, mode="w"):
     with open(full, mode, **({} if "b" in mode else {"encoding": "utf-8"})) as f: f.write(data)
 
 def make_assets():
-    # أيقونة: صندوق خشبي (أصفر) على خلفية حاوية
-    def icon(size):
-        im = Image.new("RGB", (size, size), TEAL); d = ImageDraw.Draw(im); s = size / 512
-        for x in range(0, size, int(26 * s) or 1): d.line((x, 0, x, size), fill=TEAL_D, width=max(1, int(3 * s)))
-        L, T, R, B = [int(v * s) for v in (96, 120, 416, 400)]
-        d.rectangle((L, T, R, B), fill=YELLOW, outline=INK, width=max(2, int(16 * s)))
-        h = (B - T) // 3
-        for k in (1, 2): d.line((L, T + h * k, R, T + h * k), fill=INK, width=max(2, int(12 * s)))
-        d.line((L + int(16 * s), B - int(16 * s), R - int(16 * s), T + int(16 * s)), fill=INK, width=max(2, int(16 * s)))
-        return im
-    icon(512).save(os.path.join(ROOT, "icon-512.png"))
-    icon(192).save(os.path.join(ROOT, "icon-192.png"))
-    icon(180).save(os.path.join(ROOT, "apple-touch-icon.png"))
-    icon(64).save(os.path.join(ROOT, "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
+    # أيقونة الموقع = نفس أيقونة التطبيق (صندوق أصفر بحرف Y على جدار حاوية)
+    import sys; sys.path.insert(0, os.path.dirname(__file__))
+    import brand_icon
+    for name, size in (("icon-512.png", 512), ("icon-192.png", 192), ("apple-touch-icon.png", 180)):
+        brand_icon.full_icon(size).save(os.path.join(ROOT, name))
+    brand_icon.full_icon(64).save(os.path.join(ROOT, "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
     # صورة المشاركة 1200x630
     W, H = 1200, 630
     im = Image.new("RGB", (W, H), TEAL); d = ImageDraw.Draw(im)
