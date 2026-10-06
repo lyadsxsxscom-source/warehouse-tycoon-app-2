@@ -4,7 +4,7 @@ import html, json, os, re
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "site")
-BASE = "https://ly-ad.de"
+BASE = "https://cratelo.ly-ad.de"
 DL = "https://postback.ly-ad.de/dl"
 APKPURE = "https://apkpure.com/p/com.warehousetycoon.app"
 SHOP = "https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/"
