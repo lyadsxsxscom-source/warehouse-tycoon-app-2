@@ -1,10 +1,10 @@
-# يولّد صفحة Cratelo (3 لغات + ملفات البحث + الأيقونات) داخل مجلد site/
+# يولّد صفحة Yardova (3 لغات + ملفات البحث + الأيقونات) داخل مجلد site/
 # التشغيل: python3 tools/site_build.py
 import html, json, os, re
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "site")
-BASE = "https://cratelo.ly-ad.de"
+BASE = "https://yardova.ly-ad.de"
 DL = "https://postback.ly-ad.de/dl"
 APKPURE = "https://apkpure.com/p/com.warehousetycoon.app"
 SHOP = "https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/"
@@ -17,10 +17,10 @@ TEAL, TEAL_D, YELLOW, INK, PAPER = (0x17, 0x56, 0x4A), (0x0F, 0x3B, 0x33), (0xF4
 
 LANGS = {
  "ar": dict(code="ar", dir="rtl", path="/", locale="ar_AR", name="العربية",
-  title="Cratelo – لعبة إدارة مستودع للأندرويد",
+  title="Yardova – لعبة إدارة مستودع للأندرويد",
   desc="لعبة مجانية للأندرويد: اكسب نقاطاً من المهام، استأجر عمّالاً يشغّلون مستودعك، واسحب رصيدك بـ USDT أو BTC أو ETH أو شام كاش.",
   skip="تخطّي إلى المحتوى", h1="مستودعك يشتغل حتى لو ما فتحت اللعبة",
-  sub="Cratelo لعبة إدارة مستودع مجانية للأندرويد. تكسب نقاطاً من المهام والإعلانات، وتستأجر بها عمّالاً ينتجون رصيداً بالدولار. وعندما يصل رصيدك إلى الحد الأدنى تسحبه.",
+  sub="Yardova لعبة إدارة مستودع مجانية للأندرويد. تكسب نقاطاً من المهام والإعلانات، وتستأجر بها عمّالاً ينتجون رصيداً بالدولار. وعندما يصل رصيدك إلى الحد الأدنى تسحبه.",
   cta1="تحميل التطبيق (APK)", cta2="تحميل من ApkPure", small="مجاني. لأجهزة أندرويد فقط. للبالغين 18 سنة فأكثر.",
   how="كيف تلعب",
   steps=[("اكسب نقاطاً","أنجز المهام اليومية، وشاهد الإعلانات، أو جرّب عروض الشركاء من زر واحد داخل اللعبة."),
@@ -31,17 +31,17 @@ LANGS = {
   chips=["USDT (TRC20 وBEP20)","BTC","ETH","شام كاش"],
   warn="تنبيه: الرصيد يأتي من مهام وعروض شركاء الإعلانات، ولا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر.",
   faq="أسئلة شائعة",
-  faqs=[("هل Cratelo مجانية؟","نعم. التحميل واللعب مجانيان، وشراء النقاط اختياري تماماً."),
+  faqs=[("هل Yardova مجانية؟","نعم. التحميل واللعب مجانيان، وشراء النقاط اختياري تماماً."),
         ("كيف أثبّت التطبيق؟","التطبيق غير متوفر على Google Play حالياً. حمّل ملف APK ثم افتحه ووافق على السماح بالتثبيت من هذا المصدر. قد يظهر تحذير من Google Play Protect، وهذا طبيعي للتطبيقات من خارج المتجر."),
         ("هل يعمل على الآيفون؟","لا. التطبيق لأجهزة أندرويد فقط حالياً."),
         ("كم الحد الأدنى للسحب؟","20$، وبحد أقصى سحب واحد كل 24 ساعة."),
         ("ماذا تفعلون ببياناتي؟","نحفظ حساب Google الذي سجّلت به وتقدّمك في اللعبة، ولا نبيع بياناتك ولا نؤجّرها لأي طرف. التطبيق غير موجّه لمن هم دون 18 سنة. التفاصيل في سياسة الخصوصية.")],
   final="جاهز تبدأ؟", store="المتجر", privacy="سياسة الخصوصية", terms="شروط الاستخدام", contact="تواصل معنا", rights="جميع الحقوق محفوظة."),
  "tr": dict(code="tr", dir="ltr", path="/tr/", locale="tr_TR", name="Türkçe",
-  title="Cratelo – Android için depo yönetimi oyunu",
+  title="Yardova – Android için depo yönetimi oyunu",
   desc="Ücretsiz Android oyunu: görevlerle puan kazan, işçi kirala, deponu çalıştır ve bakiyeni USDT, BTC, ETH veya Sham Cash ile çek.",
   skip="İçeriğe geç", h1="Oyunu açmasan da deponun işçileri çalışır",
-  sub="Cratelo, Android için ücretsiz bir depo yönetimi oyunudur. Görev ve reklamlarla puan kazanır, puanlarla işçi kiralarsın; işçiler dolar değerinde bakiye üretir. Alt limite ulaşınca bakiyeni çekebilirsin.",
+  sub="Yardova, Android için ücretsiz bir depo yönetimi oyunudur. Görev ve reklamlarla puan kazanır, puanlarla işçi kiralarsın; işçiler dolar değerinde bakiye üretir. Alt limite ulaşınca bakiyeni çekebilirsin.",
   cta1="Uygulamayı indir (APK)", cta2="ApkPure'dan indir", small="Ücretsiz. Yalnızca Android. 18 yaş ve üzeri için.",
   how="Nasıl oynanır",
   steps=[("Puan kazan","Günlük görevleri tamamla, reklam izle ya da oyun içindeki tek bir düğmeyle ortak firmaların tekliflerini dene."),
@@ -52,17 +52,17 @@ LANGS = {
   chips=["USDT (TRC20, BEP20)","BTC","ETH","Sham Cash"],
   warn="Uyarı: Bakiye, reklam ortaklarının görev ve tekliflerinden gelir; kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir.",
   faq="Sık sorulanlar",
-  faqs=[("Cratelo ücretsiz mi?","Evet. İndirmek ve oynamak ücretsizdir; puan satın almak tamamen isteğe bağlıdır."),
+  faqs=[("Yardova ücretsiz mi?","Evet. İndirmek ve oynamak ücretsizdir; puan satın almak tamamen isteğe bağlıdır."),
         ("Nasıl kurarım?","Uygulama şu an Google Play'de yok. APK dosyasını indirip aç ve bu kaynaktan kuruluma izin ver. Google Play Protect uyarısı görebilirsin; mağaza dışı uygulamalarda bu normaldir."),
         ("iPhone'da çalışır mı?","Hayır. Şimdilik yalnızca Android cihazlar için."),
         ("Asgari çekim tutarı nedir?","20$; ve 24 saatte en fazla bir çekim."),
         ("Verilerim ne oluyor?","Giriş yaptığın Google hesabını ve oyun ilerlemeni saklarız; verilerini satmayız veya kiralamayız. Uygulama 18 yaş altına yönelik değildir. Ayrıntılar gizlilik politikasında.")],
   final="Başlamaya hazır mısın?", store="Mağaza", privacy="Gizlilik politikası", terms="Kullanım koşulları", contact="İletişim", rights="Tüm hakları saklıdır."),
  "en": dict(code="en", dir="ltr", path="/en/", locale="en_US", name="English",
-  title="Cratelo – Idle warehouse game for Android",
+  title="Yardova – Idle warehouse game for Android",
   desc="Free Android game: earn points from tasks, hire workers to run your warehouse, and withdraw your balance in USDT, BTC, ETH or Sham Cash.",
   skip="Skip to content", h1="Your warehouse keeps working while the game is closed",
-  sub="Cratelo is a free warehouse management game for Android. Earn points from tasks and ads, spend them on workers who produce a balance valued in dollars, and withdraw it once you reach the minimum.",
+  sub="Yardova is a free warehouse management game for Android. Earn points from tasks and ads, spend them on workers who produce a balance valued in dollars, and withdraw it once you reach the minimum.",
   cta1="Download the app (APK)", cta2="Get it on ApkPure", small="Free. Android only. For ages 18 and over.",
   how="How to play",
   steps=[("Earn points","Finish daily tasks, watch ads, or try partner offers from a single button inside the game."),
@@ -73,7 +73,7 @@ LANGS = {
   chips=["USDT (TRC20, BEP20)","BTC","ETH","Sham Cash"],
   warn="Please note: the balance comes from tasks and offers by advertising partners. Earnings are not guaranteed, and the availability of offers varies by country and over time.",
   faq="FAQ",
-  faqs=[("Is Cratelo free?","Yes. Downloading and playing are free, and buying points is entirely optional."),
+  faqs=[("Is Yardova free?","Yes. Downloading and playing are free, and buying points is entirely optional."),
         ("How do I install it?","The app isn't on Google Play right now. Download the APK file, open it, and allow installation from this source. You may see a Google Play Protect warning, which is normal for apps from outside the store."),
         ("Does it work on iPhone?","No. For now it is only for Android devices."),
         ("What is the minimum withdrawal?","$20, with at most one withdrawal per 24 hours."),
@@ -183,7 +183,7 @@ def head(L):
     alt = "".join(f'<link rel="alternate" hreflang="{c}" href="{BASE}{LANGS[c]["path"]}">\n' for c in ORDER)
     alt += f'<link rel="alternate" hreflang="x-default" href="{BASE}/">\n'
     other = "".join(f'<meta property="og:locale:alternate" content="{LANGS[c]["locale"]}">\n' for c in ORDER if c != L)
-    ld = {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Cratelo",
+    ld = {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Yardova",
           "operatingSystem": "Android", "applicationCategory": "GameApplication", "url": url,
           "description": t["desc"], "inLanguage": t["code"], "image": BASE + "/og.png", "downloadUrl": DL,
           "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
@@ -199,14 +199,14 @@ def head(L):
 {alt}<meta name="theme-color" content="#0F3B33">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Cratelo">
+<meta property="og:site_name" content="Yardova">
 <meta property="og:title" content="{esc(t["title"])}">
 <meta property="og:description" content="{esc(t["desc"])}">
 <meta property="og:url" content="{url}">
 <meta property="og:image" content="{BASE}/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Cratelo">
+<meta property="og:image:alt" content="Yardova">
 <meta property="og:locale" content="{t["locale"]}">
 {other}<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{esc(t["title"])}">
@@ -234,12 +234,12 @@ def page(L):
     return head(L) + f'''<body>
 <a class="skip" href="#main">{esc(t["skip"])}</a>
 <header class="top"><div class="wrap">
-  <a class="brand" href="{t["path"]}" aria-label="Cratelo">CRATELO</a>
+  <a class="brand" href="{t["path"]}" aria-label="Yardova">YARDOVA</a>
   <nav aria-label="Languages"><ul class="langs">{langs}</ul></nav>
 </div></header>
 <main id="main">
   <div class="door"><div class="wrap in">
-    <p class="mark" aria-hidden="true">CRATELO</p>
+    <p class="mark" aria-hidden="true">YARDOVA</p>
     <div class="tag">
       <h1>{esc(t["h1"])}</h1>
       <p>{esc(t["sub"])}</p>
@@ -281,7 +281,7 @@ def page(L):
     <li><a href="{TERMS}" rel="noopener">{esc(t["terms"])}</a></li>
     <li><a href="mailto:{MAIL}">{esc(t["contact"])}: {MAIL}</a></li>
   </ul>
-  <span>© 2026 Cratelo. {esc(t["rights"])}</span>
+  <span>© 2026 Yardova. {esc(t["rights"])}</span>
 </div></footer>
 </body>
 </html>
@@ -319,7 +319,7 @@ def make_assets():
     tape(0); tape(H - 28)
     big = ImageFont.truetype("/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf", 210)
     sm = ImageFont.truetype("/usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf", 44)
-    text = "CRATELO"; tw = d.textlength(text, font=big)
+    text = "YARDOVA"; tw = d.textlength(text, font=big)
     x0, y0 = (W - tw) / 2, 140
     d.text((x0, y0), text, font=big, fill=PAPER)
     bb = d.textbbox((x0, y0), text, font=big)

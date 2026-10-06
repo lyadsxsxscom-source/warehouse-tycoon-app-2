@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://cratelo.ly-ad.de/sitemap.xml
+Sitemap: https://yardova.ly-ad.de/sitemap.xml
