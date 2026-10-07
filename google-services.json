@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "1054454384493-l4asoet3p56idc75iidg0etu1k67as1c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.warehousetycoon.app",
+            "certificate_hash": "e939bfdb06dd4b1e8d68ab49b17bfa275898143e"
+          }
+        },
+        {
           "client_id": "1054454384493-6keq998f5he3gsi80036q58vttspsc00.apps.googleusercontent.com",
           "client_type": 3
         }

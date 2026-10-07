@@ -57,17 +57,6 @@ jobs:
           name: warehouse-tycoon-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: نشر APK كرابط تحميل ثابت (Release)
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: latest-debug
-          name: "آخر نسخة تجريبية (تتحدث تلقائياً)"
-          body: "هذا الرابط يتحدث تلقائياً مع كل تعديل جديد على التطبيق. حمّل ملف app-debug.apk أدناه وثبّته مباشرة."
-          prerelease: true
-          files: android/app/build/outputs/apk/debug/app-debug.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Decode release keystore
         if: ${{ env.HAS_RELEASE_KEY == 'true' }}
         run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
@@ -102,3 +91,57 @@ jobs:
         with:
           name: warehouse-tycoon-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Build signed release APK
+        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        working-directory: android
+        env:
+          RELEASE_KEYSTORE_PATH: release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: ./gradlew assembleRelease
+
+      - name: Verify the APK is signed with the private release key
+        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        env:
+          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          EXPECTED=$(keytool -list -v -keystore android/app/release.keystore -storepass "$KS_PASS" -alias "$KS_ALIAS" 2>/dev/null | grep "SHA256:" | head -1 | sed 's/.*SHA256: *//' | tr -d ':' | tr 'A-Z' 'a-z')
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            ACTUAL=$("$APKSIGNER" verify --print-certs "$APK" | grep -m1 "certificate SHA-256 digest" | sed 's/.*: *//' | tr -d ':' | tr 'A-Z' 'a-z')
+          else
+            ACTUAL=$(keytool -printcert -jarfile "$APK" 2>/dev/null | grep -m1 "SHA256:" | sed 's/.*SHA256: *//' | tr -d ':' | tr 'A-Z' 'a-z')
+          fi
+          echo "expected=$EXPECTED"; echo "actual=$ACTUAL"
+          test -n "$EXPECTED" && test "$EXPECTED" = "$ACTUAL"
+          echo "::notice title=APK signature::matches the private release key ($ACTUAL)"
+
+      - name: Prepare the signed APK
+        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        run: cp android/app/build/outputs/apk/release/app-release.apk yardova.apk
+
+      - name: Upload signed APK
+        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: yardova-signed-apk
+          path: yardova.apk
+
+      - name: Publish the signed APK (stable download link)
+        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: latest
+          name: "Yardova: آخر نسخة (موقّعة بالمفتاح الخاص)"
+          body: |
+            ملف التثبيت الرسمي لـ Yardova. يتحدّث تلقائياً مع كل تعديل على التطبيق.
+            بصمة شهادة التوقيع (SHA-256): D3:3E:3B:80:BE:09:96:1F:EA:26:BE:D0:88:2D:C5:44:3C:98:F8:E9:D0:77:12:B9:29:40:76:2C:B3:41:04:81
+            للتحقق من الملف: https://yardova.ly-ad.de/verify/
+          prerelease: false
+          make_latest: true
+          files: yardova.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
