@@ -12,9 +12,10 @@ PRIVACY = SHOP + "privacy.html"
 TERMS = SHOP + "terms.html"
 MAIL = "admin@ly-ad.de"
 UPDATED = "2026-10-07"
+CERT_SHA256 = "D3:3E:3B:80:BE:09:96:1F:EA:26:BE:D0:88:2D:C5:44:3C:98:F8:E9:D0:77:12:B9:29:40:76:2C:B3:41:04:81"
 REPO = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2"
-RELEASE = REPO + "/releases/tag/latest-debug"
-API_RELEASE = "https://api.github.com/repos/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/tags/latest-debug"
+RELEASE = REPO + "/releases/tag/latest"
+API_RELEASE = "https://api.github.com/repos/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/tags/latest"
 
 TEAL, TEAL_D, YELLOW, INK, PAPER = (0x17, 0x56, 0x4A), (0x0F, 0x3B, 0x33), (0xF4, 0xC2, 0x1F), (0x10, 0x21, 0x1C), (0xF3, 0xF5, 0xEE)
 
@@ -182,7 +183,11 @@ VERIFY = {
 <button type="button" class="btn alt" id="v-copy">نسخ البصمة</button>
 </div>
 <p>لحساب بصمة الملف الذي حمّلته: على الجوال، نزّل تطبيقاً لحساب بصمة الملفات (ابحث عن "hash checker") واختر SHA-256 ثم اختر الملف. أو من Termux: <code>sha256sum yardova.apk</code>. يجب أن تتطابق القيمتان حرفاً بحرف. إذا اختلفت ولو بحرف واحد، لا تثبّت الملف.</p>
-<p class="note">البصمة تتغير مع كل تحديث للتطبيق.</p></div>
+<p class="note">البصمة تتغير مع كل تحديث للتطبيق.</p>
+<h3>شهادة التوقيع</h3>
+<p>الملف موقّع بمفتاحنا الخاص، وبصمة الشهادة (SHA-256) ثابتة ولا تتغير مع التحديثات:</p>
+<code class="hash">{CERT_SHA256}</code>
+<p>للتحقق منها من الكمبيوتر: <code>apksigner verify --print-certs yardova.apk</code> أو <code>keytool -printcert -jarfile yardova.apk</code>. سيظهر اسم صاحب الشهادة "Warehouse Tycoon"، وهو الاسم السابق للتطبيق. وبعد التثبيت، يرفض أندرويد أي تحديث موقّع بشهادة مختلفة.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>افحصه على VirusTotal</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">ابحث عن البصمة على VirusTotal</a>. إذا لم تظهر نتيجة، افتح الموقع وارفع الملف وانتظر الفحص.</p>
 <p>قد تظهر تحذيرات من محرك أو اثنين، فهذه شائعة مع التطبيقات من خارج المتجر. المهم ألا تظهر عشرات التحذيرات.</p></div>
@@ -214,7 +219,11 @@ VERIFY = {
 <button type="button" class="btn alt" id="v-copy">Parmak izini kopyala</button>
 </div>
 <p>İndirdiğin dosyanın parmak izini hesaplamak için telefonda bir dosya parmak izi uygulaması kur ("hash checker" ara), SHA-256'yı seç ve dosyayı göster. Ya da Termux'ta: <code>sha256sum yardova.apk</code>. İki değer harfi harfine aynı olmalı. Bir harf bile farklıysa dosyayı kurma.</p>
-<p class="note">Parmak izi uygulamanın her güncellemesinde değişir.</p></div>
+<p class="note">Parmak izi uygulamanın her güncellemesinde değişir.</p>
+<h3>İmza sertifikası</h3>
+<p>Dosya kendi özel anahtarımızla imzalanır ve sertifika parmak izi (SHA-256) güncellemelerde değişmez:</p>
+<code class="hash">{CERT_SHA256}</code>
+<p>Bilgisayardan doğrulamak için: <code>apksigner verify --print-certs yardova.apk</code> veya <code>keytool -printcert -jarfile yardova.apk</code>. Sertifika sahibi adı "Warehouse Tycoon" görünür; bu uygulamanın eski adıdır. Kurulumdan sonra Android, farklı bir sertifikayla imzalanmış güncellemeleri reddeder.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>VirusTotal'da tara</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">Parmak izini VirusTotal'da ara</a>. Sonuç çıkmazsa siteyi açıp dosyayı yükle ve taramayı bekle.</p>
 <p>Bir iki motordan uyarı gelebilir; mağaza dışı uygulamalarda bu yaygındır. Önemli olan onlarca uyarı çıkmamasıdır.</p></div>
@@ -246,7 +255,11 @@ VERIFY = {
 <button type="button" class="btn alt" id="v-copy">Copy fingerprint</button>
 </div>
 <p>To compute the fingerprint of the file you downloaded: on your phone, install a file-hash app (search "hash checker"), choose SHA-256 and pick the file. Or in Termux: <code>sha256sum yardova.apk</code>. The two values must match character for character. If they differ by even one character, don't install the file.</p>
-<p class="note">The fingerprint changes with every app update.</p></div>
+<p class="note">The fingerprint changes with every app update.</p>
+<h3>Signing certificate</h3>
+<p>The file is signed with our own private key, and the certificate fingerprint (SHA-256) stays the same across updates:</p>
+<code class="hash">{CERT_SHA256}</code>
+<p>To check it from a computer: <code>apksigner verify --print-certs yardova.apk</code> or <code>keytool -printcert -jarfile yardova.apk</code>. The certificate owner shows as "Warehouse Tycoon", which is the app's previous name. After installation, Android rejects any update signed with a different certificate.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>Scan it on VirusTotal</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">Search the fingerprint on VirusTotal</a>. If nothing shows up, open the site, upload the file and wait for the scan.</p>
 <p>One or two engines may flag it, which is common for apps from outside the store. What matters is that dozens of warnings don't appear.</p></div>
@@ -270,7 +283,7 @@ VERIFY_JS = r"""
   var lang=document.documentElement.lang||'en';
   function fail(){ box.insertAdjacentHTML('beforeend','<p class="note">'+box.getAttribute('data-fail')+' <a href="__RELEASE__" rel="noopener">GitHub</a></p>'); }
   fetch('__API__',{headers:{Accept:'application/vnd.github+json'}}).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(d){
-    var a=(d.assets||[]).filter(function(x){return x.name==='app-debug.apk';})[0]; if(!a) throw 0;
+    var a=(d.assets||[]).filter(function(x){return x.name==='yardova.apk';})[0]; if(!a) throw 0;
     var h=String(a.digest||'').replace(/^sha256:/,''); if(!/^[0-9a-f]{64}$/.test(h)) throw 0;
     document.getElementById('v-hash').textContent=h;
     document.getElementById('v-size').textContent=(a.size/1e6).toFixed(1)+' MB ('+a.size.toLocaleString('en-US')+' bytes)';
@@ -392,6 +405,7 @@ footer a{text-underline-offset:3px}
 .step{position:relative;border:2px solid var(--ink);background:var(--panel);padding:20px clamp(16px,3vw,26px);margin:0 0 20px}
 .step .n{font-family:var(--f-stencil);font-weight:800;font-size:2.8rem;line-height:1;color:var(--teal);direction:ltr}
 .step h2{margin:6px 0 12px;font-size:1.3rem}
+.step h3{font-family:var(--f-head);font-size:1.1rem;margin:22px 0 8px}
 @media (prefers-color-scheme: dark){ .step .n{color:var(--tape)} }
 .live dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0 0 14px}
 .live dt{font-weight:600}

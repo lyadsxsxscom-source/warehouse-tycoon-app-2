@@ -10,7 +10,7 @@
 const OFFERWALL_PUBLIC_KEY = "lO3dCGRok7Q77hZ6FPFTikHdwx9mZs";
 const FIREBASE_PROJECT_ID = "warehouse-tycoon-a3f83";
 const ADMIN_UID = "09DZoXtB6afGTGHtFghiUx5t71N2";
-const APK_SOURCE_URL = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/download/latest-debug/app-debug.apk";
+const APK_SOURCE_URL = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/download/latest/yardova.apk";
 
 // ===== ثوابت اللعبة (نفس قيم التطبيق الافتراضية؛ الأدمن بيعدّلها من gameConfig) =====
 const DURATIONS = { day: 86400, week: 604800, month: 2592000 };
