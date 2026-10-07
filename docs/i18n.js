@@ -289,6 +289,14 @@
     "Uygulamada bir hata olursa, sorunu düzeltebilmek için hata mesajını, uygulama sürümünü ve cihaz türünü hesabına bağlı e-posta adresinle birlikte kaydederiz. Aynı amaçla Firebase Crashlytics hizmetini de kullanırız.",
     "If an error occurs in the app, we record the error message, the app version and your device type together with the email linked to your account, so we can fix the problem. We also use Firebase Crashlytics for the same purpose."
   ],
+  "زيارات الموقع:": [
+    "Site ziyaretleri:",
+    "Website visits:"
+  ],
+  "عند زيارة موقع Yardova أو تحميل الملف منه، بنعدّ الزيارة بشكل مجهول: بدون كوكيز وبدون حفظ عنوان IP (بنحوّله لبصمة مؤقتة بتنتهي خلال يوم لتفادي العدّ المكرّر). بنسجّل بس الصفحة واللغة والموقع يلي جيت منه، وبنحترم إعداد \"عدم التتبع\" بمتصفحك.": [
+    "Yardova sitesini ziyaret ettiğinde veya dosyayı siteden indirdiğinde ziyareti anonim olarak sayarız: çerez yok ve IP adresin saklanmaz (tekrarlı saymayı önlemek için bir gün içinde sona eren geçici bir parmak izine dönüştürülür). Yalnızca sayfayı, dili ve geldiğin siteyi kaydederiz; tarayıcındaki \"İzlemeyi reddet\" ayarına saygı gösteririz.",
+    "When you visit the Yardova website or download the file from it, we count the visit anonymously: no cookies, and your IP address is not stored (it is turned into a temporary fingerprint that expires within a day to avoid double counting). We record only the page, the language and the site you came from, and we respect your browser's \"Do Not Track\" setting."
+  ],
   "عنوان محفظتك (أو رقم حساب شام كاش) يلي بتزوّدنا فيه، المبلغ، والشبكة المختارة.": [
     "Bize verdiğin cüzdan adresi (veya Sham Cash hesap numarası), tutar ve seçilen ağ.",
     "The wallet address (or Sham Cash account number) you provide, the amount, and the selected network."

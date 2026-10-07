@@ -1139,7 +1139,101 @@ async function handleAdminErrors(request, env) {
   return jsonResponse({ ok: false, error: "bad_request" }, 400);
 }
 
-async function handleDownload() {
+// ===== عدّاد زيارات الموقع وتحميلات الملف (مجهول: بدون كوكيز، وبدون تخزين عنوان IP) =====
+// الزيارة بتنحسب بصفحة الموقع (POST /hit)، والتحميل بيتحسب هون بالسيرفر لما حدا يطلب /dl.
+// منع العدّ المكرر: بصمة SHA-256 (IP + المتصفح + اليوم) بتنخزن بذاكرة Cache API 25 ساعة بس، وما بترجع لعنوان IP.
+const BOT_UA = /bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegram|preview|curl|wget|python|httpclient|headless|lighthouse|pingdom|uptime|monitor|scan|okhttp|axios|node-fetch/i;
+const HIT_PAGES = ["home", "about", "verify"];
+const HIT_LANGS = ["ar", "tr", "en"];
+const HIT_DAILY_CAP = 60;   // أقصى مشاهدات تنحسب لنفس الزائر باليوم (حماية من التضخيم)
+function isoDaySyria(now = Date.now()) { return new Date(now + 3 * 3600 * 1000).toISOString().slice(0, 10); }
+function trafficWrite(env, day, incs) {
+  const updateTransforms = Object.entries(incs).map(([f, v]) => ({ fieldPath: f, increment: { integerValue: String(v) } }));
+  return { update: { name: docName(env, "siteTraffic/" + day), fields: { day: { stringValue: day } } }, updateMask: { fieldPaths: ["day"] }, updateTransforms };
+}
+function cleanKey(v, max = 20) { return String(v || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, max); }
+function classifySource(refHost, utm) {
+  const u = cleanKey(utm);
+  if (u) return "utm_" + u;
+  const h = String(refHost || "").toLowerCase().replace(/^www\./, "").slice(0, 80);
+  if (!h) return "direct";
+  if (h === "ly-ad.de" || h.endsWith(".ly-ad.de")) return "internal";
+  if (/(^|\.)google\./.test(h)) return "google";
+  if (/(^|\.)(facebook\.com|fb\.com|fb\.me)$/.test(h)) return "facebook";
+  if (/(^|\.)instagram\.com$/.test(h)) return "instagram";
+  if (/(^|\.)(wa\.me|whatsapp\.com)$/.test(h)) return "whatsapp";
+  if (/(^|\.)(t\.me|telegram\.org|telegram\.me)$/.test(h)) return "telegram";
+  if (/(^|\.)(twitter\.com|t\.co|x\.com)$/.test(h)) return "x";
+  if (/(^|\.)(bing\.com|duckduckgo\.com|yahoo\.com|yandex\.[a-z]+)$/.test(h)) return "search_other";
+  if (/(^|\.)apkpure\.com$/.test(h)) return "apkpure";
+  if (/(^|\.)github\.com$/.test(h)) return "github";
+  return "other";
+}
+async function visitorHash(request, day) {
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  const ua = request.headers.get("User-Agent") || "";
+  return (await sha256Hex([ip, ua, day, "yardova-traffic-v1"].join("|"))).slice(0, 24);
+}
+async function cacheFirstSeen(key) {   // true = أول مرة نشوفه اليوم
+  try {
+    const cache = caches.default, req = new Request("https://dedupe.invalid/" + key);
+    if (await cache.match(req)) return false;
+    await cache.put(req, new Response("1", { headers: { "Cache-Control": "max-age=90000" } }));
+    return true;
+  } catch (e) { return true; }
+}
+async function cacheBump(key, cap) {    // true = لسا تحت السقف (وبنزيد العدّاد)
+  try {
+    const cache = caches.default, req = new Request("https://dedupe.invalid/" + key);
+    const hit = await cache.match(req); const n = hit ? Number(await hit.text()) || 0 : 0;
+    if (n >= cap) return false;
+    await cache.put(req, new Response(String(n + 1), { headers: { "Cache-Control": "max-age=90000" } }));
+    return true;
+  } catch (e) { return true; }
+}
+async function handleHit(request, env, ctx) {
+  const ok = () => new Response(null, { status: 204, headers: corsHeaders() });
+  const ua = request.headers.get("User-Agent") || "";
+  if (!ua || BOT_UA.test(ua)) return ok();
+  let b = {};
+  try { b = JSON.parse(await request.text()); } catch (e) { return ok(); }
+  if (!HIT_PAGES.includes(b.p) || !HIT_LANGS.includes(b.l)) return ok();
+  const day = isoDaySyria(), hash = await visitorHash(request, day);
+  if (!(await cacheBump("c-" + day + "-" + hash, HIT_DAILY_CAP))) return ok();
+  const incs = { views: 1, ["p_" + b.p]: 1, ["l_" + b.l]: 1 };
+  const src = classifySource(typeof b.r === "string" ? b.r : "", typeof b.u === "string" ? b.u : "");
+  if (src !== "internal") incs["s_" + src] = 1;
+  if (await cacheFirstSeen("v-" + day + "-" + hash)) incs.visitors = 1;
+  ctx.waitUntil(fsCommit(env, [trafficWrite(env, day, incs)]).catch(e => console.warn({ message: "hit failed", error: String(e.message || e) })));
+  return ok();
+}
+async function countDownload(request, url, env, ctx) {
+  const ua = request.headers.get("User-Agent") || "";
+  if (request.method !== "GET" || !ua || BOT_UA.test(ua)) return;
+  const range = request.headers.get("Range");
+  if (range && !/^bytes=0-/.test(range)) return;   // استكمال تحميل مو تحميل جديد
+  const day = isoDaySyria(), hash = await visitorHash(request, day);
+  const src = cleanKey(url.searchParams.get("src"), 12) || "other";
+  const incs = { downloads: 1, ["d_" + src]: 1 };
+  if (await cacheFirstSeen("d-" + day + "-" + hash)) incs.downloadsUnique = 1;
+  ctx.waitUntil(fsCommit(env, [trafficWrite(env, day, incs)]).catch(e => console.warn({ message: "download count failed", error: String(e.message || e) })));
+}
+async function handleAdminTraffic(request, env) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const days = Math.min(60, Math.max(1, Number(body.days) || 30));
+  try {
+    const rows = await fsRunQuery(env, "siteTraffic", "day", days);
+    return jsonResponse({ ok: true, rows: rows.map(r => ({ id: r.id, ...r.data })) }, 200);
+  } catch (e) {
+    console.error({ message: "admin traffic failed", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "failed" }, 500);
+  }
+}
+
+async function handleDownload(request, env, ctx) {
   const resp = await fetch(APK_SOURCE_URL, { redirect: "follow" });
   if (!resp.ok) return new Response("تعذّر تحميل الملف حالياً (" + resp.status + ")", { status: 502 });
   const headers = new Headers();
@@ -1147,6 +1241,7 @@ async function handleDownload() {
   headers.set("Content-Disposition", 'attachment; filename="yardova.apk"');
   headers.set("Cache-Control", "no-store");
   headers.set("Access-Control-Allow-Origin", "*");
+  if (request) ctx.waitUntil(countDownload(request, new URL(request.url), env, ctx));
   return new Response(resp.body, { status: 200, headers });
 }
 
@@ -1154,7 +1249,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "errlog-1" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "traffic-1" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);
@@ -1176,7 +1271,9 @@ export default {
     if (url.pathname === "/admin/errors" && request.method === "POST") return handleAdminErrors(request, env);
     if (url.pathname === "/today" && request.method === "GET") return jsonResponse({ today: todaySyria() }, 200);
     if (url.pathname === "/selftest" && request.method === "GET") return handleSelftest(env);
-    if (url.pathname === "/dl" && request.method === "GET") return handleDownload();
+    if (url.pathname === "/dl" && request.method === "GET") return handleDownload(request, env, ctx);
+    if (url.pathname === "/hit" && request.method === "POST") return handleHit(request, env, ctx);
+    if (url.pathname === "/admin/traffic" && request.method === "POST") return handleAdminTraffic(request, env);
     return new Response("Not found", { status: 404 });
   },
 };

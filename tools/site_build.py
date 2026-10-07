@@ -6,6 +6,8 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.join(os.path.dirname(__file__), "..", "site")
 BASE = "https://yardova.ly-ad.de"
 DL = "https://postback.ly-ad.de/dl"
+DL_SITE = DL + "?src=site"   # روابط التحميل داخل الموقع (بتنحسب كتحميل من الموقع)
+HIT_URL = "https://postback.ly-ad.de/hit"
 APKPURE = "https://apkpure.com/p/com.warehousetycoon.app"
 SHOP = "https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/"
 PRIVACY = SHOP + "privacy.html"
@@ -171,7 +173,7 @@ VERIFY = {
 <p>لأن Yardova غير موجودة على Google Play حالياً، يجب أن تتأكد أنك تثبّت الملف الأصلي. هذه أربع خطوات تأخذ دقيقتين.</p>
 <div class="step"><div class="n" aria-hidden="true">1</div><h2>حمّل من مصادرنا فقط</h2>
 <ul>
-<li>زر التحميل في هذا الموقع: <a href="{DL}" rel="noopener" dir="ltr">postback.ly-ad.de/dl</a></li>
+<li>زر التحميل في هذا الموقع: <a href="{DL_SITE}" rel="noopener" dir="ltr">postback.ly-ad.de/dl</a></li>
 <li><a href="{RELEASE}" rel="noopener">صفحة الإصدار على GitHub</a></li>
 <li><a href="{APKPURE}" rel="noopener">صفحة التطبيق على ApkPure</a> (قد تتأخر عن آخر إصدار، فبصمتها قد تختلف)</li>
 </ul>
@@ -208,7 +210,7 @@ VERIFY = {
 <p>Yardova şu an Google Play'de olmadığı için, kurduğun dosyanın orijinal olduğundan emin olmalısın. İşte iki dakikanı alan dört adım.</p>
 <div class="step"><div class="n" aria-hidden="true">1</div><h2>Yalnızca kaynaklarımızdan indir</h2>
 <ul>
-<li>Bu sitedeki indirme düğmesi (<a href="{DL}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
+<li>Bu sitedeki indirme düğmesi (<a href="{DL_SITE}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
 <li><a href="{RELEASE}" rel="noopener">GitHub sürüm sayfası</a></li>
 <li><a href="{APKPURE}" rel="noopener">ApkPure uygulama sayfası</a> (son sürümün gerisinde kalabilir, parmak izi farklı olabilir)</li>
 </ul>
@@ -245,7 +247,7 @@ VERIFY = {
 <p>Because Yardova isn't on Google Play right now, you should make sure you're installing the genuine file. These are four steps that take two minutes.</p>
 <div class="step"><div class="n" aria-hidden="true">1</div><h2>Download only from our sources</h2>
 <ul>
-<li>The download button on this site (<a href="{DL}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
+<li>The download button on this site (<a href="{DL_SITE}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
 <li>The <a href="{RELEASE}" rel="noopener">release page on GitHub</a></li>
 <li>The <a href="{APKPURE}" rel="noopener">app page on ApkPure</a> (it may lag behind the latest version, so its fingerprint can differ)</li>
 </ul>
@@ -279,6 +281,19 @@ VERIFY = {
 <p>You may see a warning such as "unknown app". That's because the app comes from outside the store, not necessarily because it contains a virus. Choose "More details" and then "Install anyway" only if the fingerprint matched.</p>
 <p>If you doubt anything, write to us before installing: <a href="mailto:{MAIL}">{MAIL}</a></p>""",
 }
+
+BEACON_JS = r"""
+(function(){try{
+  if(location.hostname!=='yardova.ly-ad.de') return;
+  if(navigator.doNotTrack==='1'||window.doNotTrack==='1'||navigator.webdriver) return;
+  var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
+  var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
+  fetch('__HIT__',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'__KEY__',l:'__LANG__',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+"""
+
+def beacon(L, key):
+    return "<script>" + BEACON_JS.replace("__HIT__", HIT_URL).replace("__KEY__", key).replace("__LANG__", L) + "</script>"
 
 VERIFY_JS = r"""
 (function(){
@@ -525,6 +540,7 @@ def inner_page(L, key):
 </main>
 {footer(L)}
 {script}
+{beacon(L, key)}
 </body>
 </html>
 '''
@@ -545,7 +561,7 @@ def page(L):
       <h1>{esc(t["h1"])}</h1>
       <p>{esc(t["sub"])}</p>
       <div class="btns">
-        <a class="btn main" href="{DL}" rel="noopener">{esc(t["cta1"])}</a>
+        <a class="btn main" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
         <a class="btn alt" href="{APKPURE}" rel="noopener">{esc(t["cta2"])}</a>
       </div>
       <p class="small">{esc(t["small"])}</p>
@@ -571,12 +587,13 @@ def page(L):
   <div class="final"><div class="wrap in">
     <h2>{esc(t["final"])}</h2>
     <div class="btns">
-      <a class="btn main" href="{DL}" rel="noopener">{esc(t["cta1"])}</a>
+      <a class="btn main" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
       <a class="btn alt" href="{APKPURE}" rel="noopener">{esc(t["cta2"])}</a>
     </div>
   </div></div>
 </main>
 {footer(L)}
+{beacon(L, "home")}
 </body>
 </html>
 '''

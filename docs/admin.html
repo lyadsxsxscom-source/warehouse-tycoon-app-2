@@ -129,6 +129,7 @@
       <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
       <div class="tab" id="tabStore">🛠 المتجر</div>
       <div class="tab" id="tabEconomy">⚖️ اقتصاد اللعبة</div>
+      <div class="tab" id="tabTraffic">📊 الزيارات</div>
       <div class="tab" id="tabErrors">🐞 الأخطاء <span id="errBadge"></span></div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
       <div class="tab" id="tabSettings">⚙️ الإعدادات</div>
@@ -167,6 +168,36 @@
 
     <div id="viewWithdraws" style="display:none;">
       <div id="withdrawsList"></div>
+    </div>
+
+    <div id="viewTraffic" style="display:none;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:13px; color:var(--dim);">زيارات موقع Yardova وتحميلات الملف (بتوقيت سوريا)</div>
+          <button class="copy-btn" id="btnTrafficReload" style="width:auto; padding:6px 12px; margin:0;">تحديث</button>
+        </div>
+        <div id="trafficPeriods"></div>
+        <div class="msg" id="trafficMsg"></div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:10px;">يوم بيوم (آخر 14 يوم)</div>
+        <table>
+          <thead><tr><th>اليوم</th><th>زوار</th><th>مشاهدات</th><th>تحميلات</th></tr></thead>
+          <tbody id="trafficTable"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">من وين جايين الزوار (آخر 30 يوم، مشاهدات)</div>
+        <div id="trafficSources" style="font-size:13px; line-height:2;"></div>
+        <div style="font-size:13px; color:var(--dim); margin:12px 0 6px;">من وين انضغط التحميل</div>
+        <div id="trafficDlSources" style="font-size:13px; line-height:2;"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:12px; color:var(--dim); line-height:1.9;">
+          الأرقام تقريبية: بدون كوكيز وبدون حفظ عنوان IP. "زائر" = متصفح مختلف باليوم (بتجاهل الروبوتات ومن فعّل "عدم التتبع"). نسبة التحويل = تحميلات فريدة ÷ زوار.
+          لتعرف إعلان فيسبوك كم جاب، حط بالرابط <span style="direction:ltr; display:inline-block">?utm_source=facebook</span> وبيطلع تحت اسم "إعلان: facebook".
+        </div>
+      </div>
     </div>
 
     <div id="viewErrors" style="display:none;">
@@ -414,10 +445,12 @@ const viewStore = document.getElementById('viewStore');
 const viewEconomy = document.getElementById('viewEconomy');
 const viewCodes = document.getElementById('viewCodes');
 const viewSettings = document.getElementById('viewSettings');
+const tabTraffic = document.getElementById('tabTraffic');
+const viewTraffic = document.getElementById('viewTraffic');
 const tabErrors = document.getElementById('tabErrors');
 const viewErrors = document.getElementById('viewErrors');
-const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors];
-const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors];
+const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors, tabTraffic];
+const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors, viewTraffic];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
@@ -731,6 +764,57 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
   try{ await adminWithdraw(payload); }
   catch(err){ alert((btn.dataset.wdact === 'fulfill' ? 'تعذّر التأكيد: ' : 'تعذّر الرفض: ') + err.message); btn.disabled = false; }
 });
+
+// ===== زيارات الموقع وتحميلات الملف =====
+const SRC_LABEL = { direct: 'مباشر (رابط أو كتابة)', google: 'Google', facebook: 'فيسبوك', instagram: 'إنستغرام', whatsapp: 'واتساب', telegram: 'تلغرام', x: 'X / تويتر', search_other: 'محركات بحث تانية', apkpure: 'ApkPure', github: 'GitHub', other: 'مواقع تانية' };
+const DL_LABEL = { site: 'أزرار الموقع', other: 'رابط التحميل مباشرة' };
+function srcName(k){ return k.startsWith('utm_') ? 'إعلان: ' + k.slice(4) : (SRC_LABEL[k] || k); }
+function dlName(k){ return DL_LABEL[k] || k; }
+async function adminTraffic(days){
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const r = await fetch('https://postback.ly-ad.de/admin/traffic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+    body: JSON.stringify({ days }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j.rows || [];
+}
+function sumRows(rows, f){ return rows.reduce((a, r) => a + (Number(r[f]) || 0), 0); }
+function fmtPct(a, b){ return b ? Math.round(a / b * 100) + '%' : '—'; }
+function listCounts(rows, prefix, nameFn){
+  const t = {};
+  rows.forEach(r => Object.keys(r).forEach(k => { if(k.startsWith(prefix)) t[k.slice(prefix.length)] = (t[k.slice(prefix.length)] || 0) + (Number(r[k]) || 0); }));
+  const e = Object.entries(t).sort((a, b) => b[1] - a[1]);
+  return e.length ? e.map(([k, v]) => `<div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--border);"><span>${escapeHtml(nameFn(k))}</span><b>${v}</b></div>`).join('') : '<div class="empty-note">ما في بيانات بعد</div>';
+}
+function renderTraffic(rows){
+  // rows: الأحدث أولاً، كل صف يوم
+  const today = rows.slice(0, 1), w7 = rows.slice(0, 7), m30 = rows.slice(0, 30);
+  const periods = [['اليوم', today], ['آخر 7 أيام', w7], ['آخر 30 يوم', m30]];
+  document.getElementById('trafficPeriods').innerHTML = periods.map(([name, rs]) => {
+    const vis = sumRows(rs, 'visitors'), views = sumRows(rs, 'views'), dl = sumRows(rs, 'downloads'), dlu = sumRows(rs, 'downloadsUnique');
+    return `<div style="margin-bottom:10px;"><div style="font-size:12px; color:var(--dim); margin-bottom:4px;">${name}</div>
+      <div class="stat-grid" style="grid-template-columns:repeat(4, 1fr);">
+        <div class="stat-box"><div class="v">${vis}</div><div class="l">زوار</div></div>
+        <div class="stat-box"><div class="v">${views}</div><div class="l">مشاهدات</div></div>
+        <div class="stat-box"><div class="v">${dl}</div><div class="l">تحميلات</div></div>
+        <div class="stat-box"><div class="v">${fmtPct(dlu, vis)}</div><div class="l">نسبة التحويل</div></div>
+      </div></div>`;
+  }).join('');
+  document.getElementById('trafficTable').innerHTML = rows.slice(0, 14).map(r =>
+    `<tr><td style="direction:ltr">${escapeHtml(r.day || r.id || '')}</td><td>${r.visitors || 0}</td><td>${r.views || 0}</td><td>${r.downloads || 0}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-note">ما في بيانات بعد</td></tr>';
+  document.getElementById('trafficSources').innerHTML = listCounts(m30, 's_', srcName);
+  document.getElementById('trafficDlSources').innerHTML = listCounts(m30, 'd_', dlName);
+}
+async function loadTraffic(){
+  const msg = document.getElementById('trafficMsg'); msg.textContent = 'جاري التحميل...';
+  try{ renderTraffic(await adminTraffic(30)); msg.textContent = ''; }
+  catch(e){ msg.textContent = 'تعذّر تحميل الأرقام: ' + e.message; }
+}
+tabTraffic.onclick = () => { activateTab(tabTraffic, viewTraffic); loadTraffic(); };
+document.getElementById('btnTrafficReload').onclick = loadTraffic;
 
 // ===== أخطاء التطبيق (بتجي من السيرفر مع إيميل اللاعب الحقيقي المربوط بحسابه) =====
 async function adminErrors(payload){

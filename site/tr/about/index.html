@@ -201,5 +201,14 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   <span>© 2026 Yardova. Tüm hakları saklıdır.</span>
 </div></footer>
 
+<script>
+(function(){try{
+  if(location.hostname!=='yardova.ly-ad.de') return;
+  if(navigator.doNotTrack==='1'||window.doNotTrack==='1'||navigator.webdriver) return;
+  var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
+  var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
+  fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'about',l:'tr',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+</script>
 </body>
 </html>

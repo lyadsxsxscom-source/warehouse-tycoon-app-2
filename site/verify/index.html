@@ -170,7 +170,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p>لأن Yardova غير موجودة على Google Play حالياً، يجب أن تتأكد أنك تثبّت الملف الأصلي. هذه أربع خطوات تأخذ دقيقتين.</p>
 <div class="step"><div class="n" aria-hidden="true">1</div><h2>حمّل من مصادرنا فقط</h2>
 <ul>
-<li>زر التحميل في هذا الموقع: <a href="https://postback.ly-ad.de/dl" rel="noopener" dir="ltr">postback.ly-ad.de/dl</a></li>
+<li>زر التحميل في هذا الموقع: <a href="https://postback.ly-ad.de/dl?src=site" rel="noopener" dir="ltr">postback.ly-ad.de/dl</a></li>
 <li><a href="https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2/releases/tag/latest" rel="noopener">صفحة الإصدار على GitHub</a></li>
 <li><a href="https://apkpure.com/p/com.warehousetycoon.app" rel="noopener">صفحة التطبيق على ApkPure</a> (قد تتأخر عن آخر إصدار، فبصمتها قد تختلف)</li>
 </ul>
@@ -231,6 +231,15 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
     b.addEventListener('click',function(){ (navigator.clipboard?navigator.clipboard.writeText(h):Promise.reject()).then(function(){ b.textContent=box.getAttribute('data-copied'); setTimeout(function(){b.textContent=t;},1800); }).catch(function(){}); });
   }).catch(function(){ ['v-hash','v-size','v-date'].forEach(function(i){ document.getElementById(i).textContent='-'; }); document.getElementById('v-copy').hidden=true; fail(); });
 })();
+</script>
+<script>
+(function(){try{
+  if(location.hostname!=='yardova.ly-ad.de') return;
+  if(navigator.doNotTrack==='1'||window.doNotTrack==='1'||navigator.webdriver) return;
+  var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
+  var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
+  fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'verify',l:'ar',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
 </script>
 </body>
 </html>
