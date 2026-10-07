@@ -68,7 +68,9 @@ jobs:
           KS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         run: |
           OUT=$(keytool -list -v -keystore android/app/release.keystore -storepass "$KS_PASS" -alias "$KS_ALIAS" 2>/dev/null | grep -E "SHA1:|SHA256:" | sed 's/^ *//' | tr '\n' ' ')
+          FILE=$(sha256sum android/app/release.keystore | cut -d' ' -f1)
           echo "::notice title=Release certificate::$OUT"
+          echo "::notice title=Keystore file hash::sha256=$FILE bytes=$(stat -c %s android/app/release.keystore)"
 
       - name: Patch build.gradle for release signing
         if: ${{ env.HAS_RELEASE_KEY == 'true' }}
