@@ -768,7 +768,8 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
 // ===== زيارات الموقع وتحميلات الملف =====
 const SRC_LABEL = { direct: 'مباشر (رابط أو كتابة)', google: 'Google', facebook: 'فيسبوك', instagram: 'إنستغرام', whatsapp: 'واتساب', telegram: 'تلغرام', x: 'X / تويتر', search_other: 'محركات بحث تانية', apkpure: 'ApkPure', github: 'GitHub', other: 'مواقع تانية' };
 const DL_LABEL = { site: 'أزرار الموقع', other: 'رابط التحميل مباشرة' };
-function srcName(k){ return k.startsWith('utm_') ? 'إعلان: ' + k.slice(4) : (SRC_LABEL[k] || k); }
+const UTM_LABEL = { tg_channel: 'قناة Yardova على تلغرام' };
+function srcName(k){ if(k.startsWith('utm_')){ const n = k.slice(4); return UTM_LABEL[n] || ('إعلان: ' + n); } return SRC_LABEL[k] || k; }
 function dlName(k){ return DL_LABEL[k] || k; }
 async function adminTraffic(days){
   const idToken = await fbAuth.currentUser.getIdToken();
