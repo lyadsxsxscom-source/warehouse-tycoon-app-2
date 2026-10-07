@@ -72,6 +72,15 @@ jobs:
         if: ${{ env.HAS_RELEASE_KEY == 'true' }}
         run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
+      - name: Print release certificate fingerprints (public info, needed for Firebase)
+        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        env:
+          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          OUT=$(keytool -list -v -keystore android/app/release.keystore -storepass "$KS_PASS" -alias "$KS_ALIAS" 2>/dev/null | grep -E "SHA1:|SHA256:" | sed 's/^ *//' | tr '\n' ' ')
+          echo "::notice title=Release certificate::$OUT"
+
       - name: Patch build.gradle for release signing
         if: ${{ env.HAS_RELEASE_KEY == 'true' }}
         run: |
