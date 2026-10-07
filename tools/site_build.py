@@ -187,7 +187,8 @@ VERIFY = {
 <h3>شهادة التوقيع</h3>
 <p>الملف موقّع بمفتاحنا الخاص، وبصمة الشهادة (SHA-256) ثابتة ولا تتغير مع التحديثات:</p>
 <code class="hash">{CERT_SHA256}</code>
-<p>للتحقق منها من الكمبيوتر: <code>apksigner verify --print-certs yardova.apk</code> أو <code>keytool -printcert -jarfile yardova.apk</code>. سيظهر اسم صاحب الشهادة "Warehouse Tycoon"، وهو الاسم السابق للتطبيق. وبعد التثبيت، يرفض أندرويد أي تحديث موقّع بشهادة مختلفة.</p></div>
+<p>للتحقق منها من الكمبيوتر: <code>apksigner verify --print-certs yardova.apk</code> أو <code>keytool -printcert -jarfile yardova.apk</code>. سيظهر اسم صاحب الشهادة "Warehouse Tycoon"، وهو الاسم السابق للتطبيق. وبعد التثبيت، يرفض أندرويد أي تحديث موقّع بشهادة مختلفة.</p>
+<p>من الجوال وبدون روت: توجد تطبيقات مفتوحة المصدر تعرض بصمة شهادة التطبيقات المثبّتة، مثل <strong>Verified Apps</strong> أو <strong>AppVerifier</strong> (ابحث عنهما باسمهما على F-Droid). افتح التطبيق، اختر Yardova، وقارن قيمة SHA-256 بالبصمة أعلاه. نذكرهما كمثالين فقط ولسنا مرتبطين بهما، ولا ننصح بأي تطبيق يعدّل التطبيقات الأخرى أو يطلب صلاحيات الروت.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>افحصه على VirusTotal</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">ابحث عن البصمة على VirusTotal</a>. إذا لم تظهر نتيجة، افتح الموقع وارفع الملف وانتظر الفحص.</p>
 <p>قد تظهر تحذيرات من محرك أو اثنين، فهذه شائعة مع التطبيقات من خارج المتجر. المهم ألا تظهر عشرات التحذيرات.</p></div>
@@ -223,7 +224,8 @@ VERIFY = {
 <h3>İmza sertifikası</h3>
 <p>Dosya kendi özel anahtarımızla imzalanır ve sertifika parmak izi (SHA-256) güncellemelerde değişmez:</p>
 <code class="hash">{CERT_SHA256}</code>
-<p>Bilgisayardan doğrulamak için: <code>apksigner verify --print-certs yardova.apk</code> veya <code>keytool -printcert -jarfile yardova.apk</code>. Sertifika sahibi adı "Warehouse Tycoon" görünür; bu uygulamanın eski adıdır. Kurulumdan sonra Android, farklı bir sertifikayla imzalanmış güncellemeleri reddeder.</p></div>
+<p>Bilgisayardan doğrulamak için: <code>apksigner verify --print-certs yardova.apk</code> veya <code>keytool -printcert -jarfile yardova.apk</code>. Sertifika sahibi adı "Warehouse Tycoon" görünür; bu uygulamanın eski adıdır. Kurulumdan sonra Android, farklı bir sertifikayla imzalanmış güncellemeleri reddeder.</p>
+<p>Telefondan ve root olmadan: yüklü uygulamaların sertifika parmak izini gösteren açık kaynaklı uygulamalar var, örneğin <strong>Verified Apps</strong> veya <strong>AppVerifier</strong> (F-Droid'de adlarıyla ara). Uygulamayı aç, Yardova'yı seç ve SHA-256 değerini yukarıdaki parmak iziyle karşılaştır. Bunları yalnızca örnek olarak veriyoruz, bağlantımız yok; diğer uygulamaları değiştiren veya root izni isteyen hiçbir uygulamayı önermiyoruz.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>VirusTotal'da tara</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">Parmak izini VirusTotal'da ara</a>. Sonuç çıkmazsa siteyi açıp dosyayı yükle ve taramayı bekle.</p>
 <p>Bir iki motordan uyarı gelebilir; mağaza dışı uygulamalarda bu yaygındır. Önemli olan onlarca uyarı çıkmamasıdır.</p></div>
@@ -259,7 +261,8 @@ VERIFY = {
 <h3>Signing certificate</h3>
 <p>The file is signed with our own private key, and the certificate fingerprint (SHA-256) stays the same across updates:</p>
 <code class="hash">{CERT_SHA256}</code>
-<p>To check it from a computer: <code>apksigner verify --print-certs yardova.apk</code> or <code>keytool -printcert -jarfile yardova.apk</code>. The certificate owner shows as "Warehouse Tycoon", which is the app's previous name. After installation, Android rejects any update signed with a different certificate.</p></div>
+<p>To check it from a computer: <code>apksigner verify --print-certs yardova.apk</code> or <code>keytool -printcert -jarfile yardova.apk</code>. The certificate owner shows as "Warehouse Tycoon", which is the app's previous name. After installation, Android rejects any update signed with a different certificate.</p>
+<p>From your phone, without root: there are open-source apps that show the signing-certificate fingerprint of installed apps, such as <strong>Verified Apps</strong> or <strong>AppVerifier</strong> (search for them by name on F-Droid). Open the app, pick Yardova, and compare the SHA-256 value with the fingerprint above. We mention them only as examples and are not affiliated with them, and we don't recommend any app that modifies other apps or asks for root permissions.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>Scan it on VirusTotal</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">Search the fingerprint on VirusTotal</a>. If nothing shows up, open the site, upload the file and wait for the scan.</p>
 <p>One or two engines may flag it, which is common for apps from outside the store. What matters is that dozens of warnings don't appear.</p></div>

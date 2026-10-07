@@ -186,7 +186,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <h3>شهادة التوقيع</h3>
 <p>الملف موقّع بمفتاحنا الخاص، وبصمة الشهادة (SHA-256) ثابتة ولا تتغير مع التحديثات:</p>
 <code class="hash">D3:3E:3B:80:BE:09:96:1F:EA:26:BE:D0:88:2D:C5:44:3C:98:F8:E9:D0:77:12:B9:29:40:76:2C:B3:41:04:81</code>
-<p>للتحقق منها من الكمبيوتر: <code>apksigner verify --print-certs yardova.apk</code> أو <code>keytool -printcert -jarfile yardova.apk</code>. سيظهر اسم صاحب الشهادة "Warehouse Tycoon"، وهو الاسم السابق للتطبيق. وبعد التثبيت، يرفض أندرويد أي تحديث موقّع بشهادة مختلفة.</p></div>
+<p>للتحقق منها من الكمبيوتر: <code>apksigner verify --print-certs yardova.apk</code> أو <code>keytool -printcert -jarfile yardova.apk</code>. سيظهر اسم صاحب الشهادة "Warehouse Tycoon"، وهو الاسم السابق للتطبيق. وبعد التثبيت، يرفض أندرويد أي تحديث موقّع بشهادة مختلفة.</p>
+<p>من الجوال وبدون روت: توجد تطبيقات مفتوحة المصدر تعرض بصمة شهادة التطبيقات المثبّتة، مثل <strong>Verified Apps</strong> أو <strong>AppVerifier</strong> (ابحث عنهما باسمهما على F-Droid). افتح التطبيق، اختر Yardova، وقارن قيمة SHA-256 بالبصمة أعلاه. نذكرهما كمثالين فقط ولسنا مرتبطين بهما، ولا ننصح بأي تطبيق يعدّل التطبيقات الأخرى أو يطلب صلاحيات الروت.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>افحصه على VirusTotal</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">ابحث عن البصمة على VirusTotal</a>. إذا لم تظهر نتيجة، افتح الموقع وارفع الملف وانتظر الفحص.</p>
 <p>قد تظهر تحذيرات من محرك أو اثنين، فهذه شائعة مع التطبيقات من خارج المتجر. المهم ألا تظهر عشرات التحذيرات.</p></div>

@@ -186,7 +186,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <h3>Signing certificate</h3>
 <p>The file is signed with our own private key, and the certificate fingerprint (SHA-256) stays the same across updates:</p>
 <code class="hash">D3:3E:3B:80:BE:09:96:1F:EA:26:BE:D0:88:2D:C5:44:3C:98:F8:E9:D0:77:12:B9:29:40:76:2C:B3:41:04:81</code>
-<p>To check it from a computer: <code>apksigner verify --print-certs yardova.apk</code> or <code>keytool -printcert -jarfile yardova.apk</code>. The certificate owner shows as "Warehouse Tycoon", which is the app's previous name. After installation, Android rejects any update signed with a different certificate.</p></div>
+<p>To check it from a computer: <code>apksigner verify --print-certs yardova.apk</code> or <code>keytool -printcert -jarfile yardova.apk</code>. The certificate owner shows as "Warehouse Tycoon", which is the app's previous name. After installation, Android rejects any update signed with a different certificate.</p>
+<p>From your phone, without root: there are open-source apps that show the signing-certificate fingerprint of installed apps, such as <strong>Verified Apps</strong> or <strong>AppVerifier</strong> (search for them by name on F-Droid). Open the app, pick Yardova, and compare the SHA-256 value with the fingerprint above. We mention them only as examples and are not affiliated with them, and we don't recommend any app that modifies other apps or asks for root permissions.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>Scan it on VirusTotal</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">Search the fingerprint on VirusTotal</a>. If nothing shows up, open the site, upload the file and wait for the scan.</p>
 <p>One or two engines may flag it, which is common for apps from outside the store. What matters is that dozens of warnings don't appear.</p></div>

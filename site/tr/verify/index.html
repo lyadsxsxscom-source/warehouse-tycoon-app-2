@@ -186,7 +186,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <h3>İmza sertifikası</h3>
 <p>Dosya kendi özel anahtarımızla imzalanır ve sertifika parmak izi (SHA-256) güncellemelerde değişmez:</p>
 <code class="hash">D3:3E:3B:80:BE:09:96:1F:EA:26:BE:D0:88:2D:C5:44:3C:98:F8:E9:D0:77:12:B9:29:40:76:2C:B3:41:04:81</code>
-<p>Bilgisayardan doğrulamak için: <code>apksigner verify --print-certs yardova.apk</code> veya <code>keytool -printcert -jarfile yardova.apk</code>. Sertifika sahibi adı "Warehouse Tycoon" görünür; bu uygulamanın eski adıdır. Kurulumdan sonra Android, farklı bir sertifikayla imzalanmış güncellemeleri reddeder.</p></div>
+<p>Bilgisayardan doğrulamak için: <code>apksigner verify --print-certs yardova.apk</code> veya <code>keytool -printcert -jarfile yardova.apk</code>. Sertifika sahibi adı "Warehouse Tycoon" görünür; bu uygulamanın eski adıdır. Kurulumdan sonra Android, farklı bir sertifikayla imzalanmış güncellemeleri reddeder.</p>
+<p>Telefondan ve root olmadan: yüklü uygulamaların sertifika parmak izini gösteren açık kaynaklı uygulamalar var, örneğin <strong>Verified Apps</strong> veya <strong>AppVerifier</strong> (F-Droid'de adlarıyla ara). Uygulamayı aç, Yardova'yı seç ve SHA-256 değerini yukarıdaki parmak iziyle karşılaştır. Bunları yalnızca örnek olarak veriyoruz, bağlantımız yok; diğer uygulamaları değiştiren veya root izni isteyen hiçbir uygulamayı önermiyoruz.</p></div>
 <div class="step"><div class="n" aria-hidden="true">3</div><h2>VirusTotal'da tara</h2>
 <p><a id="vt" href="https://www.virustotal.com/" rel="noopener">Parmak izini VirusTotal'da ara</a>. Sonuç çıkmazsa siteyi açıp dosyayı yükle ve taramayı bekle.</p>
 <p>Bir iki motordan uyarı gelebilir; mağaza dışı uygulamalarda bu yaygındır. Önemli olan onlarca uyarı çıkmamasıdır.</p></div>
