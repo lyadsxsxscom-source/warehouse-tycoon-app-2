@@ -8,6 +8,7 @@ BASE = "https://yardova.ly-ad.de"
 DL = "https://postback.ly-ad.de/dl"
 DL_SITE = DL + "?src=site"   # روابط التحميل داخل الموقع (بتنحسب كتحميل من الموقع)
 HIT_URL = "https://postback.ly-ad.de/hit"
+TG = "https://t.me/YardovaGame"   # قناة تلغرام الرسمية
 APKPURE = "https://apkpure.com/p/com.warehousetycoon.app"
 SHOP = "https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/"
 PRIVACY = SHOP + "privacy.html"
@@ -99,11 +100,16 @@ LANGS["en"].update(about="About", verify="Verify the file", verify_hint="Verify 
   about_title="About – Yardova", about_desc="Who is behind Yardova, how the game makes money, how player balances are withdrawn, and how to reach us.", about_h1="About",
   verify_title="Verify the Yardova file before installing", verify_desc="Simple steps to make sure you downloaded the genuine Yardova file: download sources, the SHA-256 fingerprint, a VirusTotal scan and the app's permissions.", verify_h1="Verify the file before you install it")
 
+LANGS["ar"]["tg"] = "قناتنا على تلغرام"
+LANGS["tr"]["tg"] = "Telegram kanalımız"
+LANGS["en"]["tg"] = "Our Telegram channel"
+
 ABOUT = {
 "ar": f"""
 <h2>من وراء Yardova؟</h2>
 <p>Yardova مشروع مستقل يطوّره شخص واحد، وما وراءه شركة كبيرة. ولهذا نشرنا الكود المصدري للتطبيق والسيرفر علناً حتى يقدر أي شخص يراجعه: <a href="{REPO}" rel="noopener">الكود المصدري على GitHub</a>.</p>
 <p>للتواصل أو للإبلاغ عن مشكلة: <a href="mailto:{MAIL}">{MAIL}</a></p>
+<p>قناتنا الرسمية على تلغرام: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
 <h2>كيف تكسب اللعبة؟</h2>
 <p>اللعبة مجانية. يأتي دخلنا من شركاء إعلانات وعروض (إعلانات الفيديو وجدران المهام). جزء من هذا الدخل يرجع للاعبين على شكل رصيد قابل للسحب، والباقي يغطي تشغيل اللعبة.</p>
 <p class="note">لا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر، وقد يتوقف أي شريك فجأة.</p>
@@ -126,6 +132,7 @@ ABOUT = {
 <h2>Yardova'nın arkasında kim var?</h2>
 <p>Yardova, tek bir kişi tarafından geliştirilen bağımsız bir projedir; arkasında büyük bir şirket yoktur. Bu yüzden uygulamanın ve sunucunun kaynak kodunu herkes inceleyebilsin diye açık yayınladık: <a href="{REPO}" rel="noopener">GitHub'daki kaynak kod</a>.</p>
 <p>İletişim veya sorun bildirmek için: <a href="mailto:{MAIL}">{MAIL}</a></p>
+<p>Resmi Telegram kanalımız: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
 <h2>Oyun nasıl gelir elde ediyor?</h2>
 <p>Oyun ücretsizdir. Gelirimiz reklam ve teklif ortaklarından (video reklamlar ve görev duvarları) gelir. Bu gelirin bir kısmı oyunculara çekilebilir bakiye olarak döner, kalanı oyunun işletme giderlerini karşılar.</p>
 <p class="note">Kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir; bir ortak aniden durabilir.</p>
@@ -148,6 +155,7 @@ ABOUT = {
 <h2>Who is behind Yardova?</h2>
 <p>Yardova is an independent project built by a single person; there is no large company behind it. That's why we published the source code of the app and the server openly, so anyone can review it: <a href="{REPO}" rel="noopener">source code on GitHub</a>.</p>
 <p>To get in touch or report a problem: <a href="mailto:{MAIL}">{MAIL}</a></p>
+<p>Our official Telegram channel: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
 <h2>How does the game make money?</h2>
 <p>The game is free. Our income comes from advertising and offer partners (video ads and task walls). Part of that income returns to players as a withdrawable balance, and the rest covers the cost of running the game.</p>
 <p class="note">Earnings are not guaranteed. The availability of offers varies by country and over time, and a partner can stop suddenly.</p>
@@ -176,6 +184,7 @@ VERIFY = {
 <li>زر التحميل في هذا الموقع: <a href="{DL_SITE}" rel="noopener" dir="ltr">postback.ly-ad.de/dl</a></li>
 <li><a href="{RELEASE}" rel="noopener">صفحة الإصدار على GitHub</a></li>
 <li><a href="{APKPURE}" rel="noopener">صفحة التطبيق على ApkPure</a> (قد تتأخر عن آخر إصدار، فبصمتها قد تختلف)</li>
+<li>قناتنا الرسمية على تلغرام: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a>. لا نملك قناة غيرها، وأي قناة بنفس الاسم غير هذه ليست منا.</li>
 </ul>
 <p>أي رابط آخر (قناة أو موقع أو شخص أرسل لك الملف) تعامل معه كغير موثوق.</p></div>
 <div class="step"><div class="n" aria-hidden="true">2</div><h2>قارن بصمة الملف (SHA-256)</h2>
@@ -213,6 +222,7 @@ VERIFY = {
 <li>Bu sitedeki indirme düğmesi (<a href="{DL_SITE}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
 <li><a href="{RELEASE}" rel="noopener">GitHub sürüm sayfası</a></li>
 <li><a href="{APKPURE}" rel="noopener">ApkPure uygulama sayfası</a> (son sürümün gerisinde kalabilir, parmak izi farklı olabilir)</li>
+<li>Resmi Telegram kanalımız: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a>. Başka kanalımız yok; aynı ada sahip başka kanallar bizden değildir.</li>
 </ul>
 <p>Başka her bağlantıyı (bir kanal, bir site ya da dosyayı sana gönderen biri) güvenilmez say.</p></div>
 <div class="step"><div class="n" aria-hidden="true">2</div><h2>Dosyanın parmak izini (SHA-256) karşılaştır</h2>
@@ -250,6 +260,7 @@ VERIFY = {
 <li>The download button on this site (<a href="{DL_SITE}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
 <li>The <a href="{RELEASE}" rel="noopener">release page on GitHub</a></li>
 <li>The <a href="{APKPURE}" rel="noopener">app page on ApkPure</a> (it may lag behind the latest version, so its fingerprint can differ)</li>
+<li>Our official Telegram channel: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a>. We have no other channel; any other channel with a similar name is not ours.</li>
 </ul>
 <p>Treat any other link (a channel, a site, or someone who sent you the file) as untrusted.</p></div>
 <div class="step"><div class="n" aria-hidden="true">2</div><h2>Compare the file's fingerprint (SHA-256)</h2>
@@ -520,6 +531,7 @@ def footer(L):
     <li><a href="{SHOP}" rel="noopener">{esc(t["store"])}</a></li>
     <li><a href="{PRIVACY}" rel="noopener">{esc(t["privacy"])}</a></li>
     <li><a href="{TERMS}" rel="noopener">{esc(t["terms"])}</a></li>
+    <li><a href="{TG}" rel="noopener">{esc(t["tg"])}</a></li>
     <li><a href="mailto:{MAIL}">{esc(t["contact"])}: {MAIL}</a></li>
   </ul>
   <span>© 2026 Yardova. {esc(t["rights"])}</span>
