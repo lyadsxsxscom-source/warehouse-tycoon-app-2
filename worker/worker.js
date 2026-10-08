@@ -1146,6 +1146,9 @@ const BOT_UA = /bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegram|pre
 const HIT_PAGES = ["home", "about", "verify"];
 const HIT_LANGS = ["ar", "tr", "en"];
 const HIT_DAILY_CAP = 60;   // أقصى مشاهدات تنحسب لنفس الزائر باليوم (حماية من التضخيم)
+function optedOut(request) {   // المتصفح طلب "عدم التتبع" أو Global Privacy Control
+  return request.headers.get("DNT") === "1" || request.headers.get("Sec-GPC") === "1";
+}
 function isoDaySyria(now = Date.now()) { return new Date(now + 3 * 3600 * 1000).toISOString().slice(0, 10); }
 function trafficWrite(env, day, incs) {
   const updateTransforms = Object.entries(incs).map(([f, v]) => ({ fieldPath: f, increment: { integerValue: String(v) } }));
@@ -1194,7 +1197,7 @@ async function cacheBump(key, cap) {    // true = لسا تحت السقف (وب
 async function handleHit(request, env, ctx) {
   const ok = () => new Response(null, { status: 204, headers: corsHeaders() });
   const ua = request.headers.get("User-Agent") || "";
-  if (!ua || BOT_UA.test(ua)) return ok();
+  if (!ua || BOT_UA.test(ua) || optedOut(request)) return ok();
   let b = {};
   try { b = JSON.parse(await request.text()); } catch (e) { return ok(); }
   if (!HIT_PAGES.includes(b.p) || !HIT_LANGS.includes(b.l)) return ok();
@@ -1209,7 +1212,7 @@ async function handleHit(request, env, ctx) {
 }
 async function countDownload(request, url, env, ctx) {
   const ua = request.headers.get("User-Agent") || "";
-  if (request.method !== "GET" || !ua || BOT_UA.test(ua)) return;
+  if (request.method !== "GET" || !ua || BOT_UA.test(ua) || optedOut(request)) return;
   const range = request.headers.get("Range");
   if (range && !/^bytes=0-/.test(range)) return;   // استكمال تحميل مو تحميل جديد
   const day = isoDaySyria(), hash = await visitorHash(request, day);
