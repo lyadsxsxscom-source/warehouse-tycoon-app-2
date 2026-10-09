@@ -8,6 +8,7 @@ BASE = "https://yardova.ly-ad.de"
 DL = "https://postback.ly-ad.de/dl"
 DL_SITE = DL + "?src=site"   # روابط التحميل داخل الموقع (بتنحسب كتحميل من الموقع)
 HIT_URL = "https://postback.ly-ad.de/hit"
+SHOW_APKPURE = False   # أخفي زر ApkPure لحد ما يقبلوا تحديث التوقيع
 TG = "https://t.me/YardovaGame"   # قناة تلغرام الرسمية
 APKPURE = "https://apkpure.com/p/com.warehousetycoon.app"
 SHOP = "https://lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/"
@@ -183,7 +184,7 @@ VERIFY = {
 <ul>
 <li>زر التحميل في هذا الموقع: <a href="{DL_SITE}" rel="noopener" dir="ltr">postback.ly-ad.de/dl</a></li>
 <li><a href="{RELEASE}" rel="noopener">صفحة الإصدار على GitHub</a></li>
-<li><a href="{APKPURE}" rel="noopener">صفحة التطبيق على ApkPure</a> (قد تتأخر عن آخر إصدار، فبصمتها قد تختلف)</li>
+<li>ApkPure: النسخة الموجودة هناك قديمة وبتوقيع مختلف، فلا تثبّتها حالياً. نعمل مع ApkPure على تحديثها.</li>
 <li>قناتنا الرسمية على تلغرام: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a>. لا نملك قناة غيرها، وأي قناة بنفس الاسم غير هذه ليست منا.</li>
 </ul>
 <p>أي رابط آخر (قناة أو موقع أو شخص أرسل لك الملف) تعامل معه كغير موثوق.</p></div>
@@ -221,7 +222,7 @@ VERIFY = {
 <ul>
 <li>Bu sitedeki indirme düğmesi (<a href="{DL_SITE}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
 <li><a href="{RELEASE}" rel="noopener">GitHub sürüm sayfası</a></li>
-<li><a href="{APKPURE}" rel="noopener">ApkPure uygulama sayfası</a> (son sürümün gerisinde kalabilir, parmak izi farklı olabilir)</li>
+<li>ApkPure: oradaki sürüm eski ve farklı bir imzayla imzalı; şimdilik oradan kurma. Güncellemesi için ApkPure ile çalışıyoruz.</li>
 <li>Resmi Telegram kanalımız: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a>. Başka kanalımız yok; aynı ada sahip başka kanallar bizden değildir.</li>
 </ul>
 <p>Başka her bağlantıyı (bir kanal, bir site ya da dosyayı sana gönderen biri) güvenilmez say.</p></div>
@@ -259,7 +260,7 @@ VERIFY = {
 <ul>
 <li>The download button on this site (<a href="{DL_SITE}" rel="noopener">postback.ly-ad.de/dl</a>)</li>
 <li>The <a href="{RELEASE}" rel="noopener">release page on GitHub</a></li>
-<li>The <a href="{APKPURE}" rel="noopener">app page on ApkPure</a> (it may lag behind the latest version, so its fingerprint can differ)</li>
+<li>ApkPure: the version there is old and signed with a different key, so don't install it for now. We are working with ApkPure to update it.</li>
 <li>Our official Telegram channel: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a>. We have no other channel; any other channel with a similar name is not ours.</li>
 </ul>
 <p>Treat any other link (a channel, a site, or someone who sent you the file) as untrusted.</p></div>
@@ -559,6 +560,7 @@ def inner_page(L, key):
 
 def page(L):
     t = LANGS[L]
+    apk_btn = f'<a class="btn alt" href="{APKPURE}" rel="noopener">{esc(t["cta2"])}</a>' if SHOW_APKPURE else ""
     langs = "".join(
         f'<li><a href="{LANGS[c]["path"]}" hreflang="{c}" lang="{c}"{" aria-current=\"page\"" if c == L else ""}>{esc(LANGS[c]["name"])}</a></li>' for c in ORDER)
     steps = "".join(f'<li><div class="n" aria-hidden="true">{i+1}</div><h3>{esc(h)}</h3><p>{esc(p)}</p></li>' for i, (h, p) in enumerate(t["steps"]))
@@ -574,7 +576,7 @@ def page(L):
       <p>{esc(t["sub"])}</p>
       <div class="btns">
         <a class="btn main" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
-        <a class="btn alt" href="{APKPURE}" rel="noopener">{esc(t["cta2"])}</a>
+        {apk_btn}
       </div>
       <p class="small">{esc(t["small"])}</p>
       <p class="small"><a href="{path_of(L, "verify")}">{esc(t["verify_hint"])}</a></p>
@@ -600,7 +602,7 @@ def page(L):
     <h2>{esc(t["final"])}</h2>
     <div class="btns">
       <a class="btn main" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
-      <a class="btn alt" href="{APKPURE}" rel="noopener">{esc(t["cta2"])}</a>
+      {apk_btn}
     </div>
   </div></div>
 </main>
