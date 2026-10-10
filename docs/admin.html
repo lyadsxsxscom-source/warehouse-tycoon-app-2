@@ -185,10 +185,10 @@
         <input type="text" id="playersSearch" placeholder="ابحث بالإيميل أو الاسم" style="margin-bottom:10px;">
         <div style="font-size:12px; color:var(--dim); margin-bottom:8px;" id="playersCount"></div>
         <table>
-          <thead><tr><th>اللاعب</th><th>انضم</th><th>آخر نشاط</th><th>أيام</th><th>إعلانات</th><th>نقاط جدار المهام</th><th>عمال</th><th>سحب</th></tr></thead>
+          <thead><tr><th>اللاعب</th><th>انضم</th><th>آخر نشاط</th><th>أيام</th><th>إعلانات</th><th>نقاط جدار المهام</th><th>عمال</th><th>رصيد $</th><th>سحب</th></tr></thead>
           <tbody id="playersTable"></tbody>
         </table>
-        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">الإيميل والاسم بيظهروا لكل لاعب أول ما يفتح التطبيق بعد هالتحديث (أو إذا كان طلب سحب قبل). "نقاط جدار المهام" من سجل عمليات الشبكات (من أول تسجيل).</div>
+        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">الإيميل والاسم بيظهروا لكل لاعب أول ما يفتح التطبيق بعد هالتحديث (أو إذا كان طلب سحب قبل). "نقاط جدار المهام" من سجل عمليات الشبكات (من أول تسجيل). "رصيد $" بالأخضر لما يوصل 1$ أو أكتر.</div>
       </div>
     </div>
 
@@ -872,8 +872,8 @@ function renderPlayers(){
   document.getElementById('playersCount').textContent = `${rows.length} لاعب` + (q ? ' (حسب البحث)' : '');
   document.getElementById('playersTable').innerHTML = rows.map(p => {
     const who = p.email ? `<div style="direction:ltr; text-align:right; font-size:12px;">${escapeHtml(p.email)}</div>${p.name ? `<div style="font-size:11px; color:var(--dim);">${escapeHtml(p.name)}</div>` : ''}` : `<div style="font-size:11px; color:var(--dim);">لسا ما ظهر (${escapeHtml(String(p.uid).slice(0, 6))})</div>`;
-    return `<tr><td>${who}</td><td style="direction:ltr">${escapeHtml(String(p.firstSeenDate || '—'))}</td><td style="direction:ltr">${escapeHtml(String(p.lastActiveDate || '—'))}</td><td>${p.activeDays}</td><td>${p.adsWatched}</td><td>${p.offerPoints}</td><td>${p.workersRented}</td><td>${p.withdrawCount ? p.withdrawCount + (p.withdrawUsd > 0 ? ' (' + p.withdrawUsd + '$)' : '') : '0'}</td></tr>`;
-  }).join('') || '<tr><td colspan="8" class="empty-note">ما في لاعبين</td></tr>';
+    return `<tr><td>${who}</td><td style="direction:ltr">${escapeHtml(String(p.firstSeenDate || '—'))}</td><td style="direction:ltr">${escapeHtml(String(p.lastActiveDate || '—'))}</td><td>${p.activeDays}</td><td>${p.adsWatched}</td><td>${p.offerPoints}</td><td>${p.workersRented}</td><td${p.balanceUsd >= 1 ? ' style="color:#5fd88a; font-weight:700;"' : ''}>${(Number(p.balanceUsd) || 0).toFixed(2)}</td><td>${p.withdrawCount ? p.withdrawCount + (p.withdrawUsd > 0 ? ' (' + p.withdrawUsd + '$)' : '') : '0'}</td></tr>`;
+  }).join('') || '<tr><td colspan="9" class="empty-note">ما في لاعبين</td></tr>';
 }
 async function loadPlayers(){
   const msg = document.getElementById('playersMsg'); msg.textContent = 'جاري التحميل...';
