@@ -1268,7 +1268,7 @@ async function handleAdminPlayers(request, env) {
     ]);
     const offerPts = {}, wd = {}, wdMail = {};
     for (const o of offers) { const d = o.data; if (d.uid && d.status === "credited") offerPts[d.uid] = (offerPts[d.uid] || 0) + (Number(d.originalReward) || 0); }
-    for (const w of wds) { const d = w.data; if (!d.uid) continue; const x = wd[d.uid] = wd[d.uid] || { count: 0, usd: 0 }; x.count++; x.usd += Number(d.amountUsd) || 0; if (d.email && !wdMail[d.uid]) wdMail[d.uid] = { email: d.email, name: d.displayName || "" }; }
+    for (const w of wds) { const d = w.data; if (!d.uid) continue; const x = wd[d.uid] = wd[d.uid] || { count: 0, usd: 0 }; x.count++; x.usd += Number(d.amountUsd) || (Number(d.amount) * Number(d.priceUsd)) || 0; if (d.email && !wdMail[d.uid]) wdMail[d.uid] = { email: d.email, name: d.displayName || "" }; }
     const out = players.map(r => {
       const p = r.data, uid = r.id;
       return {

@@ -872,7 +872,7 @@ function renderPlayers(){
   document.getElementById('playersCount').textContent = `${rows.length} لاعب` + (q ? ' (حسب البحث)' : '');
   document.getElementById('playersTable').innerHTML = rows.map(p => {
     const who = p.email ? `<div style="direction:ltr; text-align:right; font-size:12px;">${escapeHtml(p.email)}</div>${p.name ? `<div style="font-size:11px; color:var(--dim);">${escapeHtml(p.name)}</div>` : ''}` : `<div style="font-size:11px; color:var(--dim);">لسا ما ظهر (${escapeHtml(String(p.uid).slice(0, 6))})</div>`;
-    return `<tr><td>${who}</td><td style="direction:ltr">${escapeHtml(String(p.firstSeenDate || '—'))}</td><td style="direction:ltr">${escapeHtml(String(p.lastActiveDate || '—'))}</td><td>${p.activeDays}</td><td>${p.adsWatched}</td><td>${p.offerPoints}</td><td>${p.workersRented}</td><td>${p.withdrawCount ? p.withdrawCount + ' (' + p.withdrawUsd + '$)' : '0'}</td></tr>`;
+    return `<tr><td>${who}</td><td style="direction:ltr">${escapeHtml(String(p.firstSeenDate || '—'))}</td><td style="direction:ltr">${escapeHtml(String(p.lastActiveDate || '—'))}</td><td>${p.activeDays}</td><td>${p.adsWatched}</td><td>${p.offerPoints}</td><td>${p.workersRented}</td><td>${p.withdrawCount ? p.withdrawCount + (p.withdrawUsd > 0 ? ' (' + p.withdrawUsd + '$)' : '') : '0'}</td></tr>`;
   }).join('') || '<tr><td colspan="8" class="empty-note">ما في لاعبين</td></tr>';
 }
 async function loadPlayers(){
