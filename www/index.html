@@ -539,7 +539,7 @@ try{
 }
 
 // ===== التحقق من التحديث الإجباري =====
-const APP_VERSION = "2.9"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
+const APP_VERSION = "2.10"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
 const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -764,8 +764,21 @@ const WD_NETWORKS = {
 };
 let wdNetwork = 'TRC20';
 // الحد الأدنى للسحب بعملة طريقة السحب المختارة (الأدمن بيحدده بالدولار، ومنحوّله حسب سعر الصرف)
+// أول سحب بحد أدنى أقل (تجربة من الأدمن): بيتفتح بعد أيام نشاط وعدد إعلانات، ومرة وحدة بس
+let srvActiveDays = 0, srvLastWithdrawAt = 0;
+function firstWithdrawInfo(){
+  const normal = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
+  const fm = Number(PRICING.firstWithdrawUsd) || 0;
+  if(!(fm > 0 && fm < normal) || srvLastWithdrawAt > 0) return { enabled: false, normal };
+  const needDays = Number(PRICING.firstWithdrawDays) || 0, needAds = Number(PRICING.firstWithdrawAds) || 0;
+  return { enabled: true, normal, fm, needDays, needAds, days: srvActiveDays, ads: adsWatched, unlocked: srvActiveDays >= needDays && adsWatched >= needAds };
+}
+function effectiveMinUsd(){
+  const f = firstWithdrawInfo();
+  return f.enabled && f.unlocked ? f.fm : f.normal;
+}
 function minWithdrawInCoin(coin){
-  const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
+  const minUsd = effectiveMinUsd();
   const price = coinPrice(coin);
   return price > 0 ? Number((minUsd / price).toPrecision(3)) : null;
 }
@@ -776,6 +789,12 @@ function renderWdMinNote(){
   const minCoin = minWithdrawInCoin(wdCoin);
   const minTxt = minCoin !== null ? `${minCoin.toLocaleString('en-US', {maximumFractionDigits: 12})} ${wdUnit(wdCoin)}` : '—';
   el.textContent = `الحد الأدنى للسحب ${minTxt} — مرة وحدة كل 24 ساعة`;
+  const fi = firstWithdrawInfo();
+  let hint = document.getElementById('wdFirstNote');
+  if(!hint){ hint = document.createElement('div'); hint.id = 'wdFirstNote'; hint.className = 'min-note'; hint.style.marginTop = '6px'; el.insertAdjacentElement('afterend', hint); }
+  hint.textContent = !fi.enabled ? '' : (fi.unlocked
+    ? tr(`أول سحب مفتوح بـ${fi.fm}$ ✓`)
+    : tr(`أول سحب بـ${fi.fm}$ بيتفتح بعد ${fi.needDays} أيام نشاط و${fi.needAds} إعلان (عندك ${fi.days} يوم و${fi.ads} إعلان)`));
 }
 function renderWithdraw(){
   renderWdMinNote();
@@ -1086,9 +1105,12 @@ document.getElementById('btnWithdraw').onclick = async () => {
   if(!(priceUsd > 0)){ wdMsg.textContent = 'سعر هالعملة مو مضبوط حالياً، جرّب بعد شوي.'; return; }
   const amountUsd = amount * priceUsd;
   if(amountUsd > balanceUsd * (1 + 1e-9) + 1e-9){ wdMsg.textContent = 'المبلغ أكبر من رصيدك المتاح.'; return; }
-  const minUsd = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
+  const fi = firstWithdrawInfo();
+  const minUsd = effectiveMinUsd();
   if(amountUsd < minUsd){
-    wdMsg.textContent = `الحد الأدنى للسحب ${minWithdrawInCoin(wdCoin)} ${wdUnit(wdCoin)}.`;
+    wdMsg.textContent = (fi.enabled && !fi.unlocked && amountUsd >= fi.fm - 1e-9)
+      ? tr(`أول سحب بـ${fi.fm}$ بيتفتح بعد ${fi.needDays} أيام نشاط و${fi.needAds} إعلان (عندك ${fi.days} يوم و${fi.ads} إعلان)`)
+      : `الحد الأدنى للسحب ${minWithdrawInCoin(wdCoin)} ${wdUnit(wdCoin)}.`;
     return;
   }
   const lastReq = withdrawHistoryDocs[0]; // مرتب من الأحدث للأقدم
@@ -1244,6 +1266,8 @@ function applyServerState(st){
   balanceUsd = Number.isFinite(st.balanceUsd) ? st.balanceUsd : ((st.wallet && st.wallet.btc || 0) * (PRICING.btcUsd || 0));
   workersRented = st.workersRented || 0;
   adsWatched = st.adsWatched || 0;
+  srvActiveDays = st.activeDays || 0;
+  srvLastWithdrawAt = st.lastWithdrawAt || 0;
   boostUntil = st.boostUntil || 0;
   tasks = st.tasks;
   dailyDate = st.dailyDate;

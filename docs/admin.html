@@ -129,6 +129,7 @@
       <div class="tab" id="tabWithdraws">📤 طلبات السحب <span id="wdPendingBadge"></span></div>
       <div class="tab" id="tabStore">🛠 المتجر</div>
       <div class="tab" id="tabEconomy">⚖️ اقتصاد اللعبة</div>
+      <div class="tab" id="tabPlayers">👥 اللاعبين</div>
       <div class="tab" id="tabTraffic">📊 الزيارات</div>
       <div class="tab" id="tabErrors">🐞 الأخطاء <span id="errBadge"></span></div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
@@ -168,6 +169,27 @@
 
     <div id="viewWithdraws" style="display:none;">
       <div id="withdrawsList"></div>
+    </div>
+
+    <div id="viewPlayers" style="display:none;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:13px; color:var(--dim);">رحلة اللاعب الجديد (آخر 30 يوم)</div>
+          <button class="copy-btn" id="btnPlayersReload" style="width:auto; padding:6px 12px; margin:0;">تحديث</button>
+        </div>
+        <div id="playersFunnel"></div>
+        <div id="playersInsights" style="font-size:13px; line-height:1.9; margin-top:10px;"></div>
+        <div class="msg" id="playersMsg"></div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <input type="text" id="playersSearch" placeholder="ابحث بالإيميل أو الاسم" style="margin-bottom:10px;">
+        <div style="font-size:12px; color:var(--dim); margin-bottom:8px;" id="playersCount"></div>
+        <table>
+          <thead><tr><th>اللاعب</th><th>انضم</th><th>آخر نشاط</th><th>أيام</th><th>إعلانات</th><th>نقاط جدار المهام</th><th>عمال</th><th>سحب</th></tr></thead>
+          <tbody id="playersTable"></tbody>
+        </table>
+        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">الإيميل والاسم بيظهروا لكل لاعب أول ما يفتح التطبيق بعد هالتحديث (أو إذا كان طلب سحب قبل). "نقاط جدار المهام" من سجل عمليات الشبكات (من أول تسجيل).</div>
+      </div>
     </div>
 
     <div id="viewTraffic" style="display:none;">
@@ -293,8 +315,35 @@
           <label>الحد الأدنى للسحب بالدولار</label>
           <input type="number" id="rateMinWd" placeholder="مثال: 20">
         </div>
+        <div style="font-size:12px; color:var(--dim); margin:14px 0 6px;">تجربة "أول سحب بحد أقل" (بيطبّق مرة وحدة لكل لاعب)</div>
+        <div class="field">
+          <label>الحد الأدنى لأول سحب بالدولار (0 = معطّل)</label>
+          <input type="number" id="rateFirstWd" placeholder="مثال: 1">
+        </div>
+        <div class="field">
+          <label>أيام النشاط المطلوبة قبل أول سحب</label>
+          <input type="number" id="rateFirstDays" placeholder="مثال: 5">
+        </div>
+        <div class="field">
+          <label>عدد الإعلانات المطلوب قبل أول سحب</label>
+          <input type="number" id="rateFirstAds" placeholder="مثال: 30">
+        </div>
+        <div class="field">
+          <label>سقف صرف السحبات الصغيرة (أقل من الحد العادي) باليوم بالدولار (0 = بدون سقف)</label>
+          <input type="number" id="rateDayCap" placeholder="مثال: 5">
+        </div>
         <button class="btn" id="btnSaveRates">حفظ الأسعار</button>
         <div class="msg" id="ratesMsg"></div>
+      </div>
+      <div class="card" id="networkLinks">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:8px;">🔗 لوحات الشبكات</div>
+        <div style="line-height:2.2; font-size:14px;">
+          <a href="https://site.offerswalls.com" target="_blank" rel="noopener" style="color:var(--amber);">OffersWalls (جدار المهام)</a><br>
+          <a href="https://offerwall.me" target="_blank" rel="noopener" style="color:var(--amber);">Offerwall.me (جدار المهام)</a>
+        </div>
+        <div style="font-size:12px; color:var(--dim); margin-top:10px; line-height:1.9;">
+          للتقييم فقط (مو مضمون لسوريا): <a href="https://monetag.com" target="_blank" rel="noopener" style="color:var(--amber);">Monetag</a>. بيقبل أغلب الدول وبيدفع من 5$ عبر PayPal، بس إعلاناته منبثقة وإشعارات مو فيديو مكافأة داخل اللعبة، فلا نحطها بدومين اللعبة. وغالباً سعر الإعلان بيتحدد بدولة اللاعب أكتر من الشبكة.
+        </div>
       </div>
       <div class="card">
         <div style="font-size:13px; color:var(--dim); margin-bottom:4px;">التحديث الإجباري</div>
@@ -445,12 +494,14 @@ const viewStore = document.getElementById('viewStore');
 const viewEconomy = document.getElementById('viewEconomy');
 const viewCodes = document.getElementById('viewCodes');
 const viewSettings = document.getElementById('viewSettings');
+const tabPlayers = document.getElementById('tabPlayers');
+const viewPlayers = document.getElementById('viewPlayers');
 const tabTraffic = document.getElementById('tabTraffic');
 const viewTraffic = document.getElementById('viewTraffic');
 const tabErrors = document.getElementById('tabErrors');
 const viewErrors = document.getElementById('viewErrors');
-const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors, tabTraffic];
-const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors, viewTraffic];
+const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors, tabTraffic, tabPlayers];
+const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors, viewTraffic, viewPlayers];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
@@ -764,6 +815,74 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
   try{ await adminWithdraw(payload); }
   catch(err){ alert((btn.dataset.wdact === 'fulfill' ? 'تعذّر التأكيد: ' : 'تعذّر الرفض: ') + err.message); btn.disabled = false; }
 });
+
+// ===== اللاعبين: رحلة اللاعب الجديد + جدول اللاعبين =====
+let PLAYERS = [];
+async function adminPlayers(){
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const r = await fetch('https://postback.ly-ad.de/admin/players', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+    body: '{}',
+  });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+function buildFunnel(players, now){
+  const since = now - 30 * 86400000;
+  const joined = players.filter(p => p.firstSeenAt > since);
+  const steps = [
+    ['دخلوا اللعبة', () => true],
+    ['شافوا إعلان واحد على الأقل', p => p.adsWatched >= 1],
+    ['أجّروا عامل', p => p.workersRented >= 1],
+    ['رجعوا بيوم تاني', p => p.activeDays >= 2],
+    ['نشطين 3 أيام أو أكتر', p => p.activeDays >= 3],
+    ['جابوا نقاط من جدار المهام', p => p.offerPoints > 0],
+    ['طلبوا سحب', p => p.withdrawCount >= 1],
+  ].map(([label, fn]) => ({ label, n: joined.filter(fn).length }));
+  return { joined: joined.length, steps };
+}
+function renderPlayers(){
+  const now = Date.now();
+  const f = buildFunnel(PLAYERS, now);
+  const box = document.getElementById('playersFunnel');
+  if(!f.joined){ box.innerHTML = '<div class="empty-note">ما في لاعبين جداد بآخر 30 يوم</div>'; document.getElementById('playersInsights').innerHTML = ''; }
+  else {
+    box.innerHTML = f.steps.map((st, i) => {
+      const pct = Math.round(st.n / f.joined * 100);
+      return `<div style="margin-bottom:8px;"><div style="display:flex; justify-content:space-between; font-size:13px;"><span>${escapeHtml(st.label)}</span><b>${st.n} (${pct}%)</b></div><div style="height:8px; border-radius:4px; background:#ffffff14;"><div style="height:8px; border-radius:4px; width:${pct}%; background:var(--amber);"></div></div></div>`;
+    }).join('');
+    let worst = null;
+    for(let i = 1; i < f.steps.length; i++){
+      const drop = f.steps[i - 1].n - f.steps[i].n;
+      if(f.steps[i - 1].n > 0 && (!worst || drop > worst.drop)) worst = { drop, from: f.steps[i - 1], to: f.steps[i] };
+    }
+    const lines = [];
+    if(worst && worst.drop > 0) lines.push(`أكبر تسرّب: بين «${escapeHtml(worst.from.label)}» و«${escapeHtml(worst.to.label)}» (${worst.drop} لاعب من ${worst.from.n}).`);
+    const ads0 = f.joined - f.steps[1].n;
+    if(ads0 > 0) lines.push(`${ads0} من ${f.joined} ما شافوا ولا إعلان.`);
+    lines.push(`جدار المهام: ${f.steps[5].n} من ${f.joined} حصّلوا منه نقاط.`);
+    lines.push('العينة صغيرة: اقرا النمط (وين بيوقفوا) مو النسب الدقيقة.');
+    document.getElementById('playersInsights').innerHTML = lines.map(l => '• ' + l).join('<br>');
+  }
+  const q = (document.getElementById('playersSearch').value || '').trim().toLowerCase();
+  const rows = PLAYERS.filter(p => !q || (p.email || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q) || (p.uid || '').toLowerCase().includes(q))
+    .sort((a, b) => String(b.lastActiveDate).localeCompare(String(a.lastActiveDate)) || b.firstSeenAt - a.firstSeenAt);
+  document.getElementById('playersCount').textContent = `${rows.length} لاعب` + (q ? ' (حسب البحث)' : '');
+  document.getElementById('playersTable').innerHTML = rows.map(p => {
+    const who = p.email ? `<div style="direction:ltr; text-align:right; font-size:12px;">${escapeHtml(p.email)}</div>${p.name ? `<div style="font-size:11px; color:var(--dim);">${escapeHtml(p.name)}</div>` : ''}` : `<div style="font-size:11px; color:var(--dim);">لسا ما ظهر (${escapeHtml(String(p.uid).slice(0, 6))})</div>`;
+    return `<tr><td>${who}</td><td style="direction:ltr">${escapeHtml(String(p.firstSeenDate || '—'))}</td><td style="direction:ltr">${escapeHtml(String(p.lastActiveDate || '—'))}</td><td>${p.activeDays}</td><td>${p.adsWatched}</td><td>${p.offerPoints}</td><td>${p.workersRented}</td><td>${p.withdrawCount ? p.withdrawCount + ' (' + p.withdrawUsd + '$)' : '0'}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="empty-note">ما في لاعبين</td></tr>';
+}
+async function loadPlayers(){
+  const msg = document.getElementById('playersMsg'); msg.textContent = 'جاري التحميل...';
+  try{ PLAYERS = (await adminPlayers()).players || []; msg.textContent = ''; renderPlayers(); }
+  catch(e){ msg.textContent = 'تعذّر تحميل اللاعبين: ' + e.message; }
+}
+tabPlayers.onclick = () => { activateTab(tabPlayers, viewPlayers); loadPlayers(); };
+document.getElementById('btnPlayersReload').onclick = loadPlayers;
+document.getElementById('playersSearch').addEventListener('input', renderPlayers);
 
 // ===== زيارات الموقع وتحميلات الملف =====
 const SRC_LABEL = { direct: 'مباشر (رابط أو كتابة)', google: 'Google', facebook: 'فيسبوك', instagram: 'إنستغرام', whatsapp: 'واتساب', telegram: 'تلغرام', x: 'X / تويتر', search_other: 'محركات بحث تانية', apkpure: 'ApkPure', github: 'GitHub', other: 'مواقع تانية' };
@@ -1317,6 +1436,10 @@ async function loadRates(){
       document.getElementById('rateBtc').value = d.btcUsd || '';
       document.getElementById('rateEth').value = d.ethUsd || '';
       document.getElementById('rateMinWd').value = d.minWithdrawUsd || '';
+      document.getElementById('rateFirstWd').value = d.firstWithdrawUsd || '';
+      document.getElementById('rateFirstDays').value = d.firstWithdrawDays || '';
+      document.getElementById('rateFirstAds').value = d.firstWithdrawAds || '';
+      document.getElementById('rateDayCap').value = d.dailyPayoutCapUsd || '';
     }
   }catch(e){ console.error('load rates failed', e); }
 }
@@ -1326,9 +1449,14 @@ document.getElementById('btnSaveRates').onclick = async () => {
   const btcUsd = parseFloat(document.getElementById('rateBtc').value) || 0;
   const ethUsd = parseFloat(document.getElementById('rateEth').value) || 0;
   const minWithdrawUsd = parseFloat(document.getElementById('rateMinWd').value) || 0;
+  const firstWithdrawUsd = parseFloat(document.getElementById('rateFirstWd').value) || 0;
+  const firstWithdrawDays = parseInt(document.getElementById('rateFirstDays').value, 10) || 0;
+  const firstWithdrawAds = parseInt(document.getElementById('rateFirstAds').value, 10) || 0;
+  const dailyPayoutCapUsd = parseFloat(document.getElementById('rateDayCap').value) || 0;
   try{
     await fbDb.collection('config').doc('pricing').set({
-      usdToSyp, btcUsd, ethUsd, minWithdrawUsd, updatedAt: Date.now(), updatedBy: fbAuth.currentUser.uid
+      usdToSyp, btcUsd, ethUsd, minWithdrawUsd, firstWithdrawUsd, firstWithdrawDays, firstWithdrawAds, dailyPayoutCapUsd,
+      updatedAt: Date.now(), updatedBy: fbAuth.currentUser.uid
     });
     ratesMsg.style.color = '#5fd88a';
     ratesMsg.textContent = '✓ تم الحفظ';

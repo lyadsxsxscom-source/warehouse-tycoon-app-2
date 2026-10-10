@@ -425,7 +425,7 @@ function publicState(p, now, cfg) {
     points: p.points, totalPointsEarned: p.totalPointsEarned, balanceUsd: p.balanceUsd,
     wallet: { btc: cfg && coinPriceUsd(cfg, "btc") > 0 ? p.balanceUsd / coinPriceUsd(cfg, "btc") : 0, eth: 0 }, // للنسخ القديمة من التطبيق
     shelves: p.shelves.map(sh => shelfForClient(sh, cfg)), tasks: p.tasks, dailyDate: p.dailyDate,
-    adsWatched: p.adsWatched, workersRented: p.workersRented,
+    adsWatched: p.adsWatched, workersRented: p.workersRented, activeDays: p.activeDays,
     boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now,
     serverToday: todaySyria(now),
     ads: cfg ? adsCfg(cfg) : { rewardPoints: AD_REWARD_POINTS, dailyLimit: AD_DAILY_LIMIT },
@@ -555,6 +555,8 @@ async function gameAction(action, body, user, env) {
         const today = todaySyria(now);
         if (p.lastActiveDate !== today) p.activeDays += 1;
         p.lastActiveDate = today;
+        if (user.email && p.email !== user.email) p.email = String(user.email).slice(0, 120);
+        if (user.name && p.displayName !== user.name) p.displayName = String(user.name).slice(0, 80);
         const writes = [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] }), ...claimWrites];
         if (!p.referralCode) {
           // كود دعوة فريد: مستند referralCodes/{الكود} لازم يكون جديد، ولو صار تكرار بتنعاد المحاولة بكود تاني
@@ -654,16 +656,34 @@ async function gameAction(action, body, user, env) {
       const price = coinPriceUsd(cfg, coin);
       if (!(price > 0)) throw new ApiError("no_price", "سعر هالعملة مو مضبوط حالياً، جرّب بعد شوي.");
       const amountUsd = amount * price; // USDT وشام كاش: المبلغ بالدولار نفسه
-      return mutatePlayer(env, uid, (p, now) => {
+      return mutatePlayer(env, uid, async (p, now) => {
         if (amountUsd > p.balanceUsd * (1 + 1e-9) + 1e-9) throw new ApiError("not_enough_balance", "المبلغ أكبر من رصيدك المتاح.");
-        const minUsd = cfg.pricing.minWithdrawUsd > 0 ? cfg.pricing.minWithdrawUsd : 20;
+        const pr = cfg.pricing || {};
+        const normalMin = pr.minWithdrawUsd > 0 ? pr.minWithdrawUsd : 20;
+        let minUsd = normalMin;
+        // أول سحب بحد أدنى أقل (تجربة): بيتفتح بعد أيام نشاط وعدد إعلانات معيّن، والسحبات اللي بعدها بالحد العادي
+        const firstMin = Number(pr.firstWithdrawUsd) || 0;
+        if (firstMin > 0 && firstMin < normalMin && !(p.lastWithdrawAt > 0)) {
+          const needDays = Number(pr.firstWithdrawDays) || 0, needAds = Number(pr.firstWithdrawAds) || 0;
+          if (p.activeDays >= needDays && p.adsWatched >= needAds) minUsd = firstMin;
+          else if (amountUsd < normalMin) throw new ApiError("first_locked", `أول سحب بـ${firstMin}$ بيتفتح بعد ${needDays} أيام نشاط و${needAds} إعلان (عندك ${p.activeDays} يوم و${p.adsWatched} إعلان). قبل هيك الحد الأدنى ${normalMin}$.`);
+        }
         if (amountUsd < minUsd) throw new ApiError("below_min", `الحد الأدنى للسحب ${minUsd}$.`);
+        // سقف الصرف اليومي بينطبق بس على السحبات المخفّضة (أقل من الحد العادي)، عشان ما نعلّق السحبات العادية
+        const reduced = amountUsd < normalMin - 1e-9;
+        const cap = Number(pr.dailyPayoutCapUsd) || 0;
+        if (cap > 0 && reduced) {
+          const day = await fsGetDoc(env, "analytics/" + todaySyria(now));
+          const used = Number(day.exists && day.data ? day.data.reducedWithdrawUsd : 0) || 0;
+          if (used + amountUsd > cap + 1e-9) throw new ApiError("daily_cap", "خلص سقف سحب اليوم للسحبات الصغيرة، جرّب بكرا.");
+        }
         if (now - p.lastWithdrawAt < WITHDRAW_COOLDOWN_MS) {
           const h = Math.ceil((WITHDRAW_COOLDOWN_MS - (now - p.lastWithdrawAt)) / 3600000);
           throw new ApiError("cooldown", `تقدر تسحب مرة كل 24 ساعة بس — جرّب بعد حوالي ${h} ساعة.`);
         }
         p.balanceUsd = Math.max(0, p.balanceUsd - amountUsd);
         p.lastWithdrawAt = now;
+        p.withdrawCount = (Number(p.withdrawCount) || 0) + 1;
         const request = {
           uid, displayName: user.name || "", email: user.email || "",
           coin, network, amount, amountUsd, priceUsd: price, walletAddress: address,
@@ -676,7 +696,7 @@ async function gameAction(action, body, user, env) {
           writes: [{
             update: { name: docName(env, "withdrawRequests/" + randomId()), fields: objToFields(request) },
             currentDocument: { exists: false },
-          }, statsWrite(env, todaySyria(now), { withdraws: 1 })],
+          }, statsWrite(env, todaySyria(now), { withdraws: 1, withdrawUsd: Math.round(amountUsd * 100) / 100, ...(reduced ? { reducedWithdrawUsd: Math.round(amountUsd * 100) / 100 } : {}) })],
         };
       });
     }
@@ -1236,6 +1256,37 @@ async function handleAdminTraffic(request, env) {
   }
 }
 
+// قائمة اللاعبين للأدمن: بيانات اللاعب + نقاط جدار المهام (من سجل العمليات) + عدد السحوبات
+async function handleAdminPlayers(request, env) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  try {
+    const [players, offers, wds] = await Promise.all([
+      fsRunQuery(env, "players", "firstSeenAt", 400),
+      fsRunQuery(env, "offerTx", "createdAt", 1000),
+      fsRunQuery(env, "withdrawRequests", "createdAt", 500),
+    ]);
+    const offerPts = {}, wd = {}, wdMail = {};
+    for (const o of offers) { const d = o.data; if (d.uid && d.status === "credited") offerPts[d.uid] = (offerPts[d.uid] || 0) + (Number(d.originalReward) || 0); }
+    for (const w of wds) { const d = w.data; if (!d.uid) continue; const x = wd[d.uid] = wd[d.uid] || { count: 0, usd: 0 }; x.count++; x.usd += Number(d.amountUsd) || 0; if (d.email && !wdMail[d.uid]) wdMail[d.uid] = { email: d.email, name: d.displayName || "" }; }
+    const out = players.map(r => {
+      const p = r.data, uid = r.id;
+      return {
+        uid, email: p.email || (wdMail[uid] && wdMail[uid].email) || "", name: p.displayName || (wdMail[uid] && wdMail[uid].name) || "",
+        firstSeenDate: p.firstSeenDate || "", firstSeenAt: Number(p.firstSeenAt) || 0, lastActiveDate: p.lastActiveDate || "",
+        activeDays: Number(p.activeDays) || 0, adsWatched: Number(p.adsWatched) || 0, workersRented: Number(p.workersRented) || 0,
+        totalPointsEarned: Math.round(Number(p.totalPointsEarned) || 0), balanceUsd: Math.round((Number(p.balanceUsd) || 0) * 1000) / 1000,
+        offerPoints: Math.round(offerPts[uid] || 0), withdrawCount: (wd[uid] && wd[uid].count) || 0, withdrawUsd: Math.round(((wd[uid] && wd[uid].usd) || 0) * 100) / 100,
+        referred: !!p.referredBy,
+      };
+    });
+    return jsonResponse({ ok: true, players: out, now: Date.now() }, 200);
+  } catch (e) {
+    console.error({ message: "admin players failed", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "failed" }, 500);
+  }
+}
+
 async function handleDownload(request, env, ctx) {
   const resp = await fetch(APK_SOURCE_URL, { redirect: "follow" });
   if (!resp.ok) return new Response("تعذّر تحميل الملف حالياً (" + resp.status + ")", { status: 502 });
@@ -1252,7 +1303,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "traffic-1" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "players-1" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);
@@ -1277,6 +1328,7 @@ export default {
     if (url.pathname === "/dl" && request.method === "GET") return handleDownload(request, env, ctx);
     if (url.pathname === "/hit" && request.method === "POST") return handleHit(request, env, ctx);
     if (url.pathname === "/admin/traffic" && request.method === "POST") return handleAdminTraffic(request, env);
+    if (url.pathname === "/admin/players" && request.method === "POST") return handleAdminPlayers(request, env);
     return new Response("Not found", { status: 404 });
   },
 };

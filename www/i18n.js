@@ -209,6 +209,8 @@
     ["+{0} نقطة!", "+{0} puan!", "+{0} points!"],
     ["الحد الأدنى للسحب {0} — مرة وحدة كل 24 ساعة", "Minimum çekim {0} — 24 saatte bir kez", "Minimum withdrawal {0} — once every 24 hours"],
     ["الحد الأدنى للسحب {0}$.", "Minimum çekim {0}$.", "Minimum withdrawal is ${0}."],
+    ["أول سحب مفتوح بـ{0}$ ✓", "İlk çekim {0}$ ile açıldı ✓", "First withdrawal unlocked at ${0} ✓"],
+    ["أول سحب بـ{0}$ بيتفتح بعد {1} أيام نشاط و{2} إعلان (عندك {3} يوم و{4} إعلان)", "İlk çekim {0}$: {1} aktif gün ve {2} reklamdan sonra açılır (şu an {3} gün ve {4} reklam)", "First withdrawal of ${0} unlocks after {1} active days and {2} ads (you have {3} days and {4} ads)"],
     ["الحد الأدنى للسحب {0} {1}.", "Minimum çekim {0} {1}.", "Minimum withdrawal is {0} {1}."],
     ["{0}ي {1}س متبقي", "{0}g {1}sa kaldı", "{0}d {1}h left"],
     ["{0}س {1}د متبقي", "{0}sa {1}dk kaldı", "{0}h {1}m left"],
