@@ -194,7 +194,7 @@
       </div>
       <div class="card">
         <div style="font-size:12px; color:var(--dim); line-height:1.9;">
-          الأرقام تقريبية: بدون كوكيز وبدون حفظ عنوان IP. "زائر" = متصفح مختلف باليوم (بتجاهل الروبوتات ومن فعّل "عدم التتبع"). نسبة التحويل = تحميلات فريدة ÷ زوار.
+          الأرقام تقريبية: بدون كوكيز وبدون حفظ عنوان IP. "زائر" = متصفح مختلف باليوم (بتجاهل الروبوتات ومن فعّل "عدم التتبع"). تحويل أزرار الموقع = التحميلات من أزرار الموقع فقط ÷ الزوار (التحميلات من رابط مباشر أو المتجر ما بتنحسب فيها، لأنها مو من زوار الموقع).
           لتعرف إعلان فيسبوك كم جاب، حط بالرابط <span style="direction:ltr; display:inline-block">?utm_source=facebook</span> وبيطلع تحت اسم "إعلان: facebook".
         </div>
       </div>
@@ -767,7 +767,7 @@ document.getElementById('withdrawsList').addEventListener('click', async (e) => 
 
 // ===== زيارات الموقع وتحميلات الملف =====
 const SRC_LABEL = { direct: 'مباشر (رابط أو كتابة)', google: 'Google', facebook: 'فيسبوك', instagram: 'إنستغرام', whatsapp: 'واتساب', telegram: 'تلغرام', x: 'X / تويتر', search_other: 'محركات بحث تانية', apkpure: 'ApkPure', github: 'GitHub', other: 'مواقع تانية' };
-const DL_LABEL = { site: 'أزرار الموقع', other: 'رابط التحميل مباشرة' };
+const DL_LABEL = { site: 'أزرار الموقع', shop: 'صفحة المتجر', other: 'رابط التحميل مباشرة (بدون مصدر)' };
 const UTM_LABEL = { tg_channel: 'قناة Yardova على تلغرام' };
 function srcName(k){ if(k.startsWith('utm_')){ const n = k.slice(4); return UTM_LABEL[n] || ('إعلان: ' + n); } return SRC_LABEL[k] || k; }
 function dlName(k){ return DL_LABEL[k] || k; }
@@ -795,13 +795,13 @@ function renderTraffic(rows){
   const today = rows.slice(0, 1), w7 = rows.slice(0, 7), m30 = rows.slice(0, 30);
   const periods = [['اليوم', today], ['آخر 7 أيام', w7], ['آخر 30 يوم', m30]];
   document.getElementById('trafficPeriods').innerHTML = periods.map(([name, rs]) => {
-    const vis = sumRows(rs, 'visitors'), views = sumRows(rs, 'views'), dl = sumRows(rs, 'downloads'), dlu = sumRows(rs, 'downloadsUnique');
+    const vis = sumRows(rs, 'visitors'), views = sumRows(rs, 'views'), dl = sumRows(rs, 'downloads'), dls = sumRows(rs, 'd_site');
     return `<div style="margin-bottom:10px;"><div style="font-size:12px; color:var(--dim); margin-bottom:4px;">${name}</div>
       <div class="stat-grid" style="grid-template-columns:repeat(4, 1fr);">
         <div class="stat-box"><div class="v">${vis}</div><div class="l">زوار</div></div>
         <div class="stat-box"><div class="v">${views}</div><div class="l">مشاهدات</div></div>
         <div class="stat-box"><div class="v">${dl}</div><div class="l">تحميلات</div></div>
-        <div class="stat-box"><div class="v">${fmtPct(dlu, vis)}</div><div class="l">نسبة التحويل</div></div>
+        <div class="stat-box"><div class="v">${fmtPct(dls, vis)}</div><div class="l">تحويل أزرار الموقع</div></div>
       </div></div>`;
   }).join('');
   document.getElementById('trafficTable').innerHTML = rows.slice(0, 14).map(r =>
