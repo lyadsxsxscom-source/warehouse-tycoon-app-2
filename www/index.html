@@ -288,6 +288,14 @@
   .guide-dots i{width:9px; height:9px; border:2px solid var(--border); border-radius:50%; display:block;}
   .guide-dots i.on{background:var(--amber); border-color:var(--amber);}
   .guide-modal .btn-main{margin-top:4px;}
+  /* ===== رسومات + عناوين الأقسام (2.11 D) ===== */
+  .shelf .emoji svg.art{width:46px; height:46px;}
+  .shelf .emoji{height:48px;}
+  .shelf.expired .art{opacity:.6; filter:grayscale(.85);}
+  .shelf.locked .label, .shelf .label{font-size:9.5px;}
+  .screen h3{display:inline-block; color:var(--text); font-size:14px; font-weight:800; margin:16px 4px 10px;}
+  .screen h3::after{content:""; display:block; width:34px; height:4px; background:var(--amber); margin-top:5px;}
+  .stat-label{letter-spacing:.02em;}
   .new-badge{display:inline-block; margin-right:8px; background:var(--alert); color:#fff; font-size:9px; padding:1px 6px; border-radius:3px; font-weight:800; vertical-align:2px;}
   .guide-alt{display:none; margin-top:8px; background:var(--panel); color:var(--text); border:2px solid var(--border); box-shadow:3px 3px 0 var(--shadow);}
 </style>
@@ -949,6 +957,17 @@ function bumpEl(el){
 let lastPointsShown = points;
 let lastWalletShown = fromUsd(balanceUsd, activeCoin);
 
+// ===== رسومات اللعبة (SVG خفيف بهوية Yardova) =====
+const ART = {
+  hats: { day: '#F3F5EE', week: '#ef8a2c', month: '#4aa3c4' },     // لون الخوذة: يومي أبيض، أسبوعي برتقالي، شهري أزرق
+  worker(kind, sleeping){
+    const hat = this.hats[kind] || this.hats.day;
+    return `<svg class="art${sleeping ? ' sleepy' : ''}" viewBox="0 0 60 60" aria-hidden="true"><rect x="9" y="32" width="9" height="20" rx="4" fill="#6fb39f"/><rect x="42" y="32" width="9" height="20" rx="4" fill="#6fb39f"/><rect x="16" y="30" width="28" height="26" rx="5" fill="#F4C21F" stroke="#10211C" stroke-width="1.5"/><rect x="23" y="30" width="4" height="26" fill="#10211C"/><rect x="33" y="30" width="4" height="26" fill="#10211C"/><circle cx="30" cy="21" r="9" fill="#E8C9A0"/><path d="M19 20a11 11 0 0 1 22 0z" fill="${hat}" stroke="#10211C" stroke-width="1.2"/><rect x="17" y="19" width="26" height="4" rx="2" fill="${hat}" stroke="#10211C" stroke-width="1.2"/>${sleeping ? '<text x="40" y="12" font-size="12" font-weight="800" fill="#9BB5AB" font-family="sans-serif">Zz</text>' : ''}</svg>`;
+  },
+  locked: '<svg class="art" viewBox="0 0 60 60" aria-hidden="true"><rect x="10" y="22" width="40" height="30" rx="3" fill="#14302A" stroke="#2d6355" stroke-width="2"/><path d="M10 32h40M10 42h40" stroke="#2d6355" stroke-width="2"/><rect x="22" y="28" width="16" height="13" rx="2" fill="#9BB5AB"/><path d="M25 28v-4a5 5 0 0 1 10 0v4" fill="none" stroke="#9BB5AB" stroke-width="3"/></svg>',
+  empty: '<svg class="art" viewBox="0 0 60 60" aria-hidden="true"><path d="M12 24h36v28H12z" fill="none" stroke="#2d6355" stroke-width="2" stroke-dasharray="4 3"/><path d="M30 31v14M23 38h14" stroke="#F4C21F" stroke-width="3.2" stroke-linecap="round"/></svg>',
+};
+
 function render(){
   const now = Date.now();
   grid.innerHTML = '';
@@ -958,7 +977,7 @@ function render(){
     if(!s.unlocked){
       div.classList.add('locked');
       const cost = SHELF_UNLOCK_COST[s.id];
-      div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div class="label">فتح: ${cost} نقطة</div>`;
+      div.innerHTML = `<div class="emoji">${ART.locked}</div><div class="label">فتح: ${cost} نقطة</div>`;
       div.onclick = () => {
         if(points < cost){ hint.textContent = 'نقاط غير كافية لفتح هذا الرف.'; return; }
         gameApi('unlockShelf', { shelfId: s.id })
@@ -968,14 +987,14 @@ function render(){
     } else if(s.worker && s.worker.expiresAt > now){
       div.classList.add('working');
       const remain = Math.max(0, s.worker.expiresAt - now);
-      div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M5.5 21v-3.5a6.5 6.5 0 0 1 13 0V21"/><rect x="9" y="12.2" width="6" height="4.3" rx="1"/></svg></div><div class="name">${(WORKERS[s.worker.kind] || {}).label || 'عامل'}</div><div class="timer">${formatRemain(remain)} متبقي</div>`;
+      div.innerHTML = `<div class="emoji">${ART.worker(s.worker.kind)}</div><div class="name">${(WORKERS[s.worker.kind] || {}).label || 'عامل'}</div><div class="timer">${formatRemain(remain)} متبقي</div>`;
       div.onclick = () => { hint.textContent = 'هذا العامل شغّال حالياً.'; };
     } else if(s.worker && s.worker.expiresAt <= now){
       div.classList.add('expired');
-      div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 14.8A8.2 8.2 0 1 1 10.4 4.2 6.6 6.6 0 0 0 20 14.8z"/></svg></div><div class="name">انتهت المدة</div><div class="label">اضغط للتجديد</div>`;
+      div.innerHTML = `<div class="emoji">${ART.worker(s.worker.kind, true)}</div><div class="name">انتهت المدة</div><div class="label">اضغط للتجديد</div>`;
       div.onclick = () => openRent(s.id);
     } else {
-      div.innerHTML = `<div class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><div class="label">استأجر عامل</div>`;
+      div.innerHTML = `<div class="emoji">${ART.empty}</div><div class="label">استأجر عامل</div>`;
       div.onclick = () => openRent(s.id);
     }
     grid.appendChild(div);
