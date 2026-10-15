@@ -271,6 +271,24 @@
   .boot-pct{font-weight:800; color:var(--amber); font-size:20px; margin-top:12px; direction:ltr;}
   .boot-msg{color:var(--dim); font-size:13px; margin-top:6px; min-height:20px; padding:0 28px; line-height:1.6;}
   #bootRetry{display:none; width:auto; margin-top:14px; padding:10px 26px;}
+
+  /* ===== إشعار ضعف الاتصال + الإرشادات (2.11) ===== */
+  #netNotice{position:fixed; inset:0; z-index:55; display:none; align-items:center; justify-content:center; pointer-events:none; padding:24px;}
+  #netNotice.show{display:flex; animation:fadeSlide .25s ease;}
+  .net-card{display:flex; gap:12px; align-items:center; background:var(--panel2); border:2px solid var(--amber); border-radius:4px; box-shadow:5px 5px 0 #000; padding:14px 16px; max-width:330px; text-align:right;}
+  .net-card b{display:block; font-size:14px; color:var(--amber); margin-bottom:3px;}
+  .net-card div{font-size:12px; color:var(--text); line-height:1.7;}
+  .net-spin{flex:0 0 auto; width:22px; height:22px; border:3px solid var(--border); border-top-color:var(--amber); border-radius:50%; animation:netSpin .9s linear infinite;}
+  @keyframes netSpin{to{transform:rotate(360deg);}}
+  .guide-modal{max-width:340px; text-align:center;}
+  .guide-ic{font-size:44px; line-height:1.2; margin-bottom:4px;}
+  .guide-modal h4{font-size:17px; color:var(--amber); margin:0 0 10px;}
+  .guide-modal p{font-size:13px; color:var(--text); line-height:1.8; margin:0 0 8px; text-align:right;}
+  .guide-dots{display:flex; justify-content:center; gap:6px; margin:12px 0;}
+  .guide-dots i{width:9px; height:9px; border:2px solid var(--border); border-radius:50%; display:block;}
+  .guide-dots i.on{background:var(--amber); border-color:var(--amber);}
+  .guide-modal .btn-main{margin-top:4px;}
+  .guide-alt{display:none; margin-top:8px; background:var(--panel); color:var(--text); border:2px solid var(--border); box-shadow:3px 3px 0 var(--shadow);}
 </style>
 <script src="i18n.js"></script>
 </head>
@@ -304,6 +322,18 @@ window.__errQueue = [];
   <div class="boot-pct" id="bootPct">0%</div>
   <div class="boot-msg" id="bootMsg"></div>
   <button class="btn-main" id="bootRetry"></button>
+</div>
+<div id="netNotice" role="alert" aria-live="polite"><div class="net-card"><span class="net-spin"></span><div><b id="netTitle"></b><span id="netText"></span></div></div></div>
+<div id="guideOverlay" class="overlay" style="z-index:45;">
+  <div class="modal guide-modal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="guide-ic" id="guideIc"></div>
+    <h4 id="guideTitle"></h4>
+    <div id="guideBody"></div>
+    <div class="guide-dots" id="guideDots"></div>
+    <button class="btn-main guide-alt" id="guideTg"></button>
+    <button class="btn-main" id="guideNext"></button>
+    <div class="close" id="guideSkip"></div>
+  </div>
 </div>
 <div id="loginGate" class="overlay show" style="z-index:50; background:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 2px,rgba(0,0,0,0) 2px 17px), var(--bg);">
   <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#F4C21F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 7 12 11 4 7z"/><path d="M4 7v9l8 4V11z"/><path d="M20 7v9l-8 4V11z"/></svg></div>
@@ -480,6 +510,11 @@ window.__errQueue = [];
     <div style="font-size:11px; color:var(--dim); margin-top:8px;" id="refProgAds"></div>
     <div class="ref-bar"><i id="refBarAds" style="width:0%"></i></div>
   </div>
+  <h3 id="helpTitle">مساعدة ومجتمع</h3>
+  <div class="card">
+    <div class="stat-row" id="btnGuide" style="cursor:pointer;"><span>📘 الإرشادات: كيف تلعب</span><span>‹</span></div>
+    <div class="stat-row" id="btnTelegram" style="cursor:pointer; border-bottom:none;"><span>✈️ قناتنا على تلغرام</span><span>‹</span></div>
+  </div>
   <h3>الإعدادات</h3>
   <div class="card">
     <div class="stat-row" id="btnNotifSettings" style="cursor:pointer;"><span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:5px;"><path d="M12 3a5 5 0 0 0-5 5v3.2L5 15h14l-2-3.8V8a5 5 0 0 0-5-5z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/></svg>الإشعارات</span><span style="color:var(--dim);">›</span></div>
@@ -638,11 +673,12 @@ async function checkForceUpdate(){
   }catch(e){ console.error('force update check failed', e); }
   return false;
 }
-document.getElementById('btnForceUpdate').onclick = () => {
+function openLink(url){
   const nativeBrowser = window.Capacitor?.Plugins?.Browser;
-  if(nativeBrowser){ nativeBrowser.open({ url: APP_DOWNLOAD_URL }); }
-  else { window.open(APP_DOWNLOAD_URL, "_blank"); }
-};
+  try{ if(nativeBrowser){ nativeBrowser.open({ url }); } else { window.open(url, "_blank"); } }catch(e){}
+}
+const TELEGRAM_URL = "https://t.me/YardovaGame";
+document.getElementById('btnForceUpdate').onclick = () => openLink(APP_DOWNLOAD_URL);
 checkForceUpdate();
 
 // ===== كشف VPN نشط (حماية الحسابات من الحظر بشبكات العروض) =====
@@ -1304,6 +1340,7 @@ async function loadProgress(uid){
     dataLoaded = true;
     renderAll();
     bootFinish();
+    setTimeout(maybeShowGuide, 900);
     ensureNotifPermission().then(() => { scheduleNotificationsSoon(); registerPush(); });
   }catch(e){
     console.error('load failed', e);
@@ -1316,6 +1353,75 @@ async function loadProgress(uid){
 const OFFERWALL_WORKER_BASE = "https://postback.ly-ad.de"; // دومين دائم جديد (بديل عن lyad.lol المعطّل بسبب Namecheap)
 
 // ===== الاتصال بسيرفر اللعبة: كل عملية بتغيّر النقاط أو المحفظة بتمر من هون =====
+// ===== إشعار ضعف الاتصال (بنص الشاشة لما اللعبة تفقد التزامن مع السيرفر) =====
+const net = { fails: 0, bad: false, lastOk: Date.now(), checking: false };
+function netShow(on){
+  const el = document.getElementById('netNotice'); if(!el) return;
+  if(on){ document.getElementById('netTitle').textContent = tr('الاتصال ضعيف'); document.getElementById('netText').textContent = tr('ما عم نقدر نتزامن مع السيرفر. رصيدك محفوظ، وبنحدّث أرقامك أول ما يرجع الاتصال.'); }
+  el.classList.toggle('show', !!on);
+}
+function netOk(){
+  net.lastOk = Date.now();
+  if(net.bad){ net.bad = false; net.fails = 0; netShow(false); if(currentUser && dataLoaded) gameApi('state').catch(() => {}); }   // رجع الاتصال: نحدّث الأرقام من السيرفر
+  else net.fails = 0;
+}
+function netFail(){
+  net.fails++;
+  if(!boot.done) return;                                      // أثناء التحميل الأول شاشة البداية بتتولى الموضوع
+  if(!net.bad && (net.fails >= 2 || navigator.onLine === false)){ net.bad = true; netShow(true); }
+}
+async function netPing(){
+  if(net.checking || document.hidden || !currentUser || !boot.done) return;
+  if(Date.now() - net.lastOk < 15000) return;                 // أي طلب ناجح مؤخراً بيكفي، منوفّر على السيرفر
+  net.checking = true;
+  try{ const r = await withTimeout(fetch(`${OFFERWALL_WORKER_BASE}/today`, { cache: 'no-store' }), 6000, 'ping'); if(!r.ok) throw new Error('ping'); netOk(); }
+  catch(e){ netFail(); }
+  finally{ net.checking = false; }
+}
+setInterval(netPing, 20000);
+window.addEventListener('offline', () => { net.fails = Math.max(net.fails, 2); netFail(); });
+window.addEventListener('online', () => { net.lastOk = 0; netPing(); });
+
+// ===== الإرشادات (أول مرة للاعب الجديد، وبأي وقت من زر بصفحة الملف) =====
+const GUIDE_KEY = 'guide_seen_v1';
+let guideIdx = 0;
+function guideSteps(){
+  const min = PRICING.minWithdrawUsd > 0 ? PRICING.minWithdrawUsd : 20;
+  const fi = firstWithdrawInfo();
+  const wd = [tr('الرصيد محسوب بالدولار. الحد الأدنى للسحب ' + min + '$، وسحب واحد كل 24 ساعة، وتُراجَع الطلبات يدوياً.')];
+  if(fi.enabled) wd.push(tr('أول سحب ممكن يكون ' + fi.fm + '$ بعد ' + fi.needDays + ' أيام نشاط و' + fi.needAds + ' إعلان (مرة وحدة لكل لاعب).'));
+  wd.push(tr('الرصيد بيجي من الإعلانات والعروض، وما في أي ضمان للربح.'));
+  return [
+    { ic: '🏭', t: tr('أهلاً بك في Yardova'), p: [tr('مستودعك بيشتغل حتى لو سكّرت اللعبة. هاي جولة سريعة بـ5 خطوات.')] },
+    { ic: '⭐', t: tr('اكسب نقاط'), p: [tr('استلم المكافأة اليومية، وشاهد الإعلانات، وأنجز المهام، وجرّب عروض الشركاء من الزر داخل اللعبة.')] },
+    { ic: '👷', t: tr('استأجر عمّال'), p: [tr('بالنقاط بتستأجر عامل يومي أو أسبوعي أو شهري. العامل بينتج رصيداً بالدولار حتى لو التطبيق مسكّر، وبتفتح رفوف جديدة بنقاط أكتر.')] },
+    { ic: '💵', t: tr('اسحب رصيدك'), p: wd },
+    { ic: '🤝', t: tr('ادعُ أصحابك وتابعنا'), p: [tr('ادعُ أصحابك بالكود تبعك وخدوا نقاط هدية، وتابع التحديثات والأخبار على قناتنا بتلغرام.')], tg: true },
+  ];
+}
+function renderGuide(){
+  const steps = guideSteps(), s = steps[guideIdx], last = guideIdx === steps.length - 1;
+  document.getElementById('guideIc').textContent = s.ic;
+  document.getElementById('guideTitle').textContent = s.t;
+  document.getElementById('guideBody').innerHTML = s.p.map(x => '<p>' + x.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>').join('');
+  document.getElementById('guideDots').innerHTML = steps.map((_, i) => '<i class="' + (i === guideIdx ? 'on' : '') + '"></i>').join('');
+  document.getElementById('guideNext').textContent = last ? tr('ابدأ اللعب') : tr('التالي');
+  const skip = document.getElementById('guideSkip'); skip.textContent = tr('تخطّي'); skip.style.display = last ? 'none' : 'block';
+  const tg = document.getElementById('guideTg'); tg.textContent = '✈️ ' + tr('قناتنا على تلغرام'); tg.style.display = s.tg ? 'block' : 'none';
+}
+function openGuide(){ guideIdx = 0; renderGuide(); document.getElementById('guideOverlay').classList.add('show'); }
+function closeGuide(){ document.getElementById('guideOverlay').classList.remove('show'); try{ localStorage.setItem(GUIDE_KEY, '1'); }catch(e){} }
+function maybeShowGuide(){
+  let seen = false; try{ seen = localStorage.getItem(GUIDE_KEY) === '1'; }catch(e){}
+  const isNew = srvActiveDays <= 1 && workersRented === 0 && adsWatched === 0 && totalPointsEarned <= 300;
+  if(!seen && isNew) openGuide();
+}
+document.getElementById('guideNext').onclick = () => { if(guideIdx >= guideSteps().length - 1) closeGuide(); else { guideIdx++; renderGuide(); } };
+document.getElementById('guideSkip').onclick = closeGuide;
+document.getElementById('guideTg').onclick = () => openLink(TELEGRAM_URL);
+document.getElementById('btnGuide').onclick = openGuide;
+document.getElementById('btnTelegram').onclick = () => openLink(TELEGRAM_URL);
+
 async function gameApi(action, body){
   if(!currentUser) throw new Error('لازم تسجّل دخول أول.');
   const idToken = await currentUser.getIdToken();
@@ -1327,7 +1433,9 @@ async function gameApi(action, body){
       body: JSON.stringify(body || {})
     }), 15000, 'gameApi');
     data = await res.json();
+    netOk();   // السيرفر رد (حتى لو بخطأ منطقي): الاتصال سليم
   }catch(e){
+    netFail();
     throw new Error('تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.');
   }
   if(res.status >= 500 && window.__pushClientError) window.__pushClientError('api', `${action}: HTTP ${res.status} ${data.error || ''}`.trim(), '');
