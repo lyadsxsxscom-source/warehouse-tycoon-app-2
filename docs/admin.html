@@ -969,7 +969,7 @@ async function msgCount(){
   if(target === 'one' && !MSG_UID){ msgSetStatus('اختر لاعب أول.'); return null; }
   const j = await adminMsg({ action: 'preview', target, uid: MSG_UID });
   document.getElementById('msgPreview').textContent = target === 'one'
-    ? (j.recipients ? 'جهاز اللاعب مسجّل، رح توصله الرسالة.' : 'هالجهاز ما سجّل إشعارات (ما فتح التطبيق بعد التحديث أو طفّاها).')
+    ? (j.recipients ? 'جهاز اللاعب مسجّل، رح توصله الرسالة كإشعار وبالبريد.' : 'ما عنده إشعارات: رح توصله بالبريد داخل اللعبة بس (بعد تحديث 2.11).')
     : `رح توصل لـ ${j.recipients} جهاز.`;
   return j.recipients;
 }
@@ -982,7 +982,7 @@ async function msgSend(){
     if(target === 'one'){
       msgSetStatus('عم نرسل...');
       const j = await adminMsg({ action: 'send', target: 'one', uid: MSG_UID, email: MSG_EMAIL, ...f });
-      msgSetStatus(j.sent ? 'انرسلت ✓' : 'ما وصلت (فشل الإرسال لجهاز اللاعب).');
+      msgSetStatus(j.sent ? 'انرسلت ✓ (إشعار + بالبريد داخل اللعبة)' : (j.inbox ? 'انحفظت بالبريد داخل اللعبة. ما وصل إشعار (ما عنده جهاز مسجّل أو طفّى الإشعارات).' : 'ما وصلت.'));
     } else {
       const n = await msgCount();
       if(n === null) return;

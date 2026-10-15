@@ -349,6 +349,7 @@ function normalizePlayer(raw, now, today, cfg) {
   if (!p.firstSeenDate) p.firstSeenDate = "legacy"; // لاعب قديم قبل نظام الإحصائيات
   p.firstSeenAt = Number(p.firstSeenAt) || 0;
   p.activeDays = Number(p.activeDays) || 0;
+  p.inboxReadAt = Number(p.inboxReadAt) || now;   // رسائل البريد قبل هالوقت بتعتبر مقروءة (اللاعب الجديد ما بيشوف قديم كأنه جديد)
   p.dailyStreak = Number(p.dailyStreak) || 0;
   p.lastDailyClaim = p.lastDailyClaim || "";
   p.referredBy = p.referredBy || "";
@@ -735,11 +736,14 @@ async function gameAction(action, body, user, env) {
       });
     }
 
+    case "inboxRead":
+      return mutatePlayer(env, uid, (p, now) => { p.inboxReadAt = now; });
+
     case "registerPush": {
       const token = String(body.token || "");
       if (!token || token.length > 4096) throw new ApiError("bad_token", "رمز إشعارات غير صالح.");
       const lang = ["ar", "tr", "en"].includes(body.lang) ? body.lang : "ar";
-      const prefs = { offerwall: body.prefs?.offerwall !== false, orders: body.prefs?.orders !== false };
+      const prefs = { offerwall: body.prefs?.offerwall !== false, orders: body.prefs?.orders !== false, news: body.prefs?.news !== false };
       await fsCommit(env, [{
         update: { name: docName(env, "pushTokens/" + uid), fields: objToFields({ token, lang, prefs, updatedAt: Date.now() }) },
       }]);
@@ -792,7 +796,33 @@ async function gameAction(action, body, user, env) {
   }
 }
 
+// ===== بريد اللاعب: رسائل الأدمن (للكل بمستند وحيد، والفردية بمستند لكل لاعب) =====
+const INBOX_MAX = 20;
+async function appendInbox(env, docPath, item) {
+  const cur = await fsGetDoc(env, docPath);
+  const items = cur.exists && Array.isArray(cur.data.items) ? cur.data.items : [];
+  await fsCommit(env, [{ update: { name: docName(env, docPath), fields: objToFields({ items: [item, ...items].slice(0, INBOX_MAX), updatedAt: Date.now() }) } }]);
+}
+async function handleInbox(request, env) {
+  try {
+    const user = await requireUser(request);
+    let body = {}; try { body = await request.json(); } catch (e) {}
+    const lang = ["ar", "tr", "en"].includes(body.lang) ? body.lang : "ar";
+    const [me, bc, mine] = await Promise.all([fsGetDoc(env, "players/" + user.sub), fsGetDoc(env, "config/broadcasts"), fsGetDoc(env, "inbox/" + user.sub)]);
+    const readAt = me.exists ? (Number(me.data.inboxReadAt) || 0) : Date.now();
+    const raw = [...(bc.exists && Array.isArray(bc.data.items) ? bc.data.items : []), ...(mine.exists && Array.isArray(mine.data.items) ? mine.data.items : [])];
+    const messages = raw.map(m => ({ id: String(m.id || ""), title: String(m["title_" + lang] || m.title || ""), body: String(m["body_" + lang] || m.body || ""), createdAt: Number(m.createdAt) || 0 }))
+      .filter(m => m.title || m.body).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
+    return jsonResponse({ ok: true, inbox: { messages, unread: messages.filter(m => m.createdAt > readAt).length, readAt } }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "inbox error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error", message: "صار خطأ بالسيرفر، جرّب بعد شوي." }, 500);
+  }
+}
+
 async function handleGame(request, env, action) {
+  if (action === "inbox") return handleInbox(request, env);
   try {
     const user = await requireUser(request);
     let body = {};
@@ -1325,6 +1355,7 @@ async function handleAdminMessage(request, env) {
       for (const k of ["tr", "en"]) { msg["title_" + k] = msgText(b["title_" + k], 60); msg["body_" + k] = msgText(b["body_" + k], 240); }
       if (!msg.title || !msg.body) return jsonResponse({ ok: false, error: "empty", message: "العنوان والنص مطلوبين." }, 400);
       const pick = (d) => { const lang = ["ar", "tr", "en"].includes(d.lang) ? d.lang : "ar"; return [msg["title_" + lang] || msg.title, msg["body_" + lang] || msg.body]; };
+      const mkItem = (id) => ({ id, title: msg.title, body: msg.body, title_tr: msg.title_tr, body_tr: msg.body_tr, title_en: msg.title_en, body_en: msg.body_en, createdAt: Date.now() });
       const sendGroup = async (rows, id) => {
         let sent = 0, failed = 0;
         for (let i = 0; i < rows.length; i += 10) {
@@ -1341,17 +1372,19 @@ async function handleAdminMessage(request, env) {
         const uid = msgText(b.uid, 128);
         if (!uid) return jsonResponse({ ok: false, error: "no_uid", message: "اختر لاعب." }, 400);
         const d = await fsGetDoc(env, "pushTokens/" + uid);
-        if (!d.exists || !wantsNews(d.data)) return jsonResponse({ ok: false, error: "no_token", message: "هالجهاز ما سجّل إشعارات (اللاعب ما فتح التطبيق بعد التحديث، أو طفّى الإشعارات)." }, 409);
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-        const { sent, failed } = await sendGroup([{ id: uid, data: d.data }], id);
+        await appendInbox(env, "inbox/" + uid, mkItem(id));               // بالبريد داخل اللعبة دايماً (من 2.11)
+        let sent = 0, failed = 0;
+        if (d.exists && wantsNews(d.data)) ({ sent, failed } = await sendGroup([{ id: uid, data: d.data }], id));   // وإشعار إذا عنده جهاز مسجّل
         await fsCommit(env, [{ update: { name: docName(env, "adminMessages/" + id), fields: objToFields({ id, title: msg.title, body: msg.body, target: "one", uid, toEmail: msgText(b.email, 120), createdAt: Date.now(), status: "done", sent, failed, recipients: 1, finishedAt: Date.now() }) } }]);
-        return jsonResponse({ ok: true, id, sent, failed, done: true }, 200);
+        return jsonResponse({ ok: true, id, sent, failed, inbox: true, done: true }, 200);
       }
       if (b.target !== "all") return jsonResponse({ ok: false, error: "bad_target" }, 400);
       const offset = Math.max(0, parseInt(b.offset, 10) || 0);
       let id = b.id;
       if (offset === 0) {
         id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        await appendInbox(env, "config/broadcasts", mkItem(id));         // رسالة لكل اللاعبين: مرة وحدة بأول دفعة
         await fsCommit(env, [{ update: { name: docName(env, "adminMessages/" + id), fields: objToFields({ id, title: msg.title, body: msg.body, target: "all", createdAt: Date.now(), status: "sending", sent: 0, failed: 0, recipients: Math.max(0, Number(b.expected) || 0) }) } }]);
       } else if (!idOk(id)) return jsonResponse({ ok: false, error: "bad_id" }, 400);
       const rows = await fsRunQuery(env, "pushTokens", null, MSG_BATCH, offset);
@@ -1413,7 +1446,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "phase1-1" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "inbox-1" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);

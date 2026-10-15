@@ -88,10 +88,11 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   fcm.length = 0;
   await call("/admin/message", "POST", "admin", { action: "send", target: "one", uid: "a4", title: "Hi", body: "Only Arabic given" });
   ok(fcm.length === 1 && fcm[0].m.notification.title === "Hi", "a missing translation falls back to the main text");
+  fcm.length = 0;
   r = await call("/admin/message", "POST", "admin", { action: "send", target: "one", uid: "a3", title: "x", body: "y" });
-  j = await r.json(); ok(r.status === 409 && j.error === "no_token", "sending to a device that opted out is refused with a clear reason");
+  j = await r.json(); ok(r.status === 200 && j.ok && j.sent === 0 && j.inbox === true && fcm.length === 0, "a player who turned announcements off gets no push, but the message is saved in his in-app inbox");
   r = await call("/admin/message", "POST", "admin", { action: "send", target: "one", uid: "ghost", title: "x", body: "y" });
-  ok(r.status === 409, "sending to a player without a device is refused");
+  j = await r.json(); ok(r.status === 200 && j.inbox === true && j.sent === 0 && c.fieldsToObj(store.get("inbox/ghost").fields).items.length === 1, "a player without any registered device still gets the message in his inbox");
   fcm.length = 0;
   const longTitle = "ع".repeat(100); r = await call("/admin/message", "POST", "admin", { action: "send", target: "one", uid: "a1", title: longTitle, body: "line1\n\n   line2" });
   ok(fcm[0].m.notification.title.length === 60 && fcm[0].m.notification.body === "line1 line2", "title is cut to 60 characters and whitespace is normalised");
