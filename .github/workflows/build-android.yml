@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, app-2.11 ]   # فرع التطوير بينبني كنسخة تجريبية (beta) وما بيمسّ رابط التحميل الرسمي
     paths-ignore: [ 'worker/**', 'docs/**', 'site/**', 'tools/**' ]  # تعديلات السيرفر وصفحة الأدمن ما بتحتاج بناء APK جديد
   workflow_dispatch: {}
 
@@ -133,7 +133,7 @@ jobs:
           path: yardova.apk
 
       - name: Publish the signed APK (stable download link)
-        if: ${{ env.HAS_RELEASE_KEY == 'true' }}
+        if: ${{ env.HAS_RELEASE_KEY == 'true' && github.ref == 'refs/heads/main' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
@@ -145,5 +145,23 @@ jobs:
           prerelease: false
           make_latest: true
           files: yardova.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare the test build (beta)
+        if: ${{ env.HAS_RELEASE_KEY == 'true' && github.ref != 'refs/heads/main' }}
+        run: cp yardova.apk yardova-beta.apk
+
+      - name: Publish the test build as a pre-release (does NOT touch the official download)
+        if: ${{ env.HAS_RELEASE_KEY == 'true' && github.ref != 'refs/heads/main' }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: beta
+          name: "Yardova: نسخة تجريبية (مو الرابط الرسمي)"
+          body: |
+            نسخة تجريبية موقّعة بنفس المفتاح، بتتثبّت فوق التطبيق الحالي للتجربة. الرابط الرسمي للاعبين هو الإصدار "latest".
+          prerelease: true
+          make_latest: false
+          files: yardova-beta.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
