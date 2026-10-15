@@ -1308,7 +1308,7 @@ async function handleAdminMessage(request, env) {
         const d = await fsGetDoc(env, "pushTokens/" + msgText(b.uid, 128));
         return jsonResponse({ ok: true, recipients: d.exists && wantsNews(d.data) ? 1 : 0 }, 200);
       }
-      const rows = await fsRunQuery(env, "pushTokens", "__name__", 500);
+      const rows = await fsRunQuery(env, "pushTokens", null, 500);
       return jsonResponse({ ok: true, recipients: rows.filter(r => wantsNews(r.data)).length }, 200);
     }
     if (action === "send" || action === "finish") {
@@ -1354,14 +1354,14 @@ async function handleAdminMessage(request, env) {
         id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         await fsCommit(env, [{ update: { name: docName(env, "adminMessages/" + id), fields: objToFields({ id, title: msg.title, body: msg.body, target: "all", createdAt: Date.now(), status: "sending", sent: 0, failed: 0, recipients: Math.max(0, Number(b.expected) || 0) }) } }]);
       } else if (!idOk(id)) return jsonResponse({ ok: false, error: "bad_id" }, 400);
-      const rows = await fsRunQuery(env, "pushTokens", "__name__", MSG_BATCH, offset);
+      const rows = await fsRunQuery(env, "pushTokens", null, MSG_BATCH, offset);
       const { sent, failed } = await sendGroup(rows, id);
       return jsonResponse({ ok: true, id, processed: rows.length, sent, failed, done: rows.length < MSG_BATCH }, 200);
     }
     return jsonResponse({ ok: false, error: "bad_action" }, 400);
   } catch (e) {
     console.error({ message: "admin message failed", action, error: String(e.message || e) });
-    return jsonResponse({ ok: false, error: "failed" }, 500);
+    return jsonResponse({ ok: false, error: "failed", message: "خطأ بالسيرفر: " + String(e.message || e).replace(/\s+/g, " ").slice(0, 300) }, 500);
   }
 }
 
@@ -1393,7 +1393,7 @@ async function handleAdminPlayers(request, env) {
     return jsonResponse({ ok: true, players: out, now: Date.now() }, 200);
   } catch (e) {
     console.error({ message: "admin players failed", error: String(e.message || e) });
-    return jsonResponse({ ok: false, error: "failed" }, 500);
+    return jsonResponse({ ok: false, error: "failed", message: "خطأ بالسيرفر: " + String(e.message || e).replace(/\s+/g, " ").slice(0, 300) }, 500);
   }
 }
 

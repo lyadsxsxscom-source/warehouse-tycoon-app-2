@@ -32,6 +32,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
     let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) }));
     const key = r => field === "__name__" ? r.id : (Number(r.data[field]) || 0);
     if (field) rows.sort((a, b) => (key(a) < key(b) ? 1 : key(a) > key(b) ? -1 : 0));
+    else rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));          // بدون ترتيب: Firestore بيرجّع حسب اسم المستند تصاعدي
     return rows.slice(offset || 0, (offset || 0) + limit);
   };
   let CFG = { game: { workers: {} }, pricing: { minWithdrawUsd: 5, firstWithdrawUsd: 1, firstWithdrawDays: 7, firstWithdrawAds: 35, btcUsd: 84000, usdToSyp: 138, secretNote: "x" } };
@@ -118,5 +119,13 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(j.ok && j.messages.length >= 3 && j.messages[0].createdAt >= j.messages[j.messages.length - 1].createdAt && j.messages.some(m => m.id === id && m.sent === 62), "the log list is returned newest first");
   r = await call("/admin/message", "POST", "admin", { action: "send", target: "all", title: "x", body: "y", offset: 30, id: "../bad" });
   ok(r.status === 400, "a continuation batch with a malformed id is refused");
+  const qshapes = []; const realQuery = c.fsRunQuery; c.fsRunQuery = async (e, coll, field, limit, offset) => { qshapes.push([coll, field, limit, offset || 0]); return realQuery(e, coll, field, limit, offset); };
+  await call("/admin/message", "POST", "admin", { action: "preview", target: "all" }); await call("/admin/message", "POST", "admin", { action: "send", target: "all", title: "x", body: "y", offset: 0, expected: 1 });
+  ok(qshapes.filter(q => q[0] === "pushTokens").every(q => q[1] === null), "device lists are read in the default document order (no special ordering field)");
+  c.fsRunQuery = async () => { throw new Error("fsQuery 400: Invalid argument"); };
+  r = await call("/admin/message", "POST", "admin", { action: "preview", target: "all" }); j = await r.json();
+  ok(r.status === 500 && /fsQuery 400/.test(j.message), "a server-side failure now tells the admin why instead of a bare 'failed': " + j.message);
+  r = await call("/admin/players", "POST", "admin", {}); j = await r.json();
+  ok(r.status === 500 && /خطأ بالسيرفر/.test(j.message), "the players list also reports the reason");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });
