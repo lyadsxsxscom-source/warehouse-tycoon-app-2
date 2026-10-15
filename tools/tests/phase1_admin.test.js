@@ -27,7 +27,7 @@ const dom = new JSDOM(html, { url: "https://example.test/admin", runScripts: "da
         { id: "m1", title: "<img src=x onerror=alert(1)>", body: "x", target: "all", toEmail: "", createdAt: Date.now() - 3600000, status: "done", sent: 8, failed: 1, recipients: 9 },
         { id: "m2", title: "تحديث", body: "y", target: "one", toEmail: "sara@gmail.com", createdAt: Date.now() - 7200000, status: "done", sent: 1, failed: 0, recipients: 1 } ] });
       if (body.action === "preview") return R({ ok: true, recipients: body.target === "one" ? (body.uid === "u-ahmad" ? 0 : 1) : 65 });
-      if (body.action === "send" && body.target === "one") return R(body.uid === "u-ahmad" ? { ok: false, error: "no_token", message: "هالجهاز ما سجّل إشعارات" } : { ok: true, id: "one1abc", sent: 1, failed: 0, done: true }, body.uid === "u-ahmad" ? 409 : 200);
+      if (body.action === "send" && body.target === "one") return R(body.uid === "u-ahmad" ? { ok: true, id: "one2abc", sent: 0, failed: 0, inbox: true, done: true } : { ok: true, id: "one1abc", sent: 1, failed: 0, inbox: true, done: true });
       if (body.action === "send" && body.target === "all") { const n = batchPlan[sendIdx++]; return R({ ok: true, id: "all1abcd", processed: n, sent: n - (sendIdx === 1 ? 1 : 0), failed: sendIdx === 1 ? 1 : 0, done: n < 30 }); }
       if (body.action === "finish") return R({ ok: true });
     }
@@ -62,7 +62,7 @@ const msgCalls = () => calls.filter(c => String(c.url).endsWith("/admin/message"
   found[0].click();
   ok(/المستلم: sara@gmail\.com/.test(d.getElementById("msgChosen").textContent), "the chosen player is shown");
   d.getElementById("btnMsgPreview").click(); await sleep(60);
-  ok(/جهاز اللاعب مسجّل/.test(d.getElementById("msgPreview").textContent), "preview says the player's device is registered");
+  ok(/رح توصله الرسالة كإشعار وبالبريد/.test(d.getElementById("msgPreview").textContent), "preview says the player gets a notification and the in-app mail");
   d.getElementById("msgTitleTr").value = "Merhaba"; d.getElementById("msgBodyTr").value = "Metin";
   d.getElementById("btnMsgSend").click(); await sleep(120);
   const sendOne = msgCalls().find(c => c.body.action === "send" && c.body.target === "one");
@@ -71,7 +71,7 @@ const msgCalls = () => calls.filter(c => String(c.url).endsWith("/admin/message"
   // a player without a registered device
   const s2 = d.getElementById("msgSearch"); s2.value = "ahmad"; s2.dispatchEvent(new w.Event("input")); d.querySelector("#msgMatches button").click();
   d.getElementById("btnMsgSend").click(); await sleep(120);
-  ok(/ما سجّل إشعارات/.test(d.getElementById("msgStatus").textContent), "the server's reason is shown when the player has no registered device");
+  ok(/انحفظت بالبريد/.test(d.getElementById("msgStatus").textContent), "a player without a device still gets the message in the in-app mail, and the admin is told no push went out");
 
   // everyone: cancelled
   tgt.value = "all"; tgt.dispatchEvent(new w.Event("change")); confirmAnswer = false;

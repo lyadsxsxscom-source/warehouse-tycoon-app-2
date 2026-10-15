@@ -59,11 +59,11 @@ const body = h => [...h.d.querySelectorAll("#guideBody p")].map(p => p.textConte
   { const h = open({ seen: true }); await h.login();
     h.ev("PRICING = { usdToSyp: 0, btcUsd: 1, ethUsd: 1, minWithdrawUsd: 5, firstWithdrawUsd: 1, firstWithdrawDays: 7, firstWithdrawAds: 35 }; srvLastWithdrawAt = 0; openGuide(); guideIdx = 3; renderGuide()");
     let p = body(h);
-    ok(p.length === 3 && /5\$/.test(p[0]) && /1\$ بعد 7 أيام نشاط و35 إعلان/.test(p[1]) && /ضمان للربح/.test(p[2]), "withdraw step: minimum 5$, first withdrawal 1$ after 7 days and 35 ads, and the honesty line: " + p.join(" / "));
+    ok(p.length === 2 && /5\$/.test(p[0]) && /1\$ بعد 7 أيام نشاط و35 إعلان/.test(p[1]) && !/ضمان/.test(p.join("")), "withdraw step: minimum 5$ and first withdrawal 1$ after 7 days and 35 ads (no profit-guarantee line; it lives in the privacy policy): " + p.join(" / "));
     h.ev("PRICING.firstWithdrawUsd = 0; renderGuide()"); p = body(h);
-    ok(p.length === 2 && !/أول سحب/.test(p.join("")), "the first-withdrawal sentence disappears when the experiment is off");
+    ok(p.length === 1 && !/أول سحب/.test(p.join("")), "the first-withdrawal sentence disappears when the experiment is off");
     h.ev("PRICING.firstWithdrawUsd = 1; srvLastWithdrawAt = Date.now(); renderGuide()"); p = body(h);
-    ok(p.length === 2, "and for a player who already withdrew once");
+    ok(p.length === 1, "and for a player who already withdrew once");
   }
   /* ---- automatic guide for brand-new players only ---- */
   { const h = open(); await h.login(); await sleep(1100);
@@ -79,11 +79,11 @@ const body = h => [...h.d.querySelectorAll("#guideBody p")].map(p => p.textConte
     h.ev("PRICING = { usdToSyp: 0, btcUsd: 1, ethUsd: 1, minWithdrawUsd: 5, firstWithdrawUsd: 1, firstWithdrawDays: 7, firstWithdrawAds: 35 }; openGuide()");
     ok(h.d.getElementById("guideTitle").textContent === "Yardova'ya hoş geldin" && h.d.getElementById("guideNext").textContent === "İleri", "Turkish: first step");
     h.ev("guideIdx = 3; renderGuide()"); const p = body(h);
-    ok(/Asgari çekim 5\$/.test(p[0]) && /İlk çekim 1\$ olabilir: 7 aktif gün ve 35 reklamdan sonra/.test(p[1]) && /kâr garantisi yoktur/.test(p[2]), "Turkish: withdraw step with the live numbers: " + p.join(" / "));
+    ok(/Asgari çekim 5\$/.test(p[0]) && /İlk çekim 1\$ olabilir: 7 aktif gün ve 35 reklamdan sonra/.test(p[1]), "Turkish: withdraw step with the live numbers: " + p.join(" / "));
   }
   { const h = open({ lang: "en", seen: true }); await h.login();
     h.ev("PRICING = { usdToSyp: 0, btcUsd: 1, ethUsd: 1, minWithdrawUsd: 5, firstWithdrawUsd: 1, firstWithdrawDays: 7, firstWithdrawAds: 35 }; openGuide(); guideIdx = 3; renderGuide()"); const p = body(h);
-    ok(/minimum withdrawal is \$5/.test(p[0]) && /first withdrawal can be \$1, after 7 active days and 35 ads/.test(p[1]) && /no guarantee of profit/.test(p[2]), "English: withdraw step with the live numbers: " + p.join(" / "));
+    ok(/minimum withdrawal is \$5/.test(p[0]) && /first withdrawal can be \$1, after 7 active days and 35 ads/.test(p[1]), "English: withdraw step with the live numbers: " + p.join(" / "));
     h.ev("guideIdx = 4; renderGuide()"); ok(h.d.getElementById("guideTg").textContent === "✈️ Our Telegram channel" && h.d.getElementById("guideNext").textContent === "Start playing", "English: last step buttons");
   }
 
