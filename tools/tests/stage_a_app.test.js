@@ -33,6 +33,7 @@ const pct = h => parseInt(h.d.getElementById("bootPct").textContent, 10);
   ok(/const APP_VERSION = "2\.11"/.test(RAW), "app version is 2.11");
   const css = RAW.slice(RAW.indexOf("<style"), RAW.indexOf("</style>"));
   ok(/--bg:#0F3B33/.test(css) && /--amber:#F4C21F/.test(css) && !/#E3A83B|#E4572E|#14110D|rgba\(227,\s*168,\s*59/.test(css), "stylesheet uses the Yardova palette and no old orange/brown colours are left");
+  ok(!/#E4572E|#E3A83B|228,\s*87,\s*46/.test(RAW), "no old orange/brown colour is left anywhere in the page (including the update-required screens)");
   ok(/#bootScreen/.test(css) && /id="bootScreen"/.test(RAW) && /id="bootBar"/.test(RAW), "loading screen markup and style exist");
 
   /* ---- 1) normal start: bar creeps, reaches 100% only when the server answers ---- */
