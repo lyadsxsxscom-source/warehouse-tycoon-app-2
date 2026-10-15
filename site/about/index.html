@@ -176,7 +176,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p class="note">لا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر، وقد يتوقف أي شريك فجأة.</p>
 <h2>السحب</h2>
 <ul>
-<li>الحد الأدنى 20$، وسحب واحد كل 24 ساعة.</li>
+<li>الحد الأدنى <span data-cfg="min">5</span>$، وسحب واحد كل 24 ساعة.</li>
+<li data-cfg-first>أول سحب بـ<span data-cfg="f">1</span>$ بعد <span data-cfg="d">7</span> أيام نشاط و<span data-cfg="a">35</span> إعلان (مرة وحدة لكل لاعب).</li>
 <li>كل طلب يُراجَع يدوياً قبل التحويل، عادةً خلال 24 ساعة.</li>
 <li>طرق السحب: <bdi dir="ltr">USDT (TRC20, BEP20)</bdi>، <bdi dir="ltr">BTC</bdi>، <bdi dir="ltr">ETH</bdi>، وشام كاش.</li>
 <li>إذا رُفض طلبك، يرجع المبلغ إلى رصيدك في التطبيق.</li>
@@ -210,6 +211,20 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
   var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
   fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'about',l:'ar',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+</script>
+<script>
+(function(){try{
+  if(!document.querySelector('[data-cfg],[data-cfg-first]')) return;
+  fetch('https://postback.ly-ad.de/public-config',{credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c||!c.ok) return;
+    var m={min:c.minWithdrawUsd,f:c.firstWithdrawUsd,d:c.firstWithdrawDays,a:c.firstWithdrawAds};
+    var els=document.querySelectorAll('[data-cfg]');
+    for(var i=0;i<els.length;i++){var v=m[els[i].getAttribute('data-cfg')]; if(v!=null&&v!==''&&isFinite(v)) els[i].textContent=String(+v);}
+    var on=c.firstWithdrawUsd>0&&c.firstWithdrawUsd<c.minWithdrawUsd;
+    var fs=document.querySelectorAll('[data-cfg-first]');
+    for(var j=0;j<fs.length;j++){fs[j].hidden=!on;}
+  }).catch(function(){});
 }catch(e){}})();
 </script>
 </body>

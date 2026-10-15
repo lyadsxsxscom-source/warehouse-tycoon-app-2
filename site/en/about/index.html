@@ -176,7 +176,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p class="note">Earnings are not guaranteed. The availability of offers varies by country and over time, and a partner can stop suddenly.</p>
 <h2>Withdrawals</h2>
 <ul>
-<li>Minimum $20, and one withdrawal per 24 hours.</li>
+<li>Minimum $<span data-cfg="min">5</span>, and one withdrawal per 24 hours.</li>
+<li data-cfg-first>First withdrawal from $<span data-cfg="f">1</span>, after <span data-cfg="d">7</span> active days and <span data-cfg="a">35</span> ads watched (once per player).</li>
 <li>Every request is reviewed manually before transfer, usually within 24 hours.</li>
 <li>Methods: USDT (TRC20 and BEP20), BTC, ETH and Sham Cash.</li>
 <li>If a request is rejected, the amount returns to your balance in the app.</li>
@@ -210,6 +211,20 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
   var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
   fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'about',l:'en',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+</script>
+<script>
+(function(){try{
+  if(!document.querySelector('[data-cfg],[data-cfg-first]')) return;
+  fetch('https://postback.ly-ad.de/public-config',{credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c||!c.ok) return;
+    var m={min:c.minWithdrawUsd,f:c.firstWithdrawUsd,d:c.firstWithdrawDays,a:c.firstWithdrawAds};
+    var els=document.querySelectorAll('[data-cfg]');
+    for(var i=0;i<els.length;i++){var v=m[els[i].getAttribute('data-cfg')]; if(v!=null&&v!==''&&isFinite(v)) els[i].textContent=String(+v);}
+    var on=c.firstWithdrawUsd>0&&c.firstWithdrawUsd<c.minWithdrawUsd;
+    var fs=document.querySelectorAll('[data-cfg-first]');
+    for(var j=0;j<fs.length;j++){fs[j].hidden=!on;}
+  }).catch(function(){});
 }catch(e){}})();
 </script>
 </body>

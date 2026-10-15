@@ -16,6 +16,8 @@ PRIVACY = SHOP + "privacy.html"
 TERMS = SHOP + "terms.html"
 MAIL = "admin@ly-ad.de"
 UPDATED = "2026-10-07"
+CFG_URL = "https://postback.ly-ad.de/public-config"
+CFG_FALLBACK = {"min": 5, "f": 1, "d": 7, "a": 35}   # القيم الحالية، بتتحدّث لحالها من إعدادات الأدمن
 CERT_SHA256 = "D3:3E:3B:80:BE:09:96:1F:EA:26:BE:D0:88:2D:C5:44:3C:98:F8:E9:D0:77:12:B9:29:40:76:2C:B3:41:04:81"
 REPO = "https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2"
 RELEASE = REPO + "/releases/tag/latest"
@@ -33,16 +35,16 @@ LANGS = {
   how="كيف تلعب",
   steps=[("اكسب نقاطاً","أنجز المهام اليومية، وشاهد الإعلانات، أو جرّب عروض الشركاء من زر واحد داخل اللعبة."),
          ("استأجر عمّالاً","عامل يومي أو أسبوعي أو شهري. ينتج رصيداً بالدولار حتى لو كان التطبيق مغلقاً."),
-         ("اسحب رصيدك","عندما يصل رصيدك إلى 20$ تقدر تسحبه بـ USDT أو BTC أو ETH أو عبر شام كاش.")],
+         ("اسحب رصيدك","عندما يصل رصيدك إلى ⟦min⟧$ تقدر تسحبه بـ USDT أو BTC أو ETH أو عبر شام كاش.")],
   pay="الرصيد والسحب",
-  pay_text="الرصيد محسوب بالدولار، وتعرضه بـ USDT أو BTC أو ETH بنفس القيمة. الحد الأدنى للسحب 20$، وسحب واحد كل 24 ساعة. تُراجَع طلبات السحب يدوياً قبل التحويل.",
+  pay_text="الرصيد محسوب بالدولار، وتعرضه بـ USDT أو BTC أو ETH بنفس القيمة. الحد الأدنى للسحب ⟦min⟧$، وسحب واحد كل 24 ساعة.⟦first⟧ وأول سحب بتقدر تعمله بـ⟦f⟧$ بعد ⟦d⟧ أيام نشاط و⟦a⟧ إعلان (مرة وحدة لكل لاعب).⟦/first⟧ تُراجَع طلبات السحب يدوياً قبل التحويل.",
   chips=["USDT (TRC20 وBEP20)","BTC","ETH","شام كاش"],
   warn="تنبيه: الرصيد يأتي من مهام وعروض شركاء الإعلانات، ولا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر.",
   faq="أسئلة شائعة",
   faqs=[("هل Yardova مجانية؟","نعم. التحميل واللعب مجانيان، وشراء النقاط اختياري تماماً."),
         ("كيف أثبّت التطبيق؟","التطبيق غير متوفر على Google Play حالياً. حمّل ملف APK ثم افتحه ووافق على السماح بالتثبيت من هذا المصدر. قد يظهر تحذير من Google Play Protect، وهذا طبيعي للتطبيقات من خارج المتجر."),
         ("هل يعمل على الآيفون؟","لا. التطبيق لأجهزة أندرويد فقط حالياً."),
-        ("كم الحد الأدنى للسحب؟","20$، وبحد أقصى سحب واحد كل 24 ساعة."),
+        ("كم الحد الأدنى للسحب؟","⟦min⟧$، وبحد أقصى سحب واحد كل 24 ساعة.⟦first⟧ وأول سحب بتقدر تعمله بـ⟦f⟧$ بعد ⟦d⟧ أيام نشاط و⟦a⟧ إعلان (مرة وحدة لكل لاعب).⟦/first⟧"),
         ("ماذا تفعلون ببياناتي؟","نحفظ حساب Google الذي سجّلت به وتقدّمك في اللعبة، ولا نبيع بياناتك ولا نؤجّرها لأي طرف. التطبيق غير موجّه لمن هم دون 18 سنة. التفاصيل في سياسة الخصوصية.")],
   final="جاهز تبدأ؟", store="المتجر", privacy="سياسة الخصوصية", terms="شروط الاستخدام", contact="تواصل معنا", rights="جميع الحقوق محفوظة."),
  "tr": dict(code="tr", dir="ltr", path="/tr/", locale="tr_TR", name="Türkçe",
@@ -54,16 +56,16 @@ LANGS = {
   how="Nasıl oynanır",
   steps=[("Puan kazan","Günlük görevleri tamamla, reklam izle ya da oyun içindeki tek bir düğmeyle ortak firmaların tekliflerini dene."),
          ("İşçi kirala","Günlük, haftalık veya aylık işçi. Uygulama kapalıyken bile dolar değerinde bakiye üretir."),
-         ("Bakiyeni çek","Bakiyen 20$'a ulaşınca USDT, BTC, ETH veya Sham Cash ile çekebilirsin.")],
+         ("Bakiyeni çek","Bakiyen ⟦min⟧$'a ulaşınca USDT, BTC, ETH veya Sham Cash ile çekebilirsin.")],
   pay="Bakiye ve çekim",
-  pay_text="Bakiye dolar olarak hesaplanır; aynı değerle USDT, BTC veya ETH olarak görüntüleyebilirsin. Asgari çekim 20$, 24 saatte bir çekim hakkı vardır. Çekim talepleri transferden önce elle incelenir.",
+  pay_text="Bakiye dolar olarak hesaplanır; aynı değerle USDT, BTC veya ETH olarak görüntüleyebilirsin. Asgari çekim ⟦min⟧$, 24 saatte bir çekim hakkı vardır.⟦first⟧ İlk çekimini ⟦f⟧$ ile yapabilirsin: ⟦d⟧ aktif gün ve ⟦a⟧ reklamdan sonra (oyuncu başına bir kez).⟦/first⟧ Çekim talepleri transferden önce elle incelenir.",
   chips=["USDT (TRC20, BEP20)","BTC","ETH","Sham Cash"],
   warn="Uyarı: Bakiye, reklam ortaklarının görev ve tekliflerinden gelir; kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir.",
   faq="Sık sorulanlar",
   faqs=[("Yardova ücretsiz mi?","Evet. İndirmek ve oynamak ücretsizdir; puan satın almak tamamen isteğe bağlıdır."),
         ("Nasıl kurarım?","Uygulama şu an Google Play'de yok. APK dosyasını indirip aç ve bu kaynaktan kuruluma izin ver. Google Play Protect uyarısı görebilirsin; mağaza dışı uygulamalarda bu normaldir."),
         ("iPhone'da çalışır mı?","Hayır. Şimdilik yalnızca Android cihazlar için."),
-        ("Asgari çekim tutarı nedir?","20$; ve 24 saatte en fazla bir çekim."),
+        ("Asgari çekim tutarı nedir?","⟦min⟧$; ve 24 saatte en fazla bir çekim.⟦first⟧ İlk çekimini ⟦f⟧$ ile yapabilirsin: ⟦d⟧ aktif gün ve ⟦a⟧ reklamdan sonra (oyuncu başına bir kez).⟦/first⟧"),
         ("Verilerim ne oluyor?","Giriş yaptığın Google hesabını ve oyun ilerlemeni saklarız; verilerini satmayız veya kiralamayız. Uygulama 18 yaş altına yönelik değildir. Ayrıntılar gizlilik politikasında.")],
   final="Başlamaya hazır mısın?", store="Mağaza", privacy="Gizlilik politikası", terms="Kullanım koşulları", contact="İletişim", rights="Tüm hakları saklıdır."),
  "en": dict(code="en", dir="ltr", path="/en/", locale="en_US", name="English",
@@ -75,16 +77,16 @@ LANGS = {
   how="How to play",
   steps=[("Earn points","Finish daily tasks, watch ads, or try partner offers from a single button inside the game."),
          ("Hire workers","Daily, weekly or monthly workers. They produce a dollar-valued balance even when the app is closed."),
-         ("Withdraw","Once your balance reaches $20 you can withdraw in USDT, BTC, ETH or via Sham Cash.")],
+         ("Withdraw","Once your balance reaches $⟦min⟧ you can withdraw in USDT, BTC, ETH or via Sham Cash.")],
   pay="Balance and withdrawals",
-  pay_text="Your balance is counted in dollars and can be shown as USDT, BTC or ETH at the same value. The minimum withdrawal is $20, one withdrawal per 24 hours. Withdrawal requests are reviewed manually before transfer.",
+  pay_text="Your balance is counted in dollars and can be shown as USDT, BTC or ETH at the same value. The minimum withdrawal is $⟦min⟧, one withdrawal per 24 hours.⟦first⟧ Your first withdrawal can be as low as $⟦f⟧, after ⟦d⟧ active days and ⟦a⟧ ads watched (once per player).⟦/first⟧ Withdrawal requests are reviewed manually before transfer.",
   chips=["USDT (TRC20, BEP20)","BTC","ETH","Sham Cash"],
   warn="Please note: the balance comes from tasks and offers by advertising partners. Earnings are not guaranteed, and the availability of offers varies by country and over time.",
   faq="FAQ",
   faqs=[("Is Yardova free?","Yes. Downloading and playing are free, and buying points is entirely optional."),
         ("How do I install it?","The app isn't on Google Play right now. Download the APK file, open it, and allow installation from this source. You may see a Google Play Protect warning, which is normal for apps from outside the store."),
         ("Does it work on iPhone?","No. For now it is only for Android devices."),
-        ("What is the minimum withdrawal?","$20, with at most one withdrawal per 24 hours."),
+        ("What is the minimum withdrawal?","$⟦min⟧, with at most one withdrawal per 24 hours.⟦first⟧ Your first withdrawal can be as low as $⟦f⟧, after ⟦d⟧ active days and ⟦a⟧ ads watched (once per player).⟦/first⟧"),
         ("What do you do with my data?","We store the Google account you sign in with and your game progress. We don't sell or rent your data to anyone. The app is not intended for people under 18. Details are in the privacy policy.")],
   final="Ready to start?", store="Store", privacy="Privacy policy", terms="Terms of use", contact="Contact", rights="All rights reserved."),
 }
@@ -116,7 +118,8 @@ ABOUT = {
 <p class="note">لا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر، وقد يتوقف أي شريك فجأة.</p>
 <h2>السحب</h2>
 <ul>
-<li>الحد الأدنى 20$، وسحب واحد كل 24 ساعة.</li>
+<li>الحد الأدنى <span data-cfg="min">5</span>$، وسحب واحد كل 24 ساعة.</li>
+<li data-cfg-first>أول سحب بـ<span data-cfg="f">1</span>$ بعد <span data-cfg="d">7</span> أيام نشاط و<span data-cfg="a">35</span> إعلان (مرة وحدة لكل لاعب).</li>
 <li>كل طلب يُراجَع يدوياً قبل التحويل، عادةً خلال 24 ساعة.</li>
 <li>طرق السحب: <bdi dir="ltr">USDT (TRC20, BEP20)</bdi>، <bdi dir="ltr">BTC</bdi>، <bdi dir="ltr">ETH</bdi>، وشام كاش.</li>
 <li>إذا رُفض طلبك، يرجع المبلغ إلى رصيدك في التطبيق.</li>
@@ -139,7 +142,8 @@ ABOUT = {
 <p class="note">Kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir; bir ortak aniden durabilir.</p>
 <h2>Çekim</h2>
 <ul>
-<li>Asgari tutar 20$, 24 saatte en fazla bir çekim.</li>
+<li>Asgari tutar <span data-cfg="min">5</span>$, 24 saatte en fazla bir çekim.</li>
+<li data-cfg-first>İlk çekim <span data-cfg="f">1</span>$: <span data-cfg="d">7</span> aktif gün ve <span data-cfg="a">35</span> reklamdan sonra (oyuncu başına bir kez).</li>
 <li>Her talep transferden önce elle incelenir, genellikle 24 saat içinde.</li>
 <li>Yöntemler: USDT (TRC20 ve BEP20), BTC, ETH ve Sham Cash.</li>
 <li>Bir talep reddedilirse tutar uygulamadaki bakiyene geri döner.</li>
@@ -162,7 +166,8 @@ ABOUT = {
 <p class="note">Earnings are not guaranteed. The availability of offers varies by country and over time, and a partner can stop suddenly.</p>
 <h2>Withdrawals</h2>
 <ul>
-<li>Minimum $20, and one withdrawal per 24 hours.</li>
+<li>Minimum $<span data-cfg="min">5</span>, and one withdrawal per 24 hours.</li>
+<li data-cfg-first>First withdrawal from $<span data-cfg="f">1</span>, after <span data-cfg="d">7</span> active days and <span data-cfg="a">35</span> ads watched (once per player).</li>
 <li>Every request is reviewed manually before transfer, usually within 24 hours.</li>
 <li>Methods: USDT (TRC20 and BEP20), BTC, ETH and Sham Cash.</li>
 <li>If a request is rejected, the amount returns to your balance in the app.</li>
@@ -303,6 +308,30 @@ BEACON_JS = r"""
   fetch('__HIT__',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'__KEY__',l:'__LANG__',r:ref,u:u})}).catch(function(){});
 }catch(e){}})();
 """
+
+def rich(text):
+    """نص عادي + أرقام حيّة: ⟦min⟧ ⟦f⟧ ⟦d⟧ ⟦a⟧ بتنقرا من إعدادات الأدمن، و⟦first⟧...⟦/first⟧ بتختفي لما أول سحب مخفّض يكون معطّل"""
+    out = html.escape(text, quote=True)
+    out = out.replace("⟦first⟧", "<span data-cfg-first>").replace("⟦/first⟧", "</span>")
+    return re.sub(r"⟦(min|f|d|a)⟧", lambda m: f'<span data-cfg="{m.group(1)}">{CFG_FALLBACK[m.group(1)]}</span>', out)
+
+CFG_JS = r"""
+(function(){try{
+  if(!document.querySelector('[data-cfg],[data-cfg-first]')) return;
+  fetch('__CFG__',{credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c||!c.ok) return;
+    var m={min:c.minWithdrawUsd,f:c.firstWithdrawUsd,d:c.firstWithdrawDays,a:c.firstWithdrawAds};
+    var els=document.querySelectorAll('[data-cfg]');
+    for(var i=0;i<els.length;i++){var v=m[els[i].getAttribute('data-cfg')]; if(v!=null&&v!==''&&isFinite(v)) els[i].textContent=String(+v);}
+    var on=c.firstWithdrawUsd>0&&c.firstWithdrawUsd<c.minWithdrawUsd;
+    var fs=document.querySelectorAll('[data-cfg-first]');
+    for(var j=0;j<fs.length;j++){fs[j].hidden=!on;}
+  }).catch(function(){});
+}catch(e){}})();
+"""
+
+def cfgjs():
+    return "<script>" + CFG_JS.replace("__CFG__", CFG_URL) + "</script>"
 
 def beacon(L, key):
     return "<script>" + BEACON_JS.replace("__HIT__", HIT_URL).replace("__KEY__", key).replace("__LANG__", L) + "</script>"
@@ -554,6 +583,7 @@ def inner_page(L, key):
 {footer(L)}
 {script}
 {beacon(L, key)}
+{cfgjs() if key == "about" else ""}
 </body>
 </html>
 '''
@@ -563,9 +593,9 @@ def page(L):
     apk_btn = f'<a class="btn alt" href="{APKPURE}" rel="noopener">{esc(t["cta2"])}</a>' if SHOW_APKPURE else ""
     langs = "".join(
         f'<li><a href="{LANGS[c]["path"]}" hreflang="{c}" lang="{c}"{" aria-current=\"page\"" if c == L else ""}>{esc(LANGS[c]["name"])}</a></li>' for c in ORDER)
-    steps = "".join(f'<li><div class="n" aria-hidden="true">{i+1}</div><h3>{esc(h)}</h3><p>{esc(p)}</p></li>' for i, (h, p) in enumerate(t["steps"]))
+    steps = "".join(f'<li><div class="n" aria-hidden="true">{i+1}</div><h3>{rich(h)}</h3><p>{rich(p)}</p></li>' for i, (h, p) in enumerate(t["steps"]))
     chips = "".join(f"<li>{esc(c)}</li>" for c in t["chips"])
-    faqs = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in t["faqs"])
+    faqs = "".join(f"<details><summary>{rich(q)}</summary><p>{rich(a)}</p></details>" for q, a in t["faqs"])
     return head(L) + f'''<body>
 {topbar(L, "home")}
 <main id="main">
@@ -589,7 +619,7 @@ def page(L):
   <section><div class="wrap">
     <div class="pay">
       <h2>{esc(t["pay"])}</h2>
-      <p>{esc(t["pay_text"])}</p>
+      <p>{rich(t["pay_text"])}</p>
       <ul class="chips">{chips}</ul>
       <p class="warn">{esc(t["warn"])}</p>
     </div>
@@ -608,6 +638,7 @@ def page(L):
 </main>
 {footer(L)}
 {beacon(L, "home")}
+{cfgjs()}
 </body>
 </html>
 '''

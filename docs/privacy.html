@@ -8,9 +8,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#14110D; --panel:#1F1B14; --panel2:#262117;
-    --amber:#E3A83B; --steel:#5B7B99; --ember:#E4572E;
-    --text:#EFE6D2; --dim:#948A72; --border:#332C1F;
+    --bg:#0F3B33; --panel:#10211C; --panel2:#14302A;
+    --amber:#F4C21F; --steel:#9BB5AB; --ember:#F4C21F;
+    --text:#F3F5EE; --dim:#9BB5AB; --border:#2d6355;
   }
   *{box-sizing:border-box;}
   body{margin:0; background:var(--bg); color:var(--text); font-family:'Cairo', sans-serif; line-height:1.9;}
@@ -25,6 +25,11 @@
   .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:14px;}
   .updated{color:var(--dim); font-size:12px; text-align:center; margin-top:40px;}
   a{color:var(--amber);}
+
+  /* هوية Yardova: أخضر الحاويات وأصفر شريط التحذير */
+  body{background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 2px,rgba(0,0,0,0) 2px 17px);}
+  body::before{content:""; display:block; height:14px; background:repeating-linear-gradient(-45deg,#F4C21F 0 9px,#10211C 9px 18px);}
+  .card{border-width:2px; border-radius:2px; box-shadow:4px 4px 0 #091a16;}
 </style>
 <script src="i18n.js"></script>
 </head>

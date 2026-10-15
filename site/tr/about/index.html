@@ -176,7 +176,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p class="note">Kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir; bir ortak aniden durabilir.</p>
 <h2>Çekim</h2>
 <ul>
-<li>Asgari tutar 20$, 24 saatte en fazla bir çekim.</li>
+<li>Asgari tutar <span data-cfg="min">5</span>$, 24 saatte en fazla bir çekim.</li>
+<li data-cfg-first>İlk çekim <span data-cfg="f">1</span>$: <span data-cfg="d">7</span> aktif gün ve <span data-cfg="a">35</span> reklamdan sonra (oyuncu başına bir kez).</li>
 <li>Her talep transferden önce elle incelenir, genellikle 24 saat içinde.</li>
 <li>Yöntemler: USDT (TRC20 ve BEP20), BTC, ETH ve Sham Cash.</li>
 <li>Bir talep reddedilirse tutar uygulamadaki bakiyene geri döner.</li>
@@ -210,6 +211,20 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
   var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
   fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'about',l:'tr',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+</script>
+<script>
+(function(){try{
+  if(!document.querySelector('[data-cfg],[data-cfg-first]')) return;
+  fetch('https://postback.ly-ad.de/public-config',{credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c||!c.ok) return;
+    var m={min:c.minWithdrawUsd,f:c.firstWithdrawUsd,d:c.firstWithdrawDays,a:c.firstWithdrawAds};
+    var els=document.querySelectorAll('[data-cfg]');
+    for(var i=0;i<els.length;i++){var v=m[els[i].getAttribute('data-cfg')]; if(v!=null&&v!==''&&isFinite(v)) els[i].textContent=String(+v);}
+    var on=c.firstWithdrawUsd>0&&c.firstWithdrawUsd<c.minWithdrawUsd;
+    var fs=document.querySelectorAll('[data-cfg-first]');
+    for(var j=0;j<fs.length;j++){fs[j].hidden=!on;}
+  }).catch(function(){});
 }catch(e){}})();
 </script>
 </body>

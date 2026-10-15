@@ -180,19 +180,19 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   </div></div>
   <section><div class="wrap">
     <h2>How to play</h2>
-    <ol class="steps"><li><div class="n" aria-hidden="true">1</div><h3>Earn points</h3><p>Finish daily tasks, watch ads, or try partner offers from a single button inside the game.</p></li><li><div class="n" aria-hidden="true">2</div><h3>Hire workers</h3><p>Daily, weekly or monthly workers. They produce a dollar-valued balance even when the app is closed.</p></li><li><div class="n" aria-hidden="true">3</div><h3>Withdraw</h3><p>Once your balance reaches $20 you can withdraw in USDT, BTC, ETH or via Sham Cash.</p></li></ol>
+    <ol class="steps"><li><div class="n" aria-hidden="true">1</div><h3>Earn points</h3><p>Finish daily tasks, watch ads, or try partner offers from a single button inside the game.</p></li><li><div class="n" aria-hidden="true">2</div><h3>Hire workers</h3><p>Daily, weekly or monthly workers. They produce a dollar-valued balance even when the app is closed.</p></li><li><div class="n" aria-hidden="true">3</div><h3>Withdraw</h3><p>Once your balance reaches $<span data-cfg="min">5</span> you can withdraw in USDT, BTC, ETH or via Sham Cash.</p></li></ol>
   </div></section>
   <section><div class="wrap">
     <div class="pay">
       <h2>Balance and withdrawals</h2>
-      <p>Your balance is counted in dollars and can be shown as USDT, BTC or ETH at the same value. The minimum withdrawal is $20, one withdrawal per 24 hours. Withdrawal requests are reviewed manually before transfer.</p>
+      <p>Your balance is counted in dollars and can be shown as USDT, BTC or ETH at the same value. The minimum withdrawal is $<span data-cfg="min">5</span>, one withdrawal per 24 hours.<span data-cfg-first> Your first withdrawal can be as low as $<span data-cfg="f">1</span>, after <span data-cfg="d">7</span> active days and <span data-cfg="a">35</span> ads watched (once per player).</span> Withdrawal requests are reviewed manually before transfer.</p>
       <ul class="chips"><li>USDT (TRC20, BEP20)</li><li>BTC</li><li>ETH</li><li>Sham Cash</li></ul>
       <p class="warn">Please note: the balance comes from tasks and offers by advertising partners. Earnings are not guaranteed, and the availability of offers varies by country and over time.</p>
     </div>
   </div></section>
   <section><div class="wrap">
     <h2>FAQ</h2>
-    <details><summary>Is Yardova free?</summary><p>Yes. Downloading and playing are free, and buying points is entirely optional.</p></details><details><summary>How do I install it?</summary><p>The app isn&#x27;t on Google Play right now. Download the APK file, open it, and allow installation from this source. You may see a Google Play Protect warning, which is normal for apps from outside the store.</p></details><details><summary>Does it work on iPhone?</summary><p>No. For now it is only for Android devices.</p></details><details><summary>What is the minimum withdrawal?</summary><p>$20, with at most one withdrawal per 24 hours.</p></details><details><summary>What do you do with my data?</summary><p>We store the Google account you sign in with and your game progress. We don&#x27;t sell or rent your data to anyone. The app is not intended for people under 18. Details are in the privacy policy.</p></details>
+    <details><summary>Is Yardova free?</summary><p>Yes. Downloading and playing are free, and buying points is entirely optional.</p></details><details><summary>How do I install it?</summary><p>The app isn&#x27;t on Google Play right now. Download the APK file, open it, and allow installation from this source. You may see a Google Play Protect warning, which is normal for apps from outside the store.</p></details><details><summary>Does it work on iPhone?</summary><p>No. For now it is only for Android devices.</p></details><details><summary>What is the minimum withdrawal?</summary><p>$<span data-cfg="min">5</span>, with at most one withdrawal per 24 hours.<span data-cfg-first> Your first withdrawal can be as low as $<span data-cfg="f">1</span>, after <span data-cfg="d">7</span> active days and <span data-cfg="a">35</span> ads watched (once per player).</span></p></details><details><summary>What do you do with my data?</summary><p>We store the Google account you sign in with and your game progress. We don&#x27;t sell or rent your data to anyone. The app is not intended for people under 18. Details are in the privacy policy.</p></details>
   </div></section>
   <div class="final"><div class="wrap in">
     <h2>Ready to start?</h2>
@@ -221,6 +221,20 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
   var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
   fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'home',l:'en',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+</script>
+<script>
+(function(){try{
+  if(!document.querySelector('[data-cfg],[data-cfg-first]')) return;
+  fetch('https://postback.ly-ad.de/public-config',{credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c||!c.ok) return;
+    var m={min:c.minWithdrawUsd,f:c.firstWithdrawUsd,d:c.firstWithdrawDays,a:c.firstWithdrawAds};
+    var els=document.querySelectorAll('[data-cfg]');
+    for(var i=0;i<els.length;i++){var v=m[els[i].getAttribute('data-cfg')]; if(v!=null&&v!==''&&isFinite(v)) els[i].textContent=String(+v);}
+    var on=c.firstWithdrawUsd>0&&c.firstWithdrawUsd<c.minWithdrawUsd;
+    var fs=document.querySelectorAll('[data-cfg-first]');
+    for(var j=0;j<fs.length;j++){fs[j].hidden=!on;}
+  }).catch(function(){});
 }catch(e){}})();
 </script>
 </body>

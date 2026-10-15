@@ -8,10 +8,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#14110D; --panel:#1F1B14; --panel2:#262117;
-    --amber:#E3A83B; --steel:#5B7B99; --ember:#E4572E;
+    --bg:#0F3B33; --panel:#10211C; --panel2:#14302A;
+    --amber:#F4C21F; --steel:#9BB5AB; --ember:#F4C21F;
     --btc:#F7931A; --eth:#8A9BFF;
-    --text:#EFE6D2; --dim:#948A72; --border:#332C1F;
+    --text:#F3F5EE; --dim:#9BB5AB; --border:#2d6355;
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
@@ -39,7 +39,7 @@
   header{
     padding:56px 0 40px; text-align:center;
     background:
-      radial-gradient(circle at 20% 0%, rgba(227,168,59,0.14), transparent 45%),
+      radial-gradient(circle at 20% 0%, rgba(244,194,31,0.14), transparent 45%),
       radial-gradient(circle at 85% 20%, rgba(91,123,153,0.12), transparent 45%);
     border-bottom:1px solid var(--border);
   }
@@ -52,10 +52,10 @@
 
   .dl-btn{
     display:inline-flex; align-items:center; gap:10px;
-    background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;
+    background:linear-gradient(135deg, var(--ember), #ffd95e); color:#210a02;
     font-weight:800; font-size:16px; text-decoration:none;
     padding:16px 30px; border-radius:12px;
-    box-shadow:0 10px 26px rgba(228,87,46,0.35);
+    box-shadow:0 10px 26px rgba(244,194,31,0.35);
   }
   .dl-btn:active{transform:translateY(1px);}
   .dl-sub{display:block; margin-top:10px; font-size:11px; color:var(--dim);}
@@ -153,9 +153,9 @@
 
   .buy-btn{
     display:block; width:100%; border:none; border-radius:12px; padding:16px;
-    background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;
+    background:linear-gradient(135deg, var(--ember), #ffd95e); color:#210a02;
     font-weight:800; font-size:15px; cursor:pointer; font-family:'Cairo', sans-serif;
-    box-shadow:0 10px 26px rgba(228,87,46,0.3);
+    box-shadow:0 10px 26px rgba(244,194,31,0.3);
   }
 
   .buy-overlay{
@@ -219,6 +219,11 @@
     color:var(--dim); font-size:11px;
   }
   footer .stamp{margin-bottom:10px; color:var(--dim);}
+
+  /* هوية Yardova: أخضر الحاويات وأصفر شريط التحذير */
+  body{background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 2px,rgba(0,0,0,0) 2px 17px);}
+  body::before{content:""; display:block; height:14px; background:repeating-linear-gradient(-45deg,#F4C21F 0 9px,#10211C 9px 18px);}
+  .card{border-width:2px; border-radius:2px; box-shadow:4px 4px 0 #091a16;}
 </style>
 <script src="i18n.js"></script>
 </head>

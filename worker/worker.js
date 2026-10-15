@@ -234,12 +234,15 @@ async function fsCommit(env, writes) {
 }
 
 // استعلام بسيط: آخر N مستند من مجموعة، مرتبة حسب حقل تنازلياً
-async function fsRunQuery(env, collectionId, orderField, limit) {
+async function fsRunQuery(env, collectionId, orderField, limit, offset) {
   const token = await getGoogleAccessToken(env);
+  const sq = { from: [{ collectionId }], limit };
+  if (orderField) sq.orderBy = [{ field: { fieldPath: orderField }, direction: "DESCENDING" }];   // بدون ترتيب = كل المستندات (حتى يلي ما فيها حقل الترتيب)
+  if (offset > 0) sq.offset = offset;
   const r = await fetch(fsUrl(env, ":runQuery"), {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], orderBy: [{ field: { fieldPath: orderField }, direction: "DESCENDING" }], limit } }),
+    body: JSON.stringify({ structuredQuery: sq }),
   });
   if (!r.ok) throw new Error("fsQuery " + r.status + ": " + (await r.text()));
   const rows = await r.json();
@@ -1256,19 +1259,126 @@ async function handleAdminTraffic(request, env) {
   }
 }
 
+// أرقام السحب العامة (بتنقرا من إعدادات الأدمن) عشان الموقع يعرضها بدون ما نكتبها بإيدنا
+let PUBCFG = { t: 0, v: null };
+async function handlePublicConfig(env) {
+  try {
+    const now = Date.now();
+    if (!PUBCFG.v || now - PUBCFG.t > 60000) {
+      const cfg = await loadConfig(env), pr = cfg.pricing || {};
+      PUBCFG = { t: now, v: { ok: true, minWithdrawUsd: pr.minWithdrawUsd > 0 ? pr.minWithdrawUsd : 20, firstWithdrawUsd: Number(pr.firstWithdrawUsd) || 0, firstWithdrawDays: Number(pr.firstWithdrawDays) || 0, firstWithdrawAds: Number(pr.firstWithdrawAds) || 0 } };
+    }
+    return new Response(JSON.stringify(PUBCFG.v), { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=120", ...corsHeaders() } });
+  } catch (e) {
+    console.error({ message: "public config failed", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "failed" }, 503);
+  }
+}
+
+// رسائل الأدمن: إشعار لكل اللاعبين أو للاعب واحد (بدفعات صغيرة عشان حد الطلبات الفرعية بالـWorker)
+const MSG_BATCH = 30;
+const msgText = (s, max) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, max);
+async function fcmSendRaw(env, deviceToken, title, body, id) {
+  const token = await getGoogleAccessToken(env);
+  const r = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId(env)}/messages:send`, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: {
+      token: deviceToken,
+      notification: { title, body },
+      data: { type: "announcement", id: String(id || "") },
+      android: { priority: "high", notification: { icon: "ic_stat_notify", color: "#E3A83B" } },
+    } }),
+  });
+  return r.ok;
+}
+async function handleAdminMessage(request, env) {
+  const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
+  if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let b; try { b = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: "bad_json" }, 400); }
+  const action = String(b.action || "");
+  const wantsNews = d => d && d.token && (d.prefs || {}).news !== false;
+  try {
+    if (action === "list") {
+      const rows = await fsRunQuery(env, "adminMessages", "createdAt", 20);
+      return jsonResponse({ ok: true, messages: rows.map(r => ({ id: r.id, title: r.data.title || "", body: r.data.body || "", target: r.data.target || "", toEmail: r.data.toEmail || "", createdAt: Number(r.data.createdAt) || 0, status: r.data.status || "", sent: Number(r.data.sent) || 0, failed: Number(r.data.failed) || 0, recipients: Number(r.data.recipients) || 0 })) }, 200);
+    }
+    if (action === "preview") {
+      if (b.target === "one") {
+        const d = await fsGetDoc(env, "pushTokens/" + msgText(b.uid, 128));
+        return jsonResponse({ ok: true, recipients: d.exists && wantsNews(d.data) ? 1 : 0 }, 200);
+      }
+      const rows = await fsRunQuery(env, "pushTokens", "__name__", 500);
+      return jsonResponse({ ok: true, recipients: rows.filter(r => wantsNews(r.data)).length }, 200);
+    }
+    if (action === "send" || action === "finish") {
+      const idOk = v => /^[a-z0-9]{6,40}$/.test(String(v || ""));
+      if (action === "finish") {
+        if (!idOk(b.id)) return jsonResponse({ ok: false, error: "bad_id" }, 400);
+        const cur = await fsGetDoc(env, "adminMessages/" + b.id);
+        if (!cur.exists) return jsonResponse({ ok: false, error: "not_found" }, 404);
+        const merged = { ...cur.data, status: "done", sent: Math.max(0, Number(b.sent) || 0), failed: Math.max(0, Number(b.failed) || 0), recipients: Math.max(0, Number(b.recipients) || 0), finishedAt: Date.now() };
+        await fsCommit(env, [{ update: { name: docName(env, "adminMessages/" + b.id), fields: objToFields(merged) } }]);
+        return jsonResponse({ ok: true }, 200);
+      }
+      const msg = { title: msgText(b.title, 60), body: msgText(b.body, 240) };
+      for (const k of ["tr", "en"]) { msg["title_" + k] = msgText(b["title_" + k], 60); msg["body_" + k] = msgText(b["body_" + k], 240); }
+      if (!msg.title || !msg.body) return jsonResponse({ ok: false, error: "empty", message: "العنوان والنص مطلوبين." }, 400);
+      const pick = (d) => { const lang = ["ar", "tr", "en"].includes(d.lang) ? d.lang : "ar"; return [msg["title_" + lang] || msg.title, msg["body_" + lang] || msg.body]; };
+      const sendGroup = async (rows, id) => {
+        let sent = 0, failed = 0;
+        for (let i = 0; i < rows.length; i += 10) {
+          const res = await Promise.all(rows.slice(i, i + 10).map(async r => {
+            if (!wantsNews(r.data)) return null;
+            const [t, bd] = pick(r.data);
+            return fcmSendRaw(env, r.data.token, t, bd, id).catch(() => false);
+          }));
+          for (const x of res) { if (x === true) sent++; else if (x === false) failed++; }
+        }
+        return { sent, failed };
+      };
+      if (b.target === "one") {
+        const uid = msgText(b.uid, 128);
+        if (!uid) return jsonResponse({ ok: false, error: "no_uid", message: "اختر لاعب." }, 400);
+        const d = await fsGetDoc(env, "pushTokens/" + uid);
+        if (!d.exists || !wantsNews(d.data)) return jsonResponse({ ok: false, error: "no_token", message: "هالجهاز ما سجّل إشعارات (اللاعب ما فتح التطبيق بعد التحديث، أو طفّى الإشعارات)." }, 409);
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        const { sent, failed } = await sendGroup([{ id: uid, data: d.data }], id);
+        await fsCommit(env, [{ update: { name: docName(env, "adminMessages/" + id), fields: objToFields({ id, title: msg.title, body: msg.body, target: "one", uid, toEmail: msgText(b.email, 120), createdAt: Date.now(), status: "done", sent, failed, recipients: 1, finishedAt: Date.now() }) } }]);
+        return jsonResponse({ ok: true, id, sent, failed, done: true }, 200);
+      }
+      if (b.target !== "all") return jsonResponse({ ok: false, error: "bad_target" }, 400);
+      const offset = Math.max(0, parseInt(b.offset, 10) || 0);
+      let id = b.id;
+      if (offset === 0) {
+        id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        await fsCommit(env, [{ update: { name: docName(env, "adminMessages/" + id), fields: objToFields({ id, title: msg.title, body: msg.body, target: "all", createdAt: Date.now(), status: "sending", sent: 0, failed: 0, recipients: Math.max(0, Number(b.expected) || 0) }) } }]);
+      } else if (!idOk(id)) return jsonResponse({ ok: false, error: "bad_id" }, 400);
+      const rows = await fsRunQuery(env, "pushTokens", "__name__", MSG_BATCH, offset);
+      const { sent, failed } = await sendGroup(rows, id);
+      return jsonResponse({ ok: true, id, processed: rows.length, sent, failed, done: rows.length < MSG_BATCH }, 200);
+    }
+    return jsonResponse({ ok: false, error: "bad_action" }, 400);
+  } catch (e) {
+    console.error({ message: "admin message failed", action, error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "failed" }, 500);
+  }
+}
+
 // قائمة اللاعبين للأدمن: بيانات اللاعب + نقاط جدار المهام (من سجل العمليات) + عدد السحوبات
 async function handleAdminPlayers(request, env) {
   const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
   if (!user || user.sub !== ADMIN_UID) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   try {
     const [players, offers, wds] = await Promise.all([
-      fsRunQuery(env, "players", "firstSeenAt", 400),
+      fsRunQuery(env, "players", null, 800),
       fsRunQuery(env, "offerTx", "createdAt", 1000),
       fsRunQuery(env, "withdrawRequests", "createdAt", 500),
     ]);
     const offerPts = {}, wd = {}, wdMail = {};
     for (const o of offers) { const d = o.data; if (d.uid && d.status === "credited") offerPts[d.uid] = (offerPts[d.uid] || 0) + (Number(d.originalReward) || 0); }
     for (const w of wds) { const d = w.data; if (!d.uid) continue; const x = wd[d.uid] = wd[d.uid] || { count: 0, usd: 0 }; x.count++; x.usd += Number(d.amountUsd) || (Number(d.amount) * Number(d.priceUsd)) || 0; if (d.email && !wdMail[d.uid]) wdMail[d.uid] = { email: d.email, name: d.displayName || "" }; }
+    players.sort((a, b) => (Number(b.data.firstSeenAt) || 0) - (Number(a.data.firstSeenAt) || 0));
     const out = players.map(r => {
       const p = r.data, uid = r.id;
       return {
@@ -1303,7 +1413,7 @@ async function handleSelftest(env) {
   // عام عن قصد (لتفحصه من المتصفح)، بس بدون أي تفاصيل داخلية أو أسرار
   try {
     await fsGetDoc(env, "config/appVersion");
-    return jsonResponse({ ok: true, workerVersion: "players-1" }, 200);
+    return jsonResponse({ ok: true, workerVersion: "phase1-1" }, 200);
   } catch (e) {
     console.error({ message: "selftest failed", error: String(e.message || e) });
     return jsonResponse({ ok: false }, 500);
@@ -1329,6 +1439,8 @@ export default {
     if (url.pathname === "/hit" && request.method === "POST") return handleHit(request, env, ctx);
     if (url.pathname === "/admin/traffic" && request.method === "POST") return handleAdminTraffic(request, env);
     if (url.pathname === "/admin/players" && request.method === "POST") return handleAdminPlayers(request, env);
+    if (url.pathname === "/admin/message" && request.method === "POST") return handleAdminMessage(request, env);
+    if (url.pathname === "/public-config" && request.method === "GET") return handlePublicConfig(env);
     return new Response("Not found", { status: 404 });
   },
 };

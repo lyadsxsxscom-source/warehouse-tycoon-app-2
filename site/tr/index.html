@@ -180,19 +180,19 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   </div></div>
   <section><div class="wrap">
     <h2>Nasıl oynanır</h2>
-    <ol class="steps"><li><div class="n" aria-hidden="true">1</div><h3>Puan kazan</h3><p>Günlük görevleri tamamla, reklam izle ya da oyun içindeki tek bir düğmeyle ortak firmaların tekliflerini dene.</p></li><li><div class="n" aria-hidden="true">2</div><h3>İşçi kirala</h3><p>Günlük, haftalık veya aylık işçi. Uygulama kapalıyken bile dolar değerinde bakiye üretir.</p></li><li><div class="n" aria-hidden="true">3</div><h3>Bakiyeni çek</h3><p>Bakiyen 20$&#x27;a ulaşınca USDT, BTC, ETH veya Sham Cash ile çekebilirsin.</p></li></ol>
+    <ol class="steps"><li><div class="n" aria-hidden="true">1</div><h3>Puan kazan</h3><p>Günlük görevleri tamamla, reklam izle ya da oyun içindeki tek bir düğmeyle ortak firmaların tekliflerini dene.</p></li><li><div class="n" aria-hidden="true">2</div><h3>İşçi kirala</h3><p>Günlük, haftalık veya aylık işçi. Uygulama kapalıyken bile dolar değerinde bakiye üretir.</p></li><li><div class="n" aria-hidden="true">3</div><h3>Bakiyeni çek</h3><p>Bakiyen <span data-cfg="min">5</span>$&#x27;a ulaşınca USDT, BTC, ETH veya Sham Cash ile çekebilirsin.</p></li></ol>
   </div></section>
   <section><div class="wrap">
     <div class="pay">
       <h2>Bakiye ve çekim</h2>
-      <p>Bakiye dolar olarak hesaplanır; aynı değerle USDT, BTC veya ETH olarak görüntüleyebilirsin. Asgari çekim 20$, 24 saatte bir çekim hakkı vardır. Çekim talepleri transferden önce elle incelenir.</p>
+      <p>Bakiye dolar olarak hesaplanır; aynı değerle USDT, BTC veya ETH olarak görüntüleyebilirsin. Asgari çekim <span data-cfg="min">5</span>$, 24 saatte bir çekim hakkı vardır.<span data-cfg-first> İlk çekimini <span data-cfg="f">1</span>$ ile yapabilirsin: <span data-cfg="d">7</span> aktif gün ve <span data-cfg="a">35</span> reklamdan sonra (oyuncu başına bir kez).</span> Çekim talepleri transferden önce elle incelenir.</p>
       <ul class="chips"><li>USDT (TRC20, BEP20)</li><li>BTC</li><li>ETH</li><li>Sham Cash</li></ul>
       <p class="warn">Uyarı: Bakiye, reklam ortaklarının görev ve tekliflerinden gelir; kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir.</p>
     </div>
   </div></section>
   <section><div class="wrap">
     <h2>Sık sorulanlar</h2>
-    <details><summary>Yardova ücretsiz mi?</summary><p>Evet. İndirmek ve oynamak ücretsizdir; puan satın almak tamamen isteğe bağlıdır.</p></details><details><summary>Nasıl kurarım?</summary><p>Uygulama şu an Google Play&#x27;de yok. APK dosyasını indirip aç ve bu kaynaktan kuruluma izin ver. Google Play Protect uyarısı görebilirsin; mağaza dışı uygulamalarda bu normaldir.</p></details><details><summary>iPhone&#x27;da çalışır mı?</summary><p>Hayır. Şimdilik yalnızca Android cihazlar için.</p></details><details><summary>Asgari çekim tutarı nedir?</summary><p>20$; ve 24 saatte en fazla bir çekim.</p></details><details><summary>Verilerim ne oluyor?</summary><p>Giriş yaptığın Google hesabını ve oyun ilerlemeni saklarız; verilerini satmayız veya kiralamayız. Uygulama 18 yaş altına yönelik değildir. Ayrıntılar gizlilik politikasında.</p></details>
+    <details><summary>Yardova ücretsiz mi?</summary><p>Evet. İndirmek ve oynamak ücretsizdir; puan satın almak tamamen isteğe bağlıdır.</p></details><details><summary>Nasıl kurarım?</summary><p>Uygulama şu an Google Play&#x27;de yok. APK dosyasını indirip aç ve bu kaynaktan kuruluma izin ver. Google Play Protect uyarısı görebilirsin; mağaza dışı uygulamalarda bu normaldir.</p></details><details><summary>iPhone&#x27;da çalışır mı?</summary><p>Hayır. Şimdilik yalnızca Android cihazlar için.</p></details><details><summary>Asgari çekim tutarı nedir?</summary><p><span data-cfg="min">5</span>$; ve 24 saatte en fazla bir çekim.<span data-cfg-first> İlk çekimini <span data-cfg="f">1</span>$ ile yapabilirsin: <span data-cfg="d">7</span> aktif gün ve <span data-cfg="a">35</span> reklamdan sonra (oyuncu başına bir kez).</span></p></details><details><summary>Verilerim ne oluyor?</summary><p>Giriş yaptığın Google hesabını ve oyun ilerlemeni saklarız; verilerini satmayız veya kiralamayız. Uygulama 18 yaş altına yönelik değildir. Ayrıntılar gizlilik politikasında.</p></details>
   </div></section>
   <div class="final"><div class="wrap in">
     <h2>Başlamaya hazır mısın?</h2>
@@ -221,6 +221,20 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   var ref=''; try{ ref=document.referrer?new URL(document.referrer).hostname:''; }catch(e){}
   var u=''; try{ u=new URLSearchParams(location.search).get('utm_source')||''; }catch(e){}
   fetch('https://postback.ly-ad.de/hit',{method:'POST',keepalive:true,credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({p:'home',l:'tr',r:ref,u:u})}).catch(function(){});
+}catch(e){}})();
+</script>
+<script>
+(function(){try{
+  if(!document.querySelector('[data-cfg],[data-cfg-first]')) return;
+  fetch('https://postback.ly-ad.de/public-config',{credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c||!c.ok) return;
+    var m={min:c.minWithdrawUsd,f:c.firstWithdrawUsd,d:c.firstWithdrawDays,a:c.firstWithdrawAds};
+    var els=document.querySelectorAll('[data-cfg]');
+    for(var i=0;i<els.length;i++){var v=m[els[i].getAttribute('data-cfg')]; if(v!=null&&v!==''&&isFinite(v)) els[i].textContent=String(+v);}
+    var on=c.firstWithdrawUsd>0&&c.firstWithdrawUsd<c.minWithdrawUsd;
+    var fs=document.querySelectorAll('[data-cfg-first]');
+    for(var j=0;j<fs.length;j++){fs[j].hidden=!on;}
+  }).catch(function(){});
 }catch(e){}})();
 </script>
 </body>

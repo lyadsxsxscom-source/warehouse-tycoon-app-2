@@ -465,9 +465,13 @@
     "Çekim talepleri 24 saat içinde manuel olarak incelenir ve gönderilir",
     "Withdrawal requests are reviewed and sent manually within 24 hours"
   ],
-  "التحويل عبر شام كاش بيتم بالدولار أو بالليرة السورية حسب سعر الصرف المعتمد عندنا وقت التحويل": [
-    "Sham Cash ile transfer, transfer anında bizim belirlediğimiz kura göre dolar veya Suriye lirası olarak yapılır",
-    "Transfers via Sham Cash are made in dollars or Syrian pounds at the exchange rate we set at the time of transfer"
+  "أول سحب لكل لاعب ممكن يكون بحد أدنى أقل من العادي، بشروط (عدد أيام نشاط وعدد إعلانات) معروضة داخل التطبيق وبموقعنا، وبسقف يومي للسحبات الصغيرة. هاد عرض تجريبي ومن حقنا نغيّره أو نوقفه": [
+    "Her oyuncunun ilk çekimi, normal asgari tutardan daha düşük olabilir; koşulları (aktif gün ve reklam sayısı) uygulamada ve sitemizde gösterilir ve küçük çekimler için günlük bir üst sınır vardır. Bu deneme amaçlı bir tekliftir; değiştirme veya durdurma hakkımız saklıdır",
+    "Each player's first withdrawal may have a lower minimum than usual, under conditions (number of active days and ads watched) shown in the app and on our website, with a daily cap on small withdrawals. This is a trial offer and we may change or stop it"
+  ],
+  "التحويل عبر شام كاش بيتم بالدولار": [
+    "Sham Cash ile transfer dolar olarak yapılır",
+    "Sham Cash transfers are made in US dollars"
   ],
   "5. إخلاء مسؤولية مهم": [
     "5. Önemli sorumluluk reddi",
