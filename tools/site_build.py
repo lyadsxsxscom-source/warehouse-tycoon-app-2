@@ -693,6 +693,7 @@ def main():
     write("robots.txt", f"User-agent: *\nAllow: /\n\nSitemap: {BASE}/sitemap.xml\n")
     write("_headers", "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n\n/*.png\n  Cache-Control: public, max-age=604800\n\n/favicon.ico\n  Cache-Control: public, max-age=604800\n")
     make_assets()
+    import web_build; web_build.build()   # نسخة الويب (آيفون) بـ/play
     print("site generated:", sorted(os.listdir(ROOT)))
 
 if __name__ == "__main__":
