@@ -80,6 +80,17 @@ with sync_playwright() as p:
     ok(pg.query_selector("#iosHint") is None, "already installed (standalone): no hint"); ctx.close()
     pg, errs, ctx = page(None, "ar", 1000, 800); pg.goto(BASE + "/play/"); pg.wait_for_timeout(900); pg.evaluate(f"window.__authCb({USER})"); pg.wait_for_timeout(2500)
     ok(pg.query_selector("#iosHint") is None and not pg.is_visible("#optAd") if pg.query_selector("#optAd") else True, "desktop browser: no iOS hint, still no ads option"); ctx.close()
+    # ---- the GitHub Pages copy (a second address that works on networks where the custom domain doesn't)
+    Handler2 = functools.partial(Quiet, directory=os.path.join(ROOT, "docs"))
+    srv2 = Q(("127.0.0.1", 0), Handler2); threading.Thread(target=srv2.serve_forever, daemon=True).start(); BASE2 = f"http://127.0.0.1:{srv2.server_address[1]}"
+    pg, errs, ctx = page(IPHONE_UA); pg.goto(BASE2 + "/play/"); pg.wait_for_timeout(900)
+    pg.evaluate("window.__authCb && window.__authCb(null)"); pg.wait_for_timeout(600); pg.click("#btnGoogleLoginGate"); pg.wait_for_timeout(200)
+    ok(pg.evaluate("window.__popup") == 1, "GitHub Pages copy: Google popup sign-in works")
+    pg.evaluate(f"window.__authCb({USER})"); pg.wait_for_timeout(2500)
+    ok(pg.is_visible(".bottomnav") and pg.is_visible("#iosHint") and not (pg.query_selector("#optAd") and pg.is_visible("#optAd")), "GitHub Pages copy: game opens, install hint shown, no ads option")
+    man2 = json.load(open(os.path.join(ROOT, "docs/play/manifest.webmanifest"), encoding="utf-8"))
+    ok(man2["scope"] == "/warehouse-tycoon-app-2/play/" and all(pg.request.get(BASE2 + "/play/" + i["src"]).status == 200 for i in man2["icons"]) and pg.request.get(BASE2 + "/play/apple-touch-icon.png").status == 200, "GitHub Pages copy: manifest scope is its own folder and the icons are next to the page")
+    ok(len(errs) == 0, "GitHub Pages copy: no script errors " + json.dumps(errs[:2])); ctx.close()
     b.close()
 
 # ---- the service worker logic (network first, never caches other origins or non-GET)

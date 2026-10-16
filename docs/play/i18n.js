@@ -1,0 +1,382 @@
+// =====================================================================
+// تعدد اللغات: العربية (الأصل) + التركية + الإنجليزية
+// الفكرة: التطبيق مكتوب بالعربي، وهالملف بيترجم أي نص بيظهر بالشاشة لحظة ما يظهر.
+// لإضافة نص جديد: ضيفه بقاموس EXACT (نص ثابت) أو PATTERNS (نص فيه أرقام/متغيرات بمكان {0} {1}).
+// =====================================================================
+(function(){
+  // [تركي, إنجليزي]
+  const EXACT = {
+    "🎁 المكافأة اليومية": ["🎁 Günlük Ödül", "🎁 Daily Reward"],
+    "استلم مكافأة اليوم": ["Bugünün ödülünü al", "Claim today's reward"],
+    "ارجع بكرا لمكافأة جديدة ✓": ["Yeni ödül için yarın gel ✓", "Come back tomorrow for a new reward ✓"],
+    "ادعُ أصحابك": ["Arkadaşlarını Davet Et", "Invite Friends"],
+    "كود الدعوة تبعك": ["Davet kodun", "Your invite code"],
+    "📤 شارك الكود": ["📤 Kodu paylaş", "📤 Share code"],
+    "أصحاب دعيتهم": ["Davet ettiğin arkadaşlar", "Friends invited"],
+    "صاروا لاعبين نشطين": ["Aktif oyuncu oldular", "Became active players"],
+    "نقاط ربحتها من الدعوات": ["Davetlerden kazandığın puanlar", "Points earned from invites"],
+    "عندك كود دعوة من صاحبك؟": ["Arkadaşından davet kodun var mı?", "Got an invite code from a friend?"],
+    "تفعيل الكود": ["Kodu etkinleştir", "Activate code"],
+    "🤝 لحتى ياخد صاحبك مكافأته:": ["🤝 Arkadaşının ödülünü alması için:", "🤝 For your friend to get their reward:"],
+    "انتسخ الكود مع الرابط ✓": ["Kod ve bağlantı kopyalandı ✓", "Code and link copied ✓"],
+    "استلمت مكافأة اليوم، ارجع بكرا!": ["Bugünün ödülünü aldın, yarın tekrar gel!", "You already claimed today's reward, come back tomorrow!"],
+    "كود الدعوة غير صحيح.": ["Davet kodu geçersiz.", "Invalid invite code."],
+    "كود الدعوة غير موجود.": ["Davet kodu bulunamadı.", "Invite code not found."],
+    "ما فيك تستخدم كودك إنت.": ["Kendi kodunu kullanamazsın.", "You can't use your own code."],
+    "استخدمت كود دعوة من قبل.": ["Zaten bir davet kodu kullandın.", "You've already used an invite code."],
+    "كود الدعوة بينكتب بس بأول يومين من التسجيل.": ["Davet kodu sadece kayıttan sonraki ilk iki gün içinde girilebilir.", "Invite codes can only be entered within the first two days after signing up."],
+    "جرّب \"Yardova\" — لعبة إدارة مستودع مجانية 🏭": [
+    "\"Yardova\" oyna — ücretsiz depo yönetim oyunu 🏭",
+    "Try \"Yardova\" — a free warehouse management game 🏭"
+  ],
+    "مثال: K7M2QX": ["Örnek: K7M2QX", "Example: K7M2QX"],
+    "Yardova": ["Yardova", "Yardova"],
+    "سجّل دخولك عشان تبدأ وتحفظ تقدمك": ["Başlamak ve ilerlemeni kaydetmek için giriş yap", "Sign in to start and save your progress"],
+    "تسجيل الدخول عبر Google": ["Google ile giriş yap", "Sign in with Google"],
+    "تسجيل الدخول عبر Google لحفظ التقدم": ["İlerlemeni kaydetmek için Google ile giriş yap", "Sign in with Google to save progress"],
+    "تسجيل الخروج": ["Çıkış yap", "Sign out"],
+    "تحديث مطلوب": ["Güncelleme gerekli", "Update required"],
+    "صار في نسخة جديدة من التطبيق فيها إصلاحات مهمة. لازم تحدّث عشان تكمل اللعب.": ["Uygulamanın önemli düzeltmeler içeren yeni bir sürümü var. Oynamaya devam etmek için güncellemelisin.", "A new version with important fixes is available. Please update to keep playing."],
+    "⬇ تحميل آخر نسخة": ["⬇ Son sürümü indir", "⬇ Download latest version"],
+    "فعّل VPN مكتشف": ["VPN algılandı", "VPN detected"],
+    "VPN مكتشف": ["VPN algılandı", "VPN detected"],
+    "لازم تطفي أي تطبيق VPN عشان تقدر تستخدم جدار المهام والعروض.": ["Görev duvarını ve teklifleri kullanabilmek için tüm VPN uygulamalarını kapatmalısın.", "You need to turn off any VPN app to use the offerwall and offers."],
+    "استخدام VPN بيعرّض حسابك لخطر الحظر من شبكات العروض — هاد إجراء حماية لحسابك إنت.": ["VPN kullanmak hesabını teklif ağları tarafından engellenme riskine sokar — bu, hesabını korumak için bir önlemdir.", "Using a VPN puts your account at risk of being banned by offer networks — this protects your account."],
+    "🔄 تحققت، جرب مرة تانية": ["🔄 Kapattım, tekrar kontrol et", "🔄 Done, check again"],
+    "ت": ["P", "P"],
+    "النقاط": ["Puanlar", "Points"],
+    "لشراء الرفوف والعمال": ["Raf ve işçi almak için", "To buy shelves and workers"],
+    "المحفظة": ["Cüzdan", "Wallet"],
+    "الرفوف والعمال": ["Raflar ve İşçiler", "Shelves & Workers"],
+    "اضغط رف فارغ لاستئجار عامل · العملة تتجمّع تلقائياً بالمحفظة": ["İşçi kiralamak için boş bir rafa dokun · Kripto otomatik olarak cüzdanda birikir", "Tap an empty shelf to hire a worker · Coins collect automatically in your wallet"],
+    "كسب نقاط": ["Puan Kazan", "Earn Points"],
+    "مهام اليوم": ["Günün Görevleri", "Today's Tasks"],
+    "استرداد كود شحن": ["Yükleme Kodu Kullan", "Redeem a Top-up Code"],
+    "اكتب الكود اللي حصلت عليه من الوكيل": ["Bayiden aldığın kodu yaz", "Enter the code you got from the reseller"],
+    "استرداد": ["Kullan", "Redeem"],
+    "لشراء نقاط بفلوس حقيقية، زور موقعنا الرسمي واحصل على كود استرداد، وفعّله من الأعلى.": ["Gerçek parayla puan almak için resmi sitemizi ziyaret et, bir kod al ve yukarıdan etkinleştir.", "To buy points with real money, visit our official website, get a redeem code and activate it above."],
+    "زيارة موقعنا للشحن والتحميل": ["Yükleme ve indirme için sitemizi ziyaret et", "Visit our website to top up & download"],
+    "الرصيد القابل للسحب": ["Çekilebilir bakiye", "Withdrawable balance"],
+    "الشبكة": ["Ağ", "Network"],
+    "عنوان محفظة باينانس (بنفس العملة والشبكة المختارة)": ["Binance cüzdan adresi (seçilen coin ve ağ ile aynı)", "Binance wallet address (same coin and network as selected)"],
+    "المبلغ": ["Miktar", "Amount"],
+    "طلب سحب": ["Çekim talebi", "Request withdrawal"],
+    "سجل السحوبات": ["Çekim geçmişi", "Withdrawal history"],
+    "لا يوجد سحوبات سابقة": ["Önceki çekim yok", "No previous withdrawals"],
+    "لاعب مجهول (بدون تسجيل)": ["Anonim oyuncu (giriş yapılmadı)", "Guest player (not signed in)"],
+    "إجمالي النقاط المكتسبة": ["Toplam kazanılan puan", "Total points earned"],
+    "عدد العمال المستأجرين": ["Kiralanan işçi sayısı", "Workers hired"],
+    "الرفوف المفتوحة": ["Açık raflar", "Unlocked shelves"],
+    "الإعلانات المشاهدة": ["İzlenen reklamlar", "Ads watched"],
+    "الإعدادات": ["Ayarlar", "Settings"],
+    "الإشعارات": ["Bildirimler", "Notifications"],
+    "اللغة": ["Dil", "Language"],
+    "سياسة الخصوصية وشروط الاستخدام": ["Gizlilik politikası ve kullanım şartları", "Privacy policy & terms of use"],
+    "البريد": ["Posta", "Mail"],
+    "سجّل دخول عشان تشوف رسائلك.": ["Mesajlarını görmek için giriş yap.", "Sign in to see your messages."],
+    "عرض توضيحي: النقاط تُكسب من الإعلان/جدار المهام خلف زر واحد، وتُصرف على الرفوف والعمال. العملة ينتجها العمال تلقائياً وتتراكم مباشرة بالمحفظة بقيمة موحّدة بالدولار، وتقدر تعرض رصيدك بـ USDT أو BTC أو ETH.": ["Nasıl çalışır: Puanlar reklam/görev duvarından tek bir düğmeyle kazanılır ve raflar ile işçilere harcanır. İşçiler kriptoyu otomatik üretir ve doların değeriyle tek bir cüzdanda birikir; bakiyeni USDT, BTC veya ETH olarak görebilirsin.", "How it works: Points are earned from ads/the offerwall behind one button and spent on shelves and workers. Workers produce coins automatically into one wallet valued in dollars, and you can view your balance in USDT, BTC or ETH."],
+    "الرئيسية": ["Ana Sayfa", "Home"],
+    "المتجر": ["Mağaza", "Store"],
+    "السحب": ["Çekim", "Withdraw"],
+    "الملف": ["Profil", "Profile"],
+    "استئجار عامل": ["İşçi kirala", "Hire a worker"],
+    "— رف": ["— Raf", "— Shelf"],
+    "يوم واحد": ["1 gün", "1 day"],
+    "أسبوع": ["1 hafta", "1 week"],
+    "شهر": ["1 ay", "1 month"],
+    "إلغاء": ["İptal", "Cancel"],
+    "عامل يومي": ["Günlük işçi", "Daily worker"],
+    "عامل أسبوعي": ["Haftalık işçi", "Weekly worker"],
+    "عامل شهري": ["Aylık işçi", "Monthly worker"],
+    "شام كاش": ["Sham Cash", "Sham Cash"],
+    "رقم حساب شام كاش (الرقم يلي بيوصله التحويل)": ["Sham Cash hesap numarası (transferin ulaşacağı numara)", "Sham Cash account number (the number that receives the transfer)"],
+    "المبلغ بالدولار": ["Dolar cinsinden miktar", "Amount in dollars"],
+    "المبلغ بالدولار (USDT)": ["Dolar cinsinden miktar (USDT)", "Amount in dollars (USDT)"],
+    "سعر هالعملة مو مضبوط حالياً، جرّب بعد شوي.": ["Bu coinin fiyatı şu an ayarlı değil, biraz sonra tekrar dene.", "This coin's price isn't set right now, try again shortly."],
+    "التحويل بالدولار أو بالليرة السورية حسب سعر الصرف المعتمد.": ["Transfer dolar veya Suriye lirası olarak, geçerli kura göre yapılır.", "The transfer is made in dollars or Syrian pounds at the approved exchange rate."],
+    "اضغط مرة تانية للخروج": ["Çıkmak için tekrar bas", "Press again to exit"],
+    "مشاهدة إعلان": ["Reklam izle", "Watch an ad"],
+    "فوري + مضاعفة إنتاج 60 ثانية": ["Anında + 60 saniye 2x üretim", "Instant + 2x production for 60s"],
+    "جدار المهام": ["Görev Duvarı", "Offerwall"],
+    "جدار العروض 2": ["Teklif Duvarı 2", "Offerwall 2"],
+    "💡 كمّل كل عرض على نفس الإنترنت يلي بلّشته عليه (واي فاي أو بيانات الجوال)، وإلا ممكن ما تنحسب النقاط.": ["💡 Her teklifi başladığın internet bağlantısıyla (Wi-Fi veya mobil veri) tamamla, yoksa puanlar sayılmayabilir.", "💡 Finish each offer on the same connection you started it on (Wi-Fi or mobile data), or the points may not be credited."],
+    "عروض ومهام إضافية بمكافآت": ["Ödüllü ek teklifler ve görevler", "More offers and tasks with rewards"],
+    "مهام وعروض متنوعة — كل عرض بمكافأته الخاصة": ["Çeşitli görev ve teklifler — her birinin kendi ödülü var", "Various tasks and offers — each with its own reward"],
+    "افتح": ["Aç", "Open"],
+    "إغلاق": ["Kapat", "Close"],
+    "انتهاء مدة العامل": ["İşçi süresi bitti", "Worker finished"],
+    "لما يخلص عامل شغله وبدو تجديد": ["Bir işçinin süresi dolup yenilenmesi gerektiğinde", "When a worker's time is up and needs renewing"],
+    "مهام اليوم الجديدة": ["Yeni günlük görevler", "New daily tasks"],
+    "كل يوم الساعة 9 الصبح": ["Her gün sabah 9'da", "Every day at 9 AM"],
+    "تذكير فتح رف جديد": ["Yeni raf hatırlatması", "New shelf reminder"],
+    "لما تكفي نقاطك لفتح الرف الجاي": ["Puanın bir sonraki rafı açmaya yettiğinde", "When you have enough points for the next shelf"],
+    "نقاط جدار المهام": ["Görev duvarı puanları", "Offerwall points"],
+    "لما توصلك نقاط من العروض": ["Tekliflerden puan geldiğinde", "When you receive points from offers"],
+    "طلبات السحب والشحن": ["Çekim ve yükleme talepleri", "Withdrawals & top-ups"],
+    "لما ينقبل أو ينرفض طلب سحب، أو توصل شحنة": ["Bir çekim onaylandığında veya reddedildiğinde ya da yükleme geldiğinde", "When a withdrawal is approved or rejected, or a top-up arrives"],
+    "مثال: GAME-100COINS-X92B": ["Örnek: GAME-100COINS-X92B", "Example: GAME-100COINS-X92B"],
+    "مثال: bc1q... أو 0x...": ["Örnek: bc1q... veya 0x...", "Example: bc1q... or 0x..."],
+    "عامل بيتكوين يومي": ["Günlük Bitcoin işçisi", "Daily Bitcoin worker"],
+    "عامل بيتكوين أسبوعي": ["Haftalık Bitcoin işçisi", "Weekly Bitcoin worker"],
+    "عامل بيتكوين شهري": ["Aylık Bitcoin işçisi", "Monthly Bitcoin worker"],
+    "عامل إيثيريوم يومي": ["Günlük Ethereum işçisi", "Daily Ethereum worker"],
+    "عامل إيثيريوم أسبوعي": ["Haftalık Ethereum işçisi", "Weekly Ethereum worker"],
+    "عامل إيثيريوم شهري": ["Aylık Ethereum işçisi", "Monthly Ethereum worker"],
+    "العامل": ["İşçi", "The worker"],
+    "عملة": ["coin", "coin"],
+    "تسجيل الدخول اليوم": ["Bugün giriş yap", "Log in today"],
+    "شاهد 3 إعلانات": ["3 reklam izle", "Watch 3 ads"],
+    "استأجر عامل واحد": ["1 işçi kirala", "Hire 1 worker"],
+    "تم ✓": ["Tamam ✓", "Done ✓"],
+    "✓ تم الاسترداد": ["✓ Kullanıldı", "✓ Redeemed"],
+    "₿ Bitcoin (الأصلية)": ["₿ Bitcoin (yerel ağ)", "₿ Bitcoin (native)"],
+    "₿ بيتكوين": ["₿ Bitcoin", "₿ Bitcoin"],
+    "Ξ إيثيريوم": ["Ξ Ethereum", "Ξ Ethereum"],
+    "انتهت المدة": ["Süre doldu", "Time's up"],
+    "اضغط للتجديد": ["Yenilemek için dokun", "Tap to renew"],
+    "استأجر عامل": ["İşçi kirala", "Hire worker"],
+    "نقاط غير كافية لفتح هذا الرف.": ["Bu rafı açmak için yeterli puan yok.", "Not enough points to unlock this shelf."],
+    "تم فتح رف جديد!": ["Yeni raf açıldı!", "New shelf unlocked!"],
+    "هذا العامل شغّال حالياً.": ["Bu işçi şu anda çalışıyor.", "This worker is currently working."],
+    "نقاط غير كافية.": ["Yeterli puan yok.", "Not enough points."],
+    "عم نستأجر العامل...": ["İşçi kiralanıyor...", "Hiring worker..."],
+    "عرض": ["Teklif", "Offer"],
+    "لازم تسجّل دخول أول قبل ما تفتح هالعرض، حتى توصلك نقاطك صح.": ["Puanlarının doğru gelmesi için bu teklifi açmadan önce giriş yapmalısın.", "Please sign in before opening this offer so your points are credited correctly."],
+    "✓ تم الإرسال": ["✓ Gönderildi", "✓ Sent"],
+    "✕ مرفوض (استرجع الرصيد)": ["✕ Reddedildi (bakiye iade edildi)", "✕ Rejected (balance refunded)"],
+    "⏳ قيد المراجعة": ["⏳ İnceleniyor", "⏳ Under review"],
+    "لازم تسجّل دخول أول.": ["Önce giriş yapmalısın.", "Please sign in first."],
+    "حط عنوان المحفظة.": ["Cüzdan adresini gir.", "Enter the wallet address."],
+    "حط مبلغ صحيح.": ["Geçerli bir miktar gir.", "Enter a valid amount."],
+    "المبلغ أكبر من رصيدك المتاح.": ["Miktar kullanılabilir bakiyenden fazla.", "The amount exceeds your available balance."],
+    "تم إرسال طلب السحب، رح تتم مراجعته خلال 24 ساعة.": ["Çekim talebin gönderildi, 24 saat içinde incelenecek.", "Withdrawal request sent; it will be reviewed within 24 hours."],
+    "ما وصل token من تسجيل الدخول الأصلي": ["Giriş anahtarı alınamadı", "No sign-in token received"],
+    "لعبة إدارة مستودع": ["Depo yönetim oyunu", "Warehouse management game"],
+    "عم نحمّل مستودعك…": ["Deponun yükleniyor…", "Loading your warehouse…"],
+    "الشبكة ضعيفة، عم نحاول نكمّل…": ["Ağ zayıf, devam etmeye çalışıyoruz…", "The network is weak, we're trying to continue…"],
+    "التحويل عبر شام كاش بالدولار.": ["Sham Cash ile transfer dolar olarak yapılır.", "Sham Cash transfers are made in US dollars."],
+    "إعادة المحاولة": ["Tekrar dene", "Try again"],
+    "مساعدة ومجتمع": ["Yardım ve topluluk", "Help & community"],
+    "الإرشادات: كيف تلعب": ["Rehber: nasıl oynanır", "Guide: how to play"],
+    "قناتنا على تلغرام": ["Telegram kanalımız", "Our Telegram channel"],
+    "الاتصال ضعيف": ["Bağlantı zayıf", "Weak connection"],
+    "ما عم نقدر نتزامن مع السيرفر. رصيدك محفوظ، وبنحدّث أرقامك أول ما يرجع الاتصال.": ["Sunucuyla senkronize olamıyoruz. Bakiyen güvende; bağlantı geri gelir gelmez rakamlarını güncelleyeceğiz.", "We can't sync with the server right now. Your balance is safe, and we'll refresh your numbers as soon as the connection is back."],
+    "أهلاً بك في Yardova": ["Yardova'ya hoş geldin", "Welcome to Yardova"],
+    "مستودعك بيشتغل حتى لو سكّرت اللعبة. هاي جولة سريعة بـ5 خطوات.": ["Oyunu kapatsan bile deponun çalışmaya devam eder. İşte 5 adımda hızlı bir tur.", "Your warehouse keeps working even when the game is closed. Here is a quick 5-step tour."],
+    "اكسب نقاط": ["Puan kazan", "Earn points"],
+    "استلم المكافأة اليومية، وشاهد الإعلانات، وأنجز المهام، وجرّب عروض الشركاء من الزر داخل اللعبة.": ["Günlük ödülünü al, reklam izle, görevleri tamamla ve oyun içindeki düğmeyle ortak firmaların tekliflerini dene.", "Collect the daily reward, watch ads, finish tasks, and try partner offers from the button inside the game."],
+    "استأجر عمّال": ["İşçi kirala", "Hire workers"],
+    "بالنقاط بتستأجر عامل يومي أو أسبوعي أو شهري. العامل بينتج رصيداً بالدولار حتى لو التطبيق مسكّر، وبتفتح رفوف جديدة بنقاط أكتر.": ["Puanlarla günlük, haftalık veya aylık bir işçi kiralarsın. İşçi, uygulama kapalı olsa bile dolar olarak bakiye üretir; daha fazla puanla yeni raflar açarsın.", "With points you hire a daily, weekly or monthly worker. The worker produces a dollar balance even when the app is closed, and more points unlock new shelves."],
+    "اسحب رصيدك": ["Bakiyeni çek", "Withdraw your balance"],
+    "ادعُ أصحابك وتابعنا": ["Arkadaşlarını davet et ve bizi takip et", "Invite your friends and follow us"],
+    "ادعُ أصحابك بالكود تبعك وخدوا نقاط هدية، وتابع التحديثات والأخبار على قناتنا بتلغرام.": ["Arkadaşlarını kodunla davet edin, hediye puan kazanın; güncellemeleri ve haberleri Telegram kanalımızdan takip et.", "Invite your friends with your code and get gift points, and follow updates and news on our Telegram channel."],
+    "التالي": ["İleri", "Next"],
+    "ابدأ اللعب": ["Oyuna başla", "Start playing"],
+    "تخطّي": ["Geç", "Skip"],
+    "رسائل من Yardova": ["Yardova'dan mesajlar", "Messages from Yardova"],
+    "الشحنات": ["Yüklemeler", "Top-ups"],
+    "جديد": ["Yeni", "New"],
+    "ما في شحنات لسا.": ["Henüz yükleme yok.", "No top-ups yet."],
+    "أخبار وتحديثات": ["Haberler ve güncellemeler", "News & updates"],
+    "رسائل من Yardova عن النسخ الجديدة والعروض": ["Yardova'dan yeni sürümler ve teklifler hakkında mesajlar", "Messages from Yardova about new versions and offers"],
+    "الرسائل": ["Mesajlar", "Messages"],
+    "صار في نسخة جديدة من التطبيق فيها إصلاحات مهمة. حمّلها من موقعنا الرسمي وثبّتها فوق القديمة لتكمل اللعب.": ["Uygulamanın önemli düzeltmeler içeren yeni bir sürümü çıktı. Resmi sitemizden indirip eskisinin üzerine kur ve oynamaya devam et.", "A new version with important fixes is available. Download it from our official website and install it over the old one to keep playing."],
+    "⬇ فتح موقع التحميل الرسمي": ["⬇ Resmi indirme sitesini aç", "⬇ Open the official download site"],
+    "تم تحميل تقدمك المحفوظ!": ["Kayıtlı ilerlemen yüklendi!", "Your saved progress has been loaded!"],
+    "أهلاً! بدأنا لك تقدم جديد.": ["Hoş geldin! Senin için yeni bir oyun başlattık.", "Welcome! We started a new game for you."],
+    "تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.": ["Sunucuya bağlanılamadı, internetini kontrol edip tekrar dene.", "Couldn't reach the server. Check your internet and try again."],
+    "صار خطأ، جرّب كمان مرة.": ["Bir hata oluştu, tekrar dene.", "Something went wrong, please try again."],
+    "اكتب الكود أول.": ["Önce kodu yaz.", "Enter the code first."],
+    "جاري الاسترداد...": ["Kullanılıyor...", "Redeeming..."],
+    "ما في رسائل لسا.": ["Henüz mesaj yok.", "No messages yet."],
+    "جاري التحميل...": ["Yükleniyor...", "Loading..."],
+    "انتهت مدة العامل ⏰": ["İşçinin süresi doldu ⏰", "Worker's time is up ⏰"],
+    "مهام اليوم جاهزة 🎁": ["Günün görevleri hazır 🎁", "Today's tasks are ready 🎁"],
+    "استلم مكافأة تسجيل الدخول وكمّل مهام اليوم.": ["Giriş ödülünü al ve günün görevlerini tamamla.", "Claim your login reward and complete today's tasks."],
+    "رف جديد بانتظارك 📦": ["Yeni bir raf seni bekliyor 📦", "A new shelf is waiting for you 📦"],
+    "لازم تسمح للتطبيق بالإشعارات من إعدادات الجوال.": ["Telefon ayarlarından uygulamaya bildirim izni vermelisin.", "Please allow notifications for the app in your phone settings."],
+    "+2 نقطة، ومضاعفة الإنتاج ×2 لمدة 60 ثانية!": ["+2 puan ve 60 saniye boyunca 2x üretim!", "+2 points and 2x production for 60 seconds!"],
+    "ما تم إكمال مشاهدة الإعلان بالكامل.": ["Reklam sonuna kadar izlenmedi.", "The ad wasn't watched to the end."],
+    "تعذّر عرض الإعلان، حاول لاحقاً.": ["Reklam gösterilemedi, daha sonra tekrar dene.", "Couldn't show the ad, try again later."],
+    "الإعلان لسا يتحمّل، جرب بعد شوي.": ["Reklam hâlâ yükleniyor, biraz sonra dene.", "The ad is still loading, try again shortly."],
+    "لازم تسجّل دخول أول قبل ما تفتح جدار المهام (من صفحة الملف الشخصي)، حتى توصلك نقاطك صح.": ["Puanlarının doğru gelmesi için görev duvarını açmadan önce (Profil sayfasından) giriş yapmalısın.", "Please sign in (from the Profile page) before opening the offerwall so your points are credited correctly."],
+    "عم نجهّز جدار المهام...": ["Görev duvarı hazırlanıyor...", "Preparing the offerwall..."],
+    "تعذّر فتح جدار المهام حالياً، جرب بعد شوي.": ["Görev duvarı şu anda açılamadı, biraz sonra dene.", "Couldn't open the offerwall right now, try again shortly."],
+    // رسائل السيرفر
+    "انتهت جلستك، سجّل دخول من جديد.": ["Oturumun sona erdi, tekrar giriş yap.", "Your session expired, please sign in again."],
+    "رف غير موجود.": ["Raf bulunamadı.", "Shelf not found."],
+    "هذا الرف مفتوح أصلاً.": ["Bu raf zaten açık.", "This shelf is already unlocked."],
+    "نوع عامل غير صحيح.": ["Geçersiz işçi türü.", "Invalid worker type."],
+    "هذا الرف مقفول.": ["Bu raf kilitli.", "This shelf is locked."],
+    "مهمة غير موجودة.": ["Görev bulunamadı.", "Task not found."],
+    "استلمت هالمكافأة من قبل.": ["Bu ödülü zaten aldın.", "You already claimed this reward."],
+    "المهمة لسا ما خلصت.": ["Görev henüz tamamlanmadı.", "The task isn't completed yet."],
+    "استنى شوي قبل الإعلان الجاي.": ["Sonraki reklamdan önce biraz bekle.", "Please wait a bit before the next ad."],
+    "وصلت للحد اليومي لمكافآت الإعلانات.": ["Günlük reklam ödülü sınırına ulaştın.", "You've reached the daily ad reward limit."],
+    "عملة غير صحيحة.": ["Geçersiz coin.", "Invalid coin."],
+    "حط عنوان محفظة صحيح.": ["Geçerli bir cüzdan adresi gir.", "Enter a valid wallet address."],
+    "رسالة غير صحيحة.": ["Geçersiz mesaj.", "Invalid message."],
+    "هذا الكود غير موجود.": ["Bu kod mevcut değil.", "This code doesn't exist."],
+    "هذا الكود مستخدم من قبل.": ["Bu kod daha önce kullanılmış.", "This code has already been used."],
+    "هذا الكود غير صالح.": ["Bu kod geçersiz.", "This code is invalid."],
+    "تم استرداد هذا الكود مسبقاً.": ["Bu kod daha önce kullanılmış.", "This code has already been redeemed."],
+    "السيرفر مشغول، جرّب كمان مرة.": ["Sunucu meşgul, tekrar dene.", "The server is busy, please try again."],
+    "صار خطأ بالسيرفر، جرّب بعد شوي.": ["Sunucuda bir hata oluştu, biraz sonra dene.", "A server error occurred, try again shortly."],
+    "عملية غير معروفة.": ["Bilinmeyen işlem.", "Unknown action."],
+  };
+
+  // نصوص فيها أرقام أو أسماء متغيرة: {0} {1} {2}
+  const PATTERNS = [
+    ["يوم {0}", "{0}. gün", "Day {0}"],
+    ["استلم {0} نقطة", "{0} puan al", "Claim {0} points"],
+    ["🔥 سلسلة {0}/7", "🔥 Seri {0}/7", "🔥 Streak {0}/7"],
+    ["صاحبك بياخد {0} نقطة فوراً، وإنت بتاخد {1} لما يصير نشط + {2}% دايماً من أرباحه بجدار المهام", "Arkadaşın hemen {0} puan alır, o aktif olunca sen {1} puan + görev duvarı kazancının her zaman %{2}'sini alırsın", "Your friend gets {0} points right away; you get {1} when they become active + {2}% of their offerwall earnings forever"],
+    ["افتح اللعبة {0} أيام مختلفة ({1}/{2})", "Oyunu {0} farklı günde aç ({1}/{2})", "Open the game on {0} different days ({1}/{2})"],
+    ["شاهد {0} إعلانات ({1}/{2})", "{0} reklam izle ({1}/{2})", "Watch {0} ads ({1}/{2})"],
+    ["✓ تم التفعيل! +{0} نقطة", "✓ Etkinleştirildi! +{0} puan", "✓ Activated! +{0} points"],
+    ["اكتب كود الدعوة تبعي {0} وخود نقاط هدية!", "Davet kodum {0} ile hediye puan kazan!", "Use my invite code {0} to get bonus points!"],
+    ["قيمة الإنتاج {0}$", "Üretim değeri {0}$", "Production value {0}$"],
+    ["التحويل بالدولار أو بالليرة السورية حسب سعر الصرف المعتمد (حالياً 1$ = {0} ل.س).", "Transfer dolar veya Suriye lirası olarak, geçerli kura göre yapılır (şu an 1$ = {0} SYP).", "The transfer is made in dollars or Syrian pounds at the approved exchange rate (currently $1 = {0} SYP)."],
+    ["+{0} نقطة!", "+{0} puan!", "+{0} points!"],
+    ["الحد الأدنى للسحب {0} — مرة وحدة كل 24 ساعة", "Minimum çekim {0} — 24 saatte bir kez", "Minimum withdrawal {0} — once every 24 hours"],
+    ["الحد الأدنى للسحب {0}$.", "Minimum çekim {0}$.", "Minimum withdrawal is ${0}."],
+    ["أول سحب مفتوح بـ{0}$ ✓", "İlk çekim {0}$ ile açıldı ✓", "First withdrawal unlocked at ${0} ✓"],
+    ["أول سحب بـ{0}$ بيتفتح بعد {1} أيام نشاط و{2} إعلان (عندك {3} يوم و{4} إعلان)", "İlk çekim {0}$: {1} aktif gün ve {2} reklamdan sonra açılır (şu an {3} gün ve {4} reklam)", "First withdrawal of ${0} unlocks after {1} active days and {2} ads (you have {3} days and {4} ads)"],
+    ["الحد الأدنى للسحب {0} {1}.", "Minimum çekim {0} {1}.", "Minimum withdrawal is {0} {1}."],
+    ["{0}ي {1}س متبقي", "{0}g {1}sa kaldı", "{0}d {1}h left"],
+    ["{0}س {1}د متبقي", "{0}sa {1}dk kaldı", "{0}h {1}m left"],
+    ["{0}د متبقي", "{0}dk kaldı", "{0}m left"],
+    ["{0}ث متبقي", "{0}sn kaldı", "{0}s left"],
+    ["+{0}/ثانية {1} {2}", "+{0}/sn {1} {2}", "+{0}/sec {1} {2}"],
+    ["+{0}/ثانية {1}", "+{0}/sn {1}", "+{0}/sec {1}"],
+    ["+{0}/ثانية", "+{0}/sn", "+{0}/sec"],
+    ["إنتاج {0} {1}/ث", "Üretim {0} {1}/sn", "Output {0} {1}/s"],
+    ["فتح: {0} نقطة", "Aç: {0} puan", "Unlock: {0} points"],
+    ["{0} نقطة", "{0} puan", "{0} points"],
+    ["تم استئجار {0}!", "{0} kiralandı!", "{0} hired!"],
+    ["تقدر تسحب مرة كل 24 ساعة بس — جرّب بعد حوالي {0} ساعة.", "24 saatte yalnızca bir kez çekim yapabilirsin — yaklaşık {0} saat sonra dene.", "You can withdraw only once every 24 hours — try again in about {0} hours."],
+    ["وصلتك {0} نقطة! 🎉", "{0} puan kazandın! 🎉", "You received {0} points! 🎉"],
+    ["✓ تم الاسترداد! +{0} نقطة", "✓ Kullanıldı! +{0} puan", "✓ Redeemed! +{0} points"],
+    ["✓ تم استرداد {0} نقطة من البريد!", "✓ Postadan {0} puan alındı!", "✓ Claimed {0} points from mail!"],
+    ["تعذّر تحميل البريد: {0}", "Posta yüklenemedi: {0}", "Couldn't load mail: {0}"],
+    ["{0} خلّص شغله، جدّده ليرجع ينتج.", "{0} işini bitirdi, üretmeye devam etmesi için yenile.", "{0} finished working — renew it to keep producing."],
+    ["عندك {0} نقطة، بتكفي تفتح رف جديد وتزيد إنتاجك.", "{0} puanın var, yeni bir raf açıp üretimini artırabilirsin.", "You have {0} points — enough to unlock a new shelf and boost production."],
+    ["تعذّر إرسال الطلب: {0}", "Talep gönderilemedi: {0}", "Couldn't send request: {0}"],
+    ["تعذّر تسجيل الدخول: {0}", "Giriş yapılamadı: {0}", "Sign-in failed: {0}"],
+    ["الرصيد محسوب بالدولار. الحد الأدنى للسحب {0}$، وسحب واحد كل 24 ساعة، وتُراجَع الطلبات يدوياً.", "Bakiye dolar olarak hesaplanır. Asgari çekim {0}$, 24 saatte bir çekim hakkı vardır ve talepler elle incelenir.", "Your balance is counted in dollars. The minimum withdrawal is ${0}, one withdrawal per 24 hours, and requests are reviewed manually."],
+    ["أول سحب ممكن يكون {0}$ بعد {1} أيام نشاط و{2} إعلان (مرة وحدة لكل لاعب).", "İlk çekim {0}$ olabilir: {1} aktif gün ve {2} reklamdan sonra (oyuncu başına bir kez).", "Your first withdrawal can be ${0}, after {1} active days and {2} ads watched (once per player)."],
+    ["تعذّر تحميل تقدمك: {0}", "İlerlemen yüklenemedi: {0}", "Couldn't load your progress: {0}"],
+    ["تعذّر الاسترداد: {0}", "Kod kullanılamadı: {0}", "Redeem failed: {0}"],
+    ["حالة الشريط الإعلاني: {0}", "Banner durumu: {0}", "Banner status: {0}"],
+    ["تم تأكيد شحنتك بـ {0} نقطة! اضغط \"استرداد\" تحت لتفعيلها.", "{0} puanlık yüklemen onaylandı! Etkinleştirmek için aşağıdaki \"Kullan\" düğmesine bas.", "Your {0}-point top-up is confirmed! Tap \"Redeem\" below to activate it."],
+    ["₿ {0}", "₿ {0}", "₿ {0}"],
+    ["Ξ {0}", "Ξ {0}", "Ξ {0}"],
+    ["{0} ({1}/{2})", "{0} ({1}/{2})", "{0} ({1}/{2})"],
+  ];
+
+  const LANGS = { ar: { name: "العربية", dir: "rtl" }, tr: { name: "Türkçe", dir: "ltr" }, en: { name: "English", dir: "ltr" } };
+  const IDX = { tr: 0, en: 1 };
+  const ARABIC = /[\u0600-\u06FF]/;
+
+  function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  const COMPILED = PATTERNS.map(([ar, tr, en]) => {
+    const parts = ar.split(/\{\d\}/);
+    const order = (ar.match(/\{(\d)\}/g) || []).map(x => Number(x[1]));
+    const re = new RegExp("^" + parts.map(escapeRe).join("(.+?)") + "$");
+    return { re, order, out: { tr, en } };
+  });
+
+  function detectLang(){
+    try{ const saved = localStorage.getItem("lang"); if(saved && LANGS[saved]) return saved; }catch(e){}
+    const dev = (navigator.language || "ar").toLowerCase();
+    if(dev.startsWith("ar")) return "ar";
+    if(dev.startsWith("tr")) return "tr";
+    return "en";
+  }
+  let lang = detectLang();
+
+  function translate(text){
+    if(lang === "ar" || !text || !ARABIC.test(text)) return text;
+    const m = text.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    const core = m[2].replace(/\s+/g, " ");
+    if(Object.prototype.hasOwnProperty.call(EXACT, core)) return m[1] + EXACT[core][IDX[lang]] + m[3];
+    for(const p of COMPILED){
+      const mm = core.match(p.re);
+      if(!mm) continue;
+      let out = p.out[lang];
+      p.order.forEach((n, i) => { out = out.replace("{" + n + "}", translate(mm[i + 1])); });
+      return m[1] + out + m[3];
+    }
+    return text;
+  }
+
+  function isSkipped(node){
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return !el || !!el.closest("[translate='no'], script, style");
+  }
+  function translateTextNode(node){
+    if(isSkipped(node)) return;
+    let src;
+    if(node.__i18nOut !== undefined && node.nodeValue === node.__i18nOut) src = node.__i18nSrc;
+    else { src = node.nodeValue; node.__i18nSrc = src; }
+    const out = translate(src);
+    node.__i18nOut = out;
+    if(node.nodeValue !== out) node.nodeValue = out;
+  }
+  function translateAttr(el, attr){
+    const key = "__i18n_" + attr;
+    const cur = el.getAttribute(attr);
+    if(cur === null) return;
+    if(el[key + "Out"] === undefined || cur !== el[key + "Out"]) el[key + "Src"] = cur;
+    const out = translate(el[key + "Src"]);
+    el[key + "Out"] = out;
+    if(cur !== out) el.setAttribute(attr, out);
+  }
+  function translateTree(root){
+    if(!root) return;
+    if(root.nodeType === 3){ translateTextNode(root); return; }
+    if(root.nodeType !== 1 || isSkipped(root)) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n; const nodes = [];
+    while((n = walker.nextNode())) nodes.push(n);
+    nodes.forEach(translateTextNode);
+    const els = root.querySelectorAll ? root.querySelectorAll("[placeholder]") : [];
+    els.forEach(el => translateAttr(el, "placeholder"));
+    if(root.hasAttribute && root.hasAttribute("placeholder")) translateAttr(root, "placeholder");
+  }
+
+  function applyDirection(){
+    document.documentElement.lang = lang;
+    document.documentElement.dir = LANGS[lang].dir;
+  }
+
+  window.I18N = {
+    t: translate,
+    get lang(){ return lang; },
+    langs: LANGS,
+    setLang(l){
+      if(!LANGS[l]) return;
+      lang = l;
+      try{ localStorage.setItem("lang", l); }catch(e){}
+      applyDirection();
+      translateTree(document.body);
+      document.dispatchEvent(new CustomEvent("langchange", { detail: l }));
+    },
+  };
+
+  // الرسائل المنبثقة كمان بتتترجم
+  const origAlert = window.alert.bind(window);
+  window.alert = (msg) => origAlert(translate(String(msg)));
+
+  applyDirection();
+  document.addEventListener("DOMContentLoaded", () => {
+    translateTree(document.body);
+    new MutationObserver(muts => {
+      for(const mu of muts){
+        if(mu.type === "characterData") translateTextNode(mu.target);
+        else if(mu.type === "attributes") translateAttr(mu.target, "placeholder");
+        else mu.addedNodes.forEach(translateTree);
+      }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["placeholder"] });
+  });
+})();

@@ -5,6 +5,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WWW = os.path.join(HERE, "..", "www")
 SITE = os.path.join(HERE, "..", "site")
 OUT = os.path.join(SITE, "play")
+DOCS = os.path.join(HERE, "..", "docs")
+PAGES_BASE = "/warehouse-tycoon-app-2/play/"      # عنوان GitHub Pages (بديل لما الدومين ما بيفتح عند بعض الشبكات)
 
 HEAD_ADD = '''<meta name="robots" content="noindex">
 <meta name="theme-color" content="#0F3B33">
@@ -71,19 +73,28 @@ self.addEventListener('fetch', e => {
 });
 '''
 
-def build():
+def build_one(out, start, icon_prefix, icons_dir=None):
+    """out: مجلد الإخراج. start: مسار البداية. icon_prefix: مسار الأيقونات بالمنفستو. icons_dir: إذا الأيقونات لازم تنسخ جنب الصفحة."""
     html = open(os.path.join(WWW, "index.html"), encoding="utf-8").read()
     assert html.count('<meta name="viewport" content="width=device-width, initial-scale=1.0">') == 1
     html = html.replace('<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-                        '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">\n' + HEAD_ADD)
+                        '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">\n' + (HEAD_ADD if icons_dir is None else HEAD_ADD.replace('"/apple-touch-icon.png"', '"apple-touch-icon.png"').replace('"/favicon.ico"', '"icon-192.png"')))
     assert html.count("</body>") == 1
     html = html.replace("</body>", WEB_JS)
-    os.makedirs(OUT, exist_ok=True)
-    open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(html)
-    shutil.copy(os.path.join(WWW, "i18n.js"), os.path.join(OUT, "i18n.js"))
-    open(os.path.join(OUT, "manifest.webmanifest"), "w", encoding="utf-8").write(json.dumps(MANIFEST, ensure_ascii=False, indent=2))
-    open(os.path.join(OUT, "sw.js"), "w", encoding="utf-8").write(SW)
-    print("web version written to site/play:", sorted(os.listdir(OUT)))
+    os.makedirs(out, exist_ok=True)
+    open(os.path.join(out, "index.html"), "w", encoding="utf-8").write(html)
+    shutil.copy(os.path.join(WWW, "i18n.js"), os.path.join(out, "i18n.js"))
+    man = dict(MANIFEST); man["start_url"] = start; man["scope"] = start
+    man["icons"] = [{"src": icon_prefix + "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": icon_prefix + "icon-512.png", "sizes": "512x512", "type": "image/png"}]
+    open(os.path.join(out, "manifest.webmanifest"), "w", encoding="utf-8").write(json.dumps(man, ensure_ascii=False, indent=2))
+    open(os.path.join(out, "sw.js"), "w", encoding="utf-8").write(SW)
+    if icons_dir:
+        for f in ("icon-192.png", "icon-512.png", "apple-touch-icon.png"): shutil.copy(os.path.join(icons_dir, f), os.path.join(out, f))
+    print("web version written to", os.path.relpath(out, os.path.join(HERE, "..")), ":", sorted(os.listdir(out)))
+
+def build():
+    build_one(OUT, "/play/", "/")                                                   # yardova.ly-ad.de/play/
+    build_one(os.path.join(DOCS, "play"), PAGES_BASE, "", icons_dir=SITE)            # lyadsxsxscom-source.github.io/warehouse-tycoon-app-2/play/
 
 if __name__ == "__main__":
     build()
