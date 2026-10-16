@@ -17,6 +17,14 @@
     "Idle depo yönetim oyunu — işçilerini çalıştır, puan topla ve cüzdanının kendiliğinden dolmasını izle.",
     "An idle warehouse game — hire workers, collect points and watch your wallet grow on its own."
   ],
+  "⬇ حمّل من الموقع الرسمي (Android)": [
+    "⬇ Resmi siteden indir (Android)",
+    "⬇ Download from the official website (Android)"
+  ],
+  "التحميل من موقعنا الرسمي بس، وفيه خطوات التحقق من الملف قبل التثبيت": [
+    "Yalnızca resmi sitemizden indir; kurmadan önce dosyayı doğrulama adımları orada",
+    "Download only from our official website; it has the steps to verify the file before installing"
+  ],
   "⬇ تحميل آخر نسخة (Android)": [
     "⬇ Son sürümü indir (Android)",
     "⬇ Download latest version (Android)"

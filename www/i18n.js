@@ -180,6 +180,8 @@
     "أخبار وتحديثات": ["Haberler ve güncellemeler", "News & updates"],
     "رسائل من Yardova عن النسخ الجديدة والعروض": ["Yardova'dan yeni sürümler ve teklifler hakkında mesajlar", "Messages from Yardova about new versions and offers"],
     "الرسائل": ["Mesajlar", "Messages"],
+    "صار في نسخة جديدة من التطبيق فيها إصلاحات مهمة. حمّلها من موقعنا الرسمي وثبّتها فوق القديمة لتكمل اللعب.": ["Uygulamanın önemli düzeltmeler içeren yeni bir sürümü çıktı. Resmi sitemizden indirip eskisinin üzerine kur ve oynamaya devam et.", "A new version with important fixes is available. Download it from our official website and install it over the old one to keep playing."],
+    "⬇ فتح موقع التحميل الرسمي": ["⬇ Resmi indirme sitesini aç", "⬇ Open the official download site"],
     "تم تحميل تقدمك المحفوظ!": ["Kayıtlı ilerlemen yüklendi!", "Your saved progress has been loaded!"],
     "أهلاً! بدأنا لك تقدم جديد.": ["Hoş geldin! Senin için yeni bir oyun başlattık.", "Welcome! We started a new game for you."],
     "تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.": ["Sunucuya bağlanılamadı, internetini kontrol edip tekrar dene.", "Couldn't reach the server. Check your internet and try again."],

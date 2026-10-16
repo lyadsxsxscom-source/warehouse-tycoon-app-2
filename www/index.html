@@ -363,9 +363,9 @@ window.__errQueue = [];
 <div id="forceUpdateGate" class="overlay" style="z-index:100; background:var(--bg);">
   <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#F4C21F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg></div>
   <h1 style="margin:0 0 4px;">تحديث مطلوب</h1>
-  <div class="subtitle" style="margin-bottom:26px; text-align:center; max-width:280px;">صار في نسخة جديدة من التطبيق فيها إصلاحات مهمة. لازم تحدّث عشان تكمل اللعب.</div>
+  <div class="subtitle" style="margin-bottom:26px; text-align:center; max-width:280px;">صار في نسخة جديدة من التطبيق فيها إصلاحات مهمة. حمّلها من موقعنا الرسمي وثبّتها فوق القديمة لتكمل اللعب.</div>
   <button class="btn-main" id="btnForceUpdate" style="max-width:280px; background:linear-gradient(135deg, var(--ember), #ff8a5c); color:#210a02;">
-    ⬇ تحميل آخر نسخة
+    ⬇ فتح موقع التحميل الرسمي
   </button>
 </div>
 
@@ -671,7 +671,9 @@ function bootFinish(){
 }
 
 const APP_VERSION = "2.11"; // نرفعها يدوياً مع كل تعديل مهم؛ نضبط "أقل نسخة مسموحة" من صفحة الأدمن لإجبار المستخدمين القدامى على التحديث
-const APP_DOWNLOAD_URL = "https://postback.ly-ad.de/dl";
+// التنزيل بس من الموقع الرسمي (فيه خطوات التحقق من الملف)، مو رابط ملف الـAPK مباشرة
+const SITE_URL = "https://yardova.ly-ad.de/";
+function siteUrl(src){ const l = window.I18N ? I18N.lang : 'ar'; return SITE_URL + (l === 'tr' ? 'tr/' : l === 'en' ? 'en/' : '') + '?utm_source=' + src; }
 function versionCompare(a, b){
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
   const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
@@ -699,7 +701,7 @@ function openLink(url){
   try{ if(nativeBrowser){ nativeBrowser.open({ url }); } else { window.open(url, "_blank"); } }catch(e){}
 }
 const TELEGRAM_URL = "https://t.me/YardovaGame";
-document.getElementById('btnForceUpdate').onclick = () => openLink(APP_DOWNLOAD_URL);
+document.getElementById('btnForceUpdate').onclick = () => openLink(siteUrl('app_update'));
 checkForceUpdate();
 
 // ===== كشف VPN نشط (حماية الحسابات من الحظر بشبكات العروض) =====
@@ -1090,7 +1092,7 @@ document.getElementById('btnShareRef').onclick = async () => {
   const code = referralInfo?.code;
   if(!code) return;
   const tr = (x) => (window.I18N ? window.I18N.t(x) : x);
-  const text = tr('جرّب "Yardova" — لعبة إدارة مستودع مجانية 🏭') + '\n' + tr(`اكتب كود الدعوة تبعي ${code} وخود نقاط هدية!`) + '\n' + APP_DOWNLOAD_URL;
+  const text = tr('جرّب "Yardova" — لعبة إدارة مستودع مجانية 🏭') + '\n' + tr(`اكتب كود الدعوة تبعي ${code} وخود نقاط هدية!`) + '\n' + siteUrl('invite');
   const share = window.Capacitor?.Plugins?.Share;
   try{
     if(share){ await share.share({ title: 'Yardova', text, dialogTitle: 'شارك الكود' }); return; }
