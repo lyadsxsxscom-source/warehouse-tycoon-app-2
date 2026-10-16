@@ -179,6 +179,7 @@
     "ما في شحنات لسا.": ["Henüz yükleme yok.", "No top-ups yet."],
     "أخبار وتحديثات": ["Haberler ve güncellemeler", "News & updates"],
     "رسائل من Yardova عن النسخ الجديدة والعروض": ["Yardova'dan yeni sürümler ve teklifler hakkında mesajlar", "Messages from Yardova about new versions and offers"],
+    "الرسائل": ["Mesajlar", "Messages"],
     "تم تحميل تقدمك المحفوظ!": ["Kayıtlı ilerlemen yüklendi!", "Your saved progress has been loaded!"],
     "أهلاً! بدأنا لك تقدم جديد.": ["Hoş geldin! Senin için yeni bir oyun başlattık.", "Welcome! We started a new game for you."],
     "تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.": ["Sunucuya bağlanılamadı, internetini kontrol edip tekrar dene.", "Couldn't reach the server. Check your internet and try again."],

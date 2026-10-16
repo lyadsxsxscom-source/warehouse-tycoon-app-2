@@ -296,6 +296,12 @@
   .screen h3{display:inline-block; color:var(--text); font-size:14px; font-weight:800; margin:16px 4px 10px;}
   .screen h3::after{content:""; display:block; width:34px; height:4px; background:var(--amber); margin-top:5px;}
   .stat-label{letter-spacing:.02em;}
+  .mail-tabs{display:flex; margin:6px 4px 14px; border:2px solid var(--border); border-radius:4px; overflow:hidden; background:var(--panel); box-shadow:4px 4px 0 var(--shadow);}
+  .mail-tab{flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:11px 8px; background:transparent; color:var(--dim); border:0; font-family:inherit; font-size:14px; font-weight:800; cursor:pointer;}
+  .mail-tab + .mail-tab{border-right:2px solid var(--border);}
+  .mail-tab.active{background:var(--amber); color:var(--ink);}
+  .tab-dot{display:none; width:9px; height:9px; border-radius:50%; background:var(--alert); border:2px solid var(--ink);}
+  .tab-dot.show{display:inline-block;}
   .new-badge{display:inline-block; margin-right:8px; background:var(--alert); color:#fff; font-size:9px; padding:1px 6px; border-radius:3px; font-weight:800; vertical-align:2px;}
   .guide-alt{display:none; margin-top:8px; background:var(--panel); color:var(--text); border:2px solid var(--border); box-shadow:3px 3px 0 var(--shadow);}
 </style>
@@ -535,8 +541,12 @@ window.__errQueue = [];
 <!-- ===== MAIL ===== -->
 <div class="screen" id="screen-mail">
   <h3><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px; margin-left:6px;"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 6.5 12 13l8.5-6.5"/></svg>البريد</h3>
-  <div id="inboxBox" style="display:none;"><h3>رسائل من Yardova</h3><div id="inboxList"></div><h3>الشحنات</h3></div>
-  <div id="mailList"><div class="mail-empty">سجّل دخول عشان تشوف رسائلك.</div></div>
+  <div class="mail-tabs" id="mailTabs" role="tablist">
+    <button class="mail-tab active" data-mtab="msgs" role="tab" aria-selected="true"><span>الرسائل</span><i class="tab-dot" id="tabDotMsgs"></i></button>
+    <button class="mail-tab" data-mtab="ships" role="tab" aria-selected="false"><span>الشحنات</span><i class="tab-dot" id="tabDotShips"></i></button>
+  </div>
+  <div id="mailPaneMsgs"><div id="inboxList"></div><div class="mail-empty" id="inboxEmpty">ما في رسائل لسا.</div></div>
+  <div id="mailPaneShips" style="display:none;"><div id="mailList"><div class="mail-empty">سجّل دخول عشان تشوف رسائلك.</div></div></div>
 </div>
 
 <div class="note">
@@ -1538,11 +1548,30 @@ async function claimMail(mailId, code, btn){
 // ===== رسائل Yardova بالبريد (من الأدمن: للكل أو للاعب) =====
 let INBOX = { messages: [], unread: 0, readAt: 0 };
 let mailShipUnread = false;
-function updateMailDot(){ const d = document.getElementById('mailDot'); if(d) d.classList.toggle('show', mailShipUnread || INBOX.unread > 0); }
+function updateMailDot(){
+  const d = document.getElementById('mailDot'); if(d) d.classList.toggle('show', mailShipUnread || INBOX.unread > 0);
+  const a = document.getElementById('tabDotMsgs'), s = document.getElementById('tabDotShips');
+  if(a) a.classList.toggle('show', INBOX.unread > 0);
+  if(s) s.classList.toggle('show', mailShipUnread);
+}
+let mailTab = 'msgs';
+function showMailTab(name){
+  mailTab = name;
+  document.querySelectorAll('.mail-tab').forEach(b => { const on = b.dataset.mtab === name; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+  document.getElementById('mailPaneMsgs').style.display = name === 'msgs' ? 'block' : 'none';
+  document.getElementById('mailPaneShips').style.display = name === 'ships' ? 'block' : 'none';
+  if(name === 'msgs') setTimeout(() => { if(mailTab === 'msgs') markInboxRead(); }, 1500);   // التعليم كمقروء بس لما صفحة الرسائل تكون ظاهرة
+}
+function chooseMailTab(){          // لما تنفتح صفحة البريد: الرسائل الجديدة أولاً، وإلا الشحنات الجديدة، وإلا يضل يلي كان
+  if(INBOX.unread > 0) showMailTab('msgs');
+  else if(mailShipUnread) showMailTab('ships');
+  else showMailTab(mailTab);
+}
+document.querySelectorAll('.mail-tab').forEach(b => b.onclick = () => showMailTab(b.dataset.mtab));
 function renderInbox(){
-  const box = document.getElementById('inboxBox'), list = document.getElementById('inboxList');
-  if(!box || !list) return;
-  box.style.display = INBOX.messages.length ? 'block' : 'none';
+  const list = document.getElementById('inboxList');
+  if(!list) return;
+  document.getElementById('inboxEmpty').style.display = INBOX.messages.length ? 'none' : 'block';
   list.innerHTML = '';
   INBOX.messages.forEach(m => {
     const item = document.createElement('div'); item.className = 'mail-item' + (m.createdAt > INBOX.readAt ? ' unread' : '');
@@ -1821,7 +1850,7 @@ function goToScreen(name){
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.screen === name));
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + name).classList.add('active');
-  if(name === 'mail') loadInbox().then(() => setTimeout(markInboxRead, 1500));
+  if(name === 'mail') loadInbox().then(chooseMailTab);
 }
 document.querySelectorAll('.navbtn').forEach(btn => {
   btn.onclick = () => goToScreen(btn.dataset.screen);
