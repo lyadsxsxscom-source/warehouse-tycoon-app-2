@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Yardova", "operatingSystem": "Android", "applicationCategory": "GameApplication", "url": "https://yardova.ly-ad.de/tr/", "description": "Ücretsiz Android oyunu: görevlerle puan kazan, işçi kirala, deponu çalıştır ve bakiyeni USDT, BTC, ETH veya Sham Cash ile çek.", "inLanguage": "tr", "image": "https://yardova.ly-ad.de/og.png", "downloadUrl": "https://postback.ly-ad.de/dl", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "contentRating": "18+"}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">İçeriğe geç</a>
@@ -171,10 +176,13 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
       <h1>Oyunu açmasan da deponun işçileri çalışır</h1>
       <p>Yardova, Android için ücretsiz bir depo yönetimi oyunudur. Görev ve reklamlarla puan kazanır, puanlarla işçi kiralarsın; işçiler dolar değerinde bakiye üretir. Alt limite ulaşınca bakiyeni çekebilirsin.</p>
       <div class="btns">
-        <a class="btn main" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Uygulamayı indir (APK)</a>
+        <a class="btn main btn-apk" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Uygulamayı indir (APK)</a>
+        <a class="btn main ios-play" href="/play/" rel="noopener">iPhone&#x27;da oyna (tarayıcıdan)</a>
         
       </div>
-      <p class="small">Ücretsiz. Yalnızca Android. 18 yaş ve üzeri için.</p>
+      <p class="small small-apk">Ücretsiz. Yalnızca Android. 18 yaş ve üzeri için.</p>
+      <p class="small small-ios">Ücretsiz, tarayıcıda, reklamsız. 18 yaş ve üzeri için.</p>
+      <p class="small ios-line"><a href="/play/" rel="noopener">iPhone mu var? Tarayıcıdan oyna; indirme yok, reklam yok.</a></p>
       <p class="small"><a href="/tr/verify/">Kurmadan önce dosyayı doğrula</a></p>
     </div>
   </div></div>
@@ -197,7 +205,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   <div class="final"><div class="wrap in">
     <h2>Başlamaya hazır mısın?</h2>
     <div class="btns">
-      <a class="btn main" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Uygulamayı indir (APK)</a>
+      <a class="btn main btn-apk" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Uygulamayı indir (APK)</a>
+      <a class="btn main ios-play" href="/play/" rel="noopener">iPhone&#x27;da oyna (tarayıcıdan)</a>
       
     </div>
   </div></div>

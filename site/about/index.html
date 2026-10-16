@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "AboutPage", "name": "من نحن – Yardova", "description": "من يقف وراء Yardova، وكيف تعمل اللعبة مالياً، وكيف تُسحب أرصدة اللاعبين، وكيف تتواصل معنا.", "url": "https://yardova.ly-ad.de/about/", "inLanguage": "ar", "isPartOf": {"@type": "WebSite", "name": "Yardova", "url": "https://yardova.ly-ad.de"}}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">تخطّي إلى المحتوى</a>
@@ -171,6 +176,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p>Yardova مشروع مستقل يطوّره شخص واحد، وما وراءه شركة كبيرة. ولهذا نشرنا الكود المصدري للتطبيق والسيرفر علناً حتى يقدر أي شخص يراجعه: <a href="https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2" rel="noopener">الكود المصدري على GitHub</a>.</p>
 <p>للتواصل أو للإبلاغ عن مشكلة: <a href="mailto:admin@ly-ad.de">admin@ly-ad.de</a></p>
 <p>قناتنا الرسمية على تلغرام: <a href="https://t.me/YardovaGame" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
+<p>على الآيفون: العب من المتصفح عبر <a href="/play/" dir="ltr">yardova.ly-ad.de/play</a> (بدون تحميل وبدون إعلانات).</p>
 <h2>كيف تكسب اللعبة؟</h2>
 <p>اللعبة مجانية. يأتي دخلنا من شركاء إعلانات وعروض (إعلانات الفيديو وجدران المهام). جزء من هذا الدخل يرجع للاعبين على شكل رصيد قابل للسحب، والباقي يغطي تشغيل اللعبة.</p>
 <p class="note">لا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر، وقد يتوقف أي شريك فجأة.</p>

@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Yardova", "operatingSystem": "Android", "applicationCategory": "GameApplication", "url": "https://yardova.ly-ad.de/", "description": "لعبة مجانية للأندرويد: اكسب نقاطاً من المهام، استأجر عمّالاً يشغّلون مستودعك، واسحب رصيدك بـ USDT أو BTC أو ETH أو شام كاش.", "inLanguage": "ar", "image": "https://yardova.ly-ad.de/og.png", "downloadUrl": "https://postback.ly-ad.de/dl", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "contentRating": "18+"}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">تخطّي إلى المحتوى</a>
@@ -171,10 +176,13 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
       <h1>مستودعك يشتغل حتى لو ما فتحت اللعبة</h1>
       <p>Yardova لعبة إدارة مستودع مجانية للأندرويد. تكسب نقاطاً من المهام والإعلانات، وتستأجر بها عمّالاً ينتجون رصيداً بالدولار. وعندما يصل رصيدك إلى الحد الأدنى تسحبه.</p>
       <div class="btns">
-        <a class="btn main" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">تحميل التطبيق (APK)</a>
+        <a class="btn main btn-apk" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">تحميل التطبيق (APK)</a>
+        <a class="btn main ios-play" href="/play/" rel="noopener">العب على الآيفون (من المتصفح)</a>
         
       </div>
-      <p class="small">مجاني. لأجهزة أندرويد فقط. للبالغين 18 سنة فأكثر.</p>
+      <p class="small small-apk">مجاني. لأجهزة أندرويد فقط. للبالغين 18 سنة فأكثر.</p>
+      <p class="small small-ios">مجاني، بالمتصفح، بدون إعلانات. للبالغين 18 سنة فأكثر.</p>
+      <p class="small ios-line"><a href="/play/" rel="noopener">عندك آيفون؟ العب من المتصفح، بدون تحميل وبدون إعلانات.</a></p>
       <p class="small"><a href="/verify/">تحقق من الملف قبل التثبيت</a></p>
     </div>
   </div></div>
@@ -197,7 +205,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   <div class="final"><div class="wrap in">
     <h2>جاهز تبدأ؟</h2>
     <div class="btns">
-      <a class="btn main" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">تحميل التطبيق (APK)</a>
+      <a class="btn main btn-apk" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">تحميل التطبيق (APK)</a>
+      <a class="btn main ios-play" href="/play/" rel="noopener">العب على الآيفون (من المتصفح)</a>
       
     </div>
   </div></div>

@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "التحقق من ملف Yardova قبل التثبيت", "description": "خطوات بسيطة تتأكد فيها أنك حمّلت ملف Yardova الأصلي: مصادر التحميل، وبصمة الملف SHA-256، والفحص على VirusTotal، وأذونات التطبيق.", "url": "https://yardova.ly-ad.de/verify/", "inLanguage": "ar", "isPartOf": {"@type": "WebSite", "name": "Yardova", "url": "https://yardova.ly-ad.de"}}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">تخطّي إلى المحتوى</a>

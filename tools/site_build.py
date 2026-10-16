@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "site")
 BASE = "https://yardova.ly-ad.de"
+IOS_JS = '<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>'   # زوار الآيفون: زر اللعب من المتصفح بدل الـAPK
 DL = "https://postback.ly-ad.de/dl"
 DL_SITE = DL + "?src=site"   # روابط التحميل داخل الموقع (بتنحسب كتحميل من الموقع)
 HIT_URL = "https://postback.ly-ad.de/hit"
@@ -32,6 +33,7 @@ LANGS = {
   skip="تخطّي إلى المحتوى", h1="مستودعك يشتغل حتى لو ما فتحت اللعبة",
   sub="Yardova لعبة إدارة مستودع مجانية للأندرويد. تكسب نقاطاً من المهام والإعلانات، وتستأجر بها عمّالاً ينتجون رصيداً بالدولار. وعندما يصل رصيدك إلى الحد الأدنى تسحبه.",
   cta1="تحميل التطبيق (APK)", cta2="تحميل من ApkPure", small="مجاني. لأجهزة أندرويد فقط. للبالغين 18 سنة فأكثر.",
+  ios_btn="العب على الآيفون (من المتصفح)", ios_line="عندك آيفون؟ العب من المتصفح، بدون تحميل وبدون إعلانات.", ios_small="مجاني، بالمتصفح، بدون إعلانات. للبالغين 18 سنة فأكثر.",
   how="كيف تلعب",
   steps=[("اكسب نقاطاً","أنجز المهام اليومية، وشاهد الإعلانات، أو جرّب عروض الشركاء من زر واحد داخل اللعبة."),
          ("استأجر عمّالاً","عامل يومي أو أسبوعي أو شهري. ينتج رصيداً بالدولار حتى لو كان التطبيق مغلقاً."),
@@ -53,6 +55,7 @@ LANGS = {
   skip="İçeriğe geç", h1="Oyunu açmasan da deponun işçileri çalışır",
   sub="Yardova, Android için ücretsiz bir depo yönetimi oyunudur. Görev ve reklamlarla puan kazanır, puanlarla işçi kiralarsın; işçiler dolar değerinde bakiye üretir. Alt limite ulaşınca bakiyeni çekebilirsin.",
   cta1="Uygulamayı indir (APK)", cta2="ApkPure'dan indir", small="Ücretsiz. Yalnızca Android. 18 yaş ve üzeri için.",
+  ios_btn="iPhone'da oyna (tarayıcıdan)", ios_line="iPhone mu var? Tarayıcıdan oyna; indirme yok, reklam yok.", ios_small="Ücretsiz, tarayıcıda, reklamsız. 18 yaş ve üzeri için.",
   how="Nasıl oynanır",
   steps=[("Puan kazan","Günlük görevleri tamamla, reklam izle ya da oyun içindeki tek bir düğmeyle ortak firmaların tekliflerini dene."),
          ("İşçi kirala","Günlük, haftalık veya aylık işçi. Uygulama kapalıyken bile dolar değerinde bakiye üretir."),
@@ -74,6 +77,7 @@ LANGS = {
   skip="Skip to content", h1="Your warehouse keeps working while the game is closed",
   sub="Yardova is a free warehouse management game for Android. Earn points from tasks and ads, spend them on workers who produce a balance valued in dollars, and withdraw it once you reach the minimum.",
   cta1="Download the app (APK)", cta2="Get it on ApkPure", small="Free. Android only. For ages 18 and over.",
+  ios_btn="Play on iPhone (in your browser)", ios_line="Have an iPhone? Play in your browser, no download and no ads.", ios_small="Free, in the browser, no ads. For ages 18 and over.",
   how="How to play",
   steps=[("Earn points","Finish daily tasks, watch ads, or try partner offers from a single button inside the game."),
          ("Hire workers","Daily, weekly or monthly workers. They produce a dollar-valued balance even when the app is closed."),
@@ -113,6 +117,7 @@ ABOUT = {
 <p>Yardova مشروع مستقل يطوّره شخص واحد، وما وراءه شركة كبيرة. ولهذا نشرنا الكود المصدري للتطبيق والسيرفر علناً حتى يقدر أي شخص يراجعه: <a href="{REPO}" rel="noopener">الكود المصدري على GitHub</a>.</p>
 <p>للتواصل أو للإبلاغ عن مشكلة: <a href="mailto:{MAIL}">{MAIL}</a></p>
 <p>قناتنا الرسمية على تلغرام: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
+<p>على الآيفون: العب من المتصفح عبر <a href="/play/" dir="ltr">yardova.ly-ad.de/play</a> (بدون تحميل وبدون إعلانات).</p>
 <h2>كيف تكسب اللعبة؟</h2>
 <p>اللعبة مجانية. يأتي دخلنا من شركاء إعلانات وعروض (إعلانات الفيديو وجدران المهام). جزء من هذا الدخل يرجع للاعبين على شكل رصيد قابل للسحب، والباقي يغطي تشغيل اللعبة.</p>
 <p class="note">لا يوجد أي ضمان للربح. توفّر العروض يختلف من بلد لآخر ومن وقت لآخر، وقد يتوقف أي شريك فجأة.</p>
@@ -137,6 +142,7 @@ ABOUT = {
 <p>Yardova, tek bir kişi tarafından geliştirilen bağımsız bir projedir; arkasında büyük bir şirket yoktur. Bu yüzden uygulamanın ve sunucunun kaynak kodunu herkes inceleyebilsin diye açık yayınladık: <a href="{REPO}" rel="noopener">GitHub'daki kaynak kod</a>.</p>
 <p>İletişim veya sorun bildirmek için: <a href="mailto:{MAIL}">{MAIL}</a></p>
 <p>Resmi Telegram kanalımız: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
+<p>iPhone'da: tarayıcıdan oyna, <a href="/play/" dir="ltr">yardova.ly-ad.de/play</a> (indirme yok, reklam yok).</p>
 <h2>Oyun nasıl gelir elde ediyor?</h2>
 <p>Oyun ücretsizdir. Gelirimiz reklam ve teklif ortaklarından (video reklamlar ve görev duvarları) gelir. Bu gelirin bir kısmı oyunculara çekilebilir bakiye olarak döner, kalanı oyunun işletme giderlerini karşılar.</p>
 <p class="note">Kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir; bir ortak aniden durabilir.</p>
@@ -161,6 +167,7 @@ ABOUT = {
 <p>Yardova is an independent project built by a single person; there is no large company behind it. That's why we published the source code of the app and the server openly, so anyone can review it: <a href="{REPO}" rel="noopener">source code on GitHub</a>.</p>
 <p>To get in touch or report a problem: <a href="mailto:{MAIL}">{MAIL}</a></p>
 <p>Our official Telegram channel: <a href="{TG}" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
+<p>On iPhone: play in your browser at <a href="/play/" dir="ltr">yardova.ly-ad.de/play</a> (no download, no ads).</p>
 <h2>How does the game make money?</h2>
 <p>The game is free. Our income comes from advertising and offer partners (video ads and task walls). Part of that income returns to players as a withdrawable balance, and the rest covers the cost of running the game.</p>
 <p class="note">Earnings are not guaranteed. The availability of offers varies by country and over time, and a partner can stop suddenly.</p>
@@ -402,6 +409,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -538,6 +549,7 @@ def head(L, key="home"):
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Reem+Kufi:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>{CSS}</style>
 <script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>
+{IOS_JS}
 </head>
 '''
 
@@ -605,10 +617,13 @@ def page(L):
       <h1>{esc(t["h1"])}</h1>
       <p>{esc(t["sub"])}</p>
       <div class="btns">
-        <a class="btn main" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
+        <a class="btn main btn-apk" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
+        <a class="btn main ios-play" href="/play/" rel="noopener">{esc(t["ios_btn"])}</a>
         {apk_btn}
       </div>
-      <p class="small">{esc(t["small"])}</p>
+      <p class="small small-apk">{esc(t["small"])}</p>
+      <p class="small small-ios">{esc(t["ios_small"])}</p>
+      <p class="small ios-line"><a href="/play/" rel="noopener">{esc(t["ios_line"])}</a></p>
       <p class="small"><a href="{path_of(L, "verify")}">{esc(t["verify_hint"])}</a></p>
     </div>
   </div></div>
@@ -631,7 +646,8 @@ def page(L):
   <div class="final"><div class="wrap in">
     <h2>{esc(t["final"])}</h2>
     <div class="btns">
-      <a class="btn main" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
+      <a class="btn main btn-apk" href="{DL_SITE}" rel="noopener">{esc(t["cta1"])}</a>
+      <a class="btn main ios-play" href="/play/" rel="noopener">{esc(t["ios_btn"])}</a>
       {apk_btn}
     </div>
   </div></div>

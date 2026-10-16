@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "AboutPage", "name": "Hakkımızda – Yardova", "description": "Yardova'nın arkasında kim var, oyun nasıl gelir elde ediyor, oyuncu bakiyeleri nasıl çekiliyor ve bize nasıl ulaşırsın.", "url": "https://yardova.ly-ad.de/tr/about/", "inLanguage": "tr", "isPartOf": {"@type": "WebSite", "name": "Yardova", "url": "https://yardova.ly-ad.de"}}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">İçeriğe geç</a>
@@ -171,6 +176,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p>Yardova, tek bir kişi tarafından geliştirilen bağımsız bir projedir; arkasında büyük bir şirket yoktur. Bu yüzden uygulamanın ve sunucunun kaynak kodunu herkes inceleyebilsin diye açık yayınladık: <a href="https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2" rel="noopener">GitHub'daki kaynak kod</a>.</p>
 <p>İletişim veya sorun bildirmek için: <a href="mailto:admin@ly-ad.de">admin@ly-ad.de</a></p>
 <p>Resmi Telegram kanalımız: <a href="https://t.me/YardovaGame" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
+<p>iPhone'da: tarayıcıdan oyna, <a href="/play/" dir="ltr">yardova.ly-ad.de/play</a> (indirme yok, reklam yok).</p>
 <h2>Oyun nasıl gelir elde ediyor?</h2>
 <p>Oyun ücretsizdir. Gelirimiz reklam ve teklif ortaklarından (video reklamlar ve görev duvarları) gelir. Bu gelirin bir kısmı oyunculara çekilebilir bakiye olarak döner, kalanı oyunun işletme giderlerini karşılar.</p>
 <p class="note">Kazanç garantisi yoktur. Tekliflerin bulunması ülkeye ve zamana göre değişir; bir ortak aniden durabilir.</p>

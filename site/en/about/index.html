@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "AboutPage", "name": "About – Yardova", "description": "Who is behind Yardova, how the game makes money, how player balances are withdrawn, and how to reach us.", "url": "https://yardova.ly-ad.de/en/about/", "inLanguage": "en", "isPartOf": {"@type": "WebSite", "name": "Yardova", "url": "https://yardova.ly-ad.de"}}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -171,6 +176,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 <p>Yardova is an independent project built by a single person; there is no large company behind it. That's why we published the source code of the app and the server openly, so anyone can review it: <a href="https://github.com/lyadsxsxscom-source/warehouse-tycoon-app-2" rel="noopener">source code on GitHub</a>.</p>
 <p>To get in touch or report a problem: <a href="mailto:admin@ly-ad.de">admin@ly-ad.de</a></p>
 <p>Our official Telegram channel: <a href="https://t.me/YardovaGame" rel="noopener" dir="ltr">t.me/YardovaGame</a></p>
+<p>On iPhone: play in your browser at <a href="/play/" dir="ltr">yardova.ly-ad.de/play</a> (no download, no ads).</p>
 <h2>How does the game make money?</h2>
 <p>The game is free. Our income comes from advertising and offer partners (video ads and task walls). Part of that income returns to players as a withdrawable balance, and the rest covers the cost of running the game.</p>
 <p class="note">Earnings are not guaranteed. The availability of offers varies by country and over time, and a partner can stop suddenly.</p>

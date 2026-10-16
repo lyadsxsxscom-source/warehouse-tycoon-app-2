@@ -82,6 +82,10 @@ html[dir="rtl"] .tag{transform:rotate(1deg)}
 .btn.main:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #10211C}
 .btn.main:active{transform:translate(3px,3px);box-shadow:1px 1px 0 #10211C}
 .btn.alt{background:transparent;color:var(--ink);border-color:var(--ink)}
+.ios-play,.small-ios{display:none}
+html.is-ios .ios-play{display:inline-block}
+html.is-ios .small-ios{display:block}
+html.is-ios .btn-apk,html.is-ios .small-apk,html.is-ios .ios-line{display:none}
 .btn.alt:hover{background:var(--ink);color:var(--paper)}
 .small{margin:16px 0 0;font-size:.9rem;color:var(--muted)}
 
@@ -157,6 +161,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Yardova", "operatingSystem": "Android", "applicationCategory": "GameApplication", "url": "https://yardova.ly-ad.de/en/", "description": "Free Android game: earn points from tasks, hire workers to run your warehouse, and withdraw your balance in USDT, BTC, ETH or Sham Cash.", "inLanguage": "en", "image": "https://yardova.ly-ad.de/og.png", "downloadUrl": "https://postback.ly-ad.de/dl", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "contentRating": "18+"}</script>
+<script>(function(){var u=navigator.userAgent||"";if(/iPhone|iPad|iPod/i.test(u)||(/Macintosh/i.test(u)&&navigator.maxTouchPoints>1))document.documentElement.classList.add("is-ios");})();</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -171,10 +176,13 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
       <h1>Your warehouse keeps working while the game is closed</h1>
       <p>Yardova is a free warehouse management game for Android. Earn points from tasks and ads, spend them on workers who produce a balance valued in dollars, and withdraw it once you reach the minimum.</p>
       <div class="btns">
-        <a class="btn main" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Download the app (APK)</a>
+        <a class="btn main btn-apk" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Download the app (APK)</a>
+        <a class="btn main ios-play" href="/play/" rel="noopener">Play on iPhone (in your browser)</a>
         
       </div>
-      <p class="small">Free. Android only. For ages 18 and over.</p>
+      <p class="small small-apk">Free. Android only. For ages 18 and over.</p>
+      <p class="small small-ios">Free, in the browser, no ads. For ages 18 and over.</p>
+      <p class="small ios-line"><a href="/play/" rel="noopener">Have an iPhone? Play in your browser, no download and no ads.</a></p>
       <p class="small"><a href="/en/verify/">Verify the file before installing</a></p>
     </div>
   </div></div>
@@ -197,7 +205,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;direction
   <div class="final"><div class="wrap in">
     <h2>Ready to start?</h2>
     <div class="btns">
-      <a class="btn main" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Download the app (APK)</a>
+      <a class="btn main btn-apk" href="https://postback.ly-ad.de/dl?src=site" rel="noopener">Download the app (APK)</a>
+      <a class="btn main ios-play" href="/play/" rel="noopener">Play on iPhone (in your browser)</a>
       
     </div>
   </div></div>
