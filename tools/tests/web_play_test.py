@@ -24,7 +24,7 @@ INIT = """
 window.__authCb=null; window.__popup=0;
 const q={orderBy(){return q},limit(){return q},where(){return q},onSnapshot(){return ()=>{}},get:async()=>({exists:false,data:()=>({}),docs:[],forEach(){}}),doc(){return q}};
 const fsf=()=>({collection(){return q}}); fsf.FieldValue={increment:x=>x};
-window.firebase={initializeApp(){},apps:[],auth(){return{onAuthStateChanged(cb){window.__authCb=cb},currentUser:null,signOut(){},signInWithPopup(){window.__popup++;return Promise.resolve()}}},firestore:fsf};
+window.firebase={initializeApp(){},apps:[],auth(){return{onAuthStateChanged(cb){window.__authCb=cb},currentUser:null,signOut(){},signInWithPopup(){window.__popup++;return window.__popupFail?Promise.reject({code:window.__popupFail,message:'x'}):Promise.resolve()}}},firestore:fsf};
 window.firebase.auth.GoogleAuthProvider=function(){};
 window.fetch=async(u)=>({ok:true,status:200,json:async()=>(String(u).endsWith('/game/state')?{ok:true,state:%s}:{ok:true})});
 try{localStorage.setItem('lang','%s'); localStorage.setItem('guide_seen_v1','1');}catch(e){}
@@ -42,9 +42,10 @@ with sync_playwright() as p:
         pg.add_init_script(INIT % (json.dumps(STATE), lang)); return pg, errs, ctx
     # ---- static files
     html = open(os.path.join(ROOT, "site/play/index.html"), encoding="utf-8").read()
-    ok('viewport-fit=cover' in html and 'rel="manifest" href="manifest.webmanifest"' in html and 'rel="apple-touch-icon"' in html and 'apple-mobile-web-app-capable' in html and 'name="robots" content="noindex"' in html, "page has the viewport, manifest, apple icon, standalone and noindex tags")
+    ok('viewport-fit=cover' in html and 'rel="manifest" href="manifest.webmanifest"' in html and 'rel="apple-touch-icon"' in html and 'name="robots" content="noindex"' in html, "page has the viewport, manifest, apple icon and noindex tags")
+    ok('apple-mobile-web-app-capable' not in html and 'mobile-web-app-capable' not in html, "the page does NOT ask iOS to run it as a standalone web app (Google popup sign-in breaks there)")
     man = json.load(open(os.path.join(ROOT, "site/play/manifest.webmanifest"), encoding="utf-8"))
-    ok(man["display"] == "standalone" and man["start_url"] == "/play/" and man["scope"] == "/play/" and man["name"] == "Yardova" and len(man["icons"]) == 2, "manifest: standalone app named Yardova under /play/")
+    ok(man["display"] == "browser" and man["start_url"] == "/play/" and man["scope"] == "/play/" and man["name"] == "Yardova" and len(man["icons"]) == 2, "manifest: a shortcut that opens in the browser (display: browser), named Yardova, under /play/")
     pg0, _, c0 = page()
     for ic in man["icons"]:
         r = pg0.request.get(BASE + ic["src"]); ok(r.status == 200 and "image" in r.headers.get("content-type", ""), "manifest icon " + ic["src"] + " is served")
@@ -57,12 +58,23 @@ with sync_playwright() as p:
     ok(pg.is_visible("#btnGoogleLoginGate"), "logged-out: the Google sign-in button is shown")
     pg.click("#btnGoogleLoginGate"); pg.wait_for_timeout(200)
     ok(pg.evaluate("window.__popup") == 1, "tapping it uses the web popup sign-in (no native plugin needed)")
+    msgs = pg.evaluate("""[webAuthMessage({code:'auth/popup-closed-by-user'}), webAuthMessage({code:'auth/unauthorized-domain'}), webAuthMessage({code:'auth/network-request-failed', message:'net down'})]""")
+    ok("Safari" in msgs[0] and "منع التتبع" in msgs[0] and "النطاق" not in msgs[0], "a closed Google window gets the iPhone advice (turn off cross-site tracking prevention), not a wrong blame on the domain")
+    ok("Authorized" in msgs[1] or "مضاف" in msgs[1], "a really unauthorized domain gets its own message")
+    ok(msgs[2].endswith("net down") and msgs[2].startswith("تعذّر تسجيل الدخول"), "other errors show their own text")
+    # the real sign-in button shows the new, accurate message (not the old "preview domain" blame)
+    pg.evaluate("window.alert = function(m){ window.__alerted = m; }; window.__popupFail = 'auth/popup-closed-by-user'; 0"); pg.click("#btnGoogleLoginGate"); pg.wait_for_timeout(300)
+    al = pg.evaluate("window.__alerted || ''")
+    ok("Safari" in al and "منع التتبع" in al and "غير مصرّح" not in al, "when the Google window closes, the player sees the iPhone advice, not the old wrong domain message")
+    pg.evaluate("window.__popupFail = 'auth/unauthorized-domain'; window.__alerted = ''; 0"); pg.click("#btnGoogleLoginGate"); pg.wait_for_timeout(300)
+    ok("Authorized" in pg.evaluate("window.__alerted || ''") or "مضاف" in pg.evaluate("window.__alerted || ''"), "a really unauthorized domain gets its own message")
+    pg.evaluate("window.__popupFail = ''; 0")
     pg.evaluate(f"window.__authCb({USER})"); pg.wait_for_timeout(3000)
     ok(pg.evaluate("!!document.querySelector('.navbtn.active')") and pg.is_visible(".bottomnav"), "after login the game opens with its navigation")
     pg.click("#btnEarn"); pg.wait_for_timeout(300)
     ok(not pg.is_visible("#optAd") and pg.is_visible("#optOfferwall"), "in the earn menu the ads option is hidden and the task wall stays")
     pg.click("#closeEarn")
-    ok(pg.is_visible("#iosHint") and "إضافة إلى الشاشة الرئيسية" in pg.inner_text("#iosHint"), "iPhone Safari (not installed): the 'Add to Home Screen' hint is shown")
+    ok(pg.is_visible("#iosHint") and "إضافة إلى الشاشة الرئيسية" in pg.inner_text("#iosHint"), "iPhone Safari: the 'Add to Home Screen' shortcut hint is shown")
     pg.screenshot(path="/tmp/play_iphone.png")
     pg.click("#iosHint button"); pg.wait_for_timeout(100)
     ok(not pg.is_visible("#iosHint") and pg.evaluate("localStorage.getItem('ios_hint_closed')") == "1", "the hint can be closed and stays closed")
@@ -77,7 +89,15 @@ with sync_playwright() as p:
     # ---- installed (standalone) and desktop: no hint
     ctx = b.new_context(viewport={"width": 390, "height": 844}, user_agent=IPHONE_UA); pg = ctx.new_page(); pg.route("**/gstatic.com/**", lambda r: r.abort())
     pg.add_init_script("Object.defineProperty(navigator,'standalone',{get:()=>true});" + INIT % (json.dumps(STATE), "ar")); pg.goto(BASE + "/play/"); pg.wait_for_timeout(900); pg.evaluate(f"window.__authCb({USER})"); pg.wait_for_timeout(2500)
-    ok(pg.query_selector("#iosHint") is None, "already installed (standalone): no hint"); ctx.close()
+    ok(pg.query_selector("#iosHint") is None, "already installed (standalone): no shortcut hint"); ctx.close()
+    # ---- an old standalone icon at the login gate: explain how to fix it; logged-in: no warning
+    ctx = b.new_context(viewport={"width": 390, "height": 844}, user_agent=IPHONE_UA); pg = ctx.new_page(); pg.route("**/gstatic.com/**", lambda r: r.abort())
+    pg.add_init_script("Object.defineProperty(navigator,'standalone',{get:()=>true});" + INIT % (json.dumps(STATE), "ar")); pg.goto(BASE + "/play/"); pg.wait_for_timeout(900); pg.evaluate("window.__authCb(null)"); pg.wait_for_timeout(2200)
+    ok(pg.is_visible("#standaloneWarn") and "Safari" in pg.inner_text("#standaloneWarn") and "احذف هالأيقونة" in pg.inner_text("#standaloneWarn"), "old standalone icon + login screen: a clear note says to delete the icon and open it in Safari")
+    pg.evaluate(f"window.__authCb({USER})"); pg.wait_for_timeout(3000)
+    ok(pg.query_selector("#standaloneWarn") is None, "once logged in the note disappears"); ctx.close()
+    pg, errs, ctx = page(IPHONE_UA, "en"); pg.goto(BASE + "/play/"); pg.wait_for_timeout(900); pg.evaluate("window.__authCb(null)"); pg.wait_for_timeout(1500)
+    ok(pg.query_selector("#standaloneWarn") is None, "in normal Safari (not standalone) the note is never shown"); ctx.close()
     pg, errs, ctx = page(None, "ar", 1000, 800); pg.goto(BASE + "/play/"); pg.wait_for_timeout(900); pg.evaluate(f"window.__authCb({USER})"); pg.wait_for_timeout(2500)
     ok(pg.query_selector("#iosHint") is None and not pg.is_visible("#optAd") if pg.query_selector("#optAd") else True, "desktop browser: no iOS hint, still no ads option"); ctx.close()
     # ---- the GitHub Pages copy (a second address that works on networks where the custom domain doesn't)

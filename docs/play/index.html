@@ -21,10 +21,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0F3B33">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Yardova">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1310,7 +1307,7 @@ async function handleGoogleAuthClick(){
     // معاينة بمتصفح عادي (خارج التطبيق): نستخدم popup كخطة بديلة للاختبار فقط
     const provider = new firebase.auth.GoogleAuthProvider();
     fbAuth.signInWithPopup(provider).catch(err => {
-      alert('تعذّر تسجيل الدخول: ' + err.message + '\n(هذا النطاق التجريبي غير مصرّح به بإعدادات Firebase)');
+      alert(window.webAuthMessage ? webAuthMessage(err) : err.message);
     });
   }
 }
@@ -1968,11 +1965,11 @@ renderAll();
   try{
     var L = (window.I18N && I18N.lang) || 'ar';
     var T = {
-      ar: { hint: 'لتثبيتها كتطبيق: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».', close: 'إغلاق' },
-      tr: { hint: 'Uygulama olarak kurmak için: Paylaş düğmesine, sonra «Ana Ekrana Ekle»ye dokun.', close: 'Kapat' },
-      en: { hint: 'To install it as an app: tap the Share button, then “Add to Home Screen”.', close: 'Close' }
+      ar: { hint: 'لاختصار على الشاشة الرئيسية: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».', close: 'إغلاق', warn: 'لتسجيل الدخول افتح Yardova من Safari مباشرة (الأيقونة القديمة ما بتدعم تسجيل Google). احذف هالأيقونة، وافتح الرابط بـSafari، وأضف اختصار جديد.' },
+      tr: { hint: 'Ana ekrana kısayol için: Paylaş düğmesine, sonra «Ana Ekrana Ekle»ye dokun.', close: 'Kapat', warn: 'Giriş yapmak için Yardova’yı doğrudan Safari’den aç (eski simge Google girişini desteklemiyor). Bu simgeyi sil, bağlantıyı Safari’de aç ve yeni bir kısayol ekle.' },
+      en: { hint: 'For a shortcut on your Home Screen: tap the Share button, then “Add to Home Screen”.', close: 'Close', warn: 'To sign in, open Yardova directly in Safari (the old icon does not support Google sign-in). Delete this icon, open the link in Safari, and add a new shortcut.' }
     }[L] || null;
-    if(!T) T = { hint: 'To install it as an app: tap the Share button, then “Add to Home Screen”.', close: 'Close' };
+    if(!T) T = { hint: 'For a shortcut on your Home Screen: tap the Share button, then “Add to Home Screen”.', close: 'Close', warn: 'To sign in, open Yardova directly in Safari (the old icon does not support Google sign-in). Delete this icon, open the link in Safari, and add a new shortcut.' };
     // 1) ما في إعلانات بالويب (الإعلانات أصلية بالأندرويد)
     var ad = document.getElementById('optAd'); if(ad) ad.style.display = 'none';
     // 2) إعدادات إشعارات الدفع مو متوفرة بالويب
@@ -1990,6 +1987,31 @@ renderAll();
       x.style.cssText = 'background:transparent;border:0;color:#F4C21F;font-size:22px;line-height:1;cursor:pointer;';
       x.onclick = function(){ b.remove(); try{ localStorage.setItem('ios_hint_closed', '1'); }catch(e){} };
       b.appendChild(t); b.appendChild(x); document.body.appendChild(b);
+    }
+    // 3b) رسالة خطأ تسجيل الدخول بالويب (الرسالة الأصلية كانت بتلوم النطاق دايماً)
+    window.webAuthMessage = function(err){
+      var c = (err && err.code) || '', m = (err && err.message) || String(err || '');
+      var M = {
+        ar: { popup: 'ما اكتمل تسجيل الدخول (نافذة Google انسكّرت). على الآيفون جرّب: الإعدادات ← Safari ← طفّي «منع التتبع عبر المواقع» و«حظر النوافذ المنبثقة»، وارجع جرّب.', domain: 'هالنطاق مو مضاف بإعدادات Firebase (النطاقات المصرّح بها).', def: 'تعذّر تسجيل الدخول: ' },
+        tr: { popup: 'Giriş tamamlanamadı (Google penceresi kapandı). iPhone\'da şunu dene: Ayarlar ← Safari ← «Siteler Arası İzlemeyi Engelle» ve «Açılır Pencereleri Engelle»yi kapat, sonra tekrar dene.', domain: 'Bu alan adı Firebase ayarlarında (Yetkili alanlar) ekli değil.', def: 'Giriş yapılamadı: ' },
+        en: { popup: 'Sign-in did not finish (the Google window closed). On iPhone try: Settings ← Safari ← turn off “Prevent Cross-Site Tracking” and “Block Pop-ups”, then try again.', domain: 'This domain is not listed in Firebase (Authorized domains).', def: 'Sign-in failed: ' }
+      }[L] || null;
+      if(!M) M = { popup: 'Sign-in did not finish (the Google window closed). On iPhone try: Settings ← Safari ← turn off “Prevent Cross-Site Tracking” and “Block Pop-ups”, then try again.', domain: 'This domain is not listed in Firebase (Authorized domains).', def: 'Sign-in failed: ' };
+      if(c === 'auth/popup-closed-by-user' || c === 'auth/popup-blocked' || c === 'auth/cancelled-popup-request') return M.popup;
+      if(c === 'auth/unauthorized-domain') return M.domain;
+      return M.def + m;
+    };
+    // 3b) أيقونة قديمة مثبّتة كتطبيق مستقل (standalone) على الآيفون: تسجيل Google ما بيشتغل فيها، فنوضّح الحل عند شاشة الدخول
+    if(isIOS && standalone){
+      setInterval(function(){
+        var gate = document.getElementById('loginGate'), w = document.getElementById('standaloneWarn');
+        var need = gate && gate.classList.contains('show');
+        if(need && !w){
+          w = document.createElement('div'); w.id = 'standaloneWarn'; w.textContent = T.warn;
+          w.style.cssText = 'position:fixed;left:12px;right:12px;top:calc(18px + env(safe-area-inset-top));z-index:70;background:#14302A;border:2px solid #F4C21F;border-radius:4px;box-shadow:4px 4px 0 #000;padding:10px 12px;font-size:12px;line-height:1.8;color:#F3F5EE;text-align:center;';
+          document.body.appendChild(w);
+        } else if(!need && w){ w.remove(); }
+      }, 1200);
     }
     // 4) خدمة التخزين المؤقت (بتخلّي التطبيق يفتح أسرع)
     if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function(){});
