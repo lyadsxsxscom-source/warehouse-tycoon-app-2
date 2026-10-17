@@ -5,6 +5,15 @@
 (function(){
   // [تركي, إنجليزي]
   const EXACT = {
+  "طلبات متجر الألعاب والخدمات:": ["Oyun ve hizmet mağazası siparişleri:", "Game and service store orders:"],
+  "لما تطلب شحن لعبة أو خدمة بنقاطك، بنجمع التفاصيل يلي بتكتبها لتنفيذ الطلب (متل ID اللاعب أو بريدك أو رقم للتواصل) وحالة الطلب.": ["Puanlarınla bir oyun veya hizmet yüklemesi istediğinde, siparişi yerine getirmek için yazdığın bilgileri (oyuncu ID'si, e-postan veya iletişim numarası gibi) ve sipariş durumunu toplarız.", "When you order a game top-up or service with your points, we collect the details you type to fulfil the order (such as your player ID, email or a contact number) and the order status."],
+  "تقدر تحذف حسابك وبياناتك بنفسك من التطبيق: الملف الشخصي ← الإعدادات ← حذف حسابي. وإذا ما عدت تقدر تفتح التطبيق، تواصل معنا (تفاصيل التواصل تحت) ونحذفه لإلك.": ["Hesabını ve verilerini uygulamadan kendin silebilirsin: Profil ← Ayarlar ← Hesabımı sil. Uygulamayı artık açamıyorsan bizimle iletişime geç (iletişim bilgileri aşağıda), senin için silelim.", "You can delete your account and data yourself from the app: Profile ← Settings ← Delete my account. If you can no longer open the app, contact us (details below) and we will delete it for you."],
+  "بينحذف نهائياً:": ["Kalıcı olarak silinenler:", "Permanently deleted:"],
+  "تقدمك ونقاطك ورصيدك وعمّالك": ["İlerlemen, puanların, bakiyen ve işçilerin", "Your progress, points, balance and workers"],
+  "رسائلك وشحناتك داخل اللعبة، وكود الدعوة، وجهاز الإشعارات": ["Oyun içi mesajların ve yüklemelerin, davet kodun ve bildirim cihazın", "Your in-game messages and shipments, your invite code, and your notification device"],
+  "حساب الدخول المرتبط بحساب Google": ["Google hesabına bağlı giriş hesabı", "The sign-in account linked to your Google account"],
+  "بنحتفظ بسجلات السحب والشراء وطلبات المتجر (المبلغ والتاريخ والمحفظة أو طريقة الدفع) بعد ما نمسح منها اسمك وبريدك وصورة الإيصال والتفاصيل يلي كتبتها، لأسباب محاسبية ومنع الاحتيال.": ["Çekim, satın alma ve mağaza siparişi kayıtlarını (tutar, tarih, cüzdan veya ödeme yöntemi), içlerinden adını, e-postanı, makbuz görselini ve yazdığın bilgileri sildikten sonra muhasebe ve dolandırıcılığı önleme amacıyla saklarız.", "We keep withdrawal, purchase and store-order records (amount, date, wallet or payment method) after removing your name, email, receipt image and the details you typed, for accounting and fraud prevention."],
+  "ما منقدر نحذف الحساب إذا في طلب سحب أو شراء أو شحن قيد المراجعة، لازم يخلص أول. وبعد الحذف ما رح نقدر نسترجع تقدمك بالعبة.": ["İncelemede bir çekim, satın alma veya yükleme talebi varsa hesabı silemeyiz; önce bitmesi gerekir. Silindikten sonra oyundaki ilerlemeni geri getiremeyiz.", "We cannot delete the account while a withdrawal, purchase or top-up request is under review; it has to finish first. After deletion, we cannot restore your game progress."],
   "Yardova — التحميل والشحن": [
     "Yardova — İndir ve Yükle",
     "Yardova — Download & Top-up"
