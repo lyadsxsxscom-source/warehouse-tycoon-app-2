@@ -142,6 +142,7 @@
       <div class="tab" id="tabEconomy">⚖️ اقتصاد اللعبة</div>
       <div class="tab" id="tabPlayers">👥 اللاعبين</div>
       <div class="tab" id="tabMessages">📨 رسائل</div>
+<div class="tab" id="tabShop">🎮 شحن الألعاب <span id="shopBadge"></span></div>
       <div class="tab" id="tabTraffic">📊 الزيارات</div>
       <div class="tab" id="tabErrors">🐞 الأخطاء <span id="errBadge"></span></div>
       <div class="tab" id="tabCodes">🔑 توليد كود</div>
@@ -234,6 +235,49 @@
       <div class="card" style="overflow-x:auto;">
         <div style="font-size:13px; color:var(--dim); margin-bottom:8px;">آخر الرسائل المرسلة</div>
         <table><thead><tr><th>الوقت</th><th>إلى</th><th>العنوان</th><th>وصل / فشل</th></tr></thead><tbody id="msgLog"></tbody></table>
+      </div>
+    </div>
+
+    <div id="viewShop" style="display:none;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
+          <div style="font-size:13px; color:var(--dim);">طلبات اللاعبين (بنقاطهم). نفّذ الشحن من موقعك وبعدين أكّد هون.</div>
+          <button class="copy-btn" id="btnShopOrdersReload" style="width:auto; padding:6px 12px; margin:0;">تحديث</button>
+        </div>
+        <div class="field"><label>عرض</label>
+          <select id="shopOrdersStatus"><option value="pending">قيد التنفيذ</option><option value="done">المنفّذة</option><option value="rejected">المرفوضة</option><option value="all">الكل (آخر 100)</option></select>
+        </div>
+        <div id="shopOrdersList"></div>
+        <div class="msg" id="shopOrdersMsg"></div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:10px;" id="shopFormTitle">إضافة عنصر للمتجر</div>
+        <div class="field"><label>الاسم (مثال: PUBG 60 شدة)</label><input type="text" id="shopName" maxlength="80"></div>
+        <div class="field"><label>السعر بالنقاط</label><input type="number" id="shopPrice" min="1" step="1" inputmode="numeric"></div>
+        <div class="field"><label>وصف قصير (اختياري)</label><input type="text" id="shopDesc" maxlength="300"></div>
+        <div style="font-size:13px; color:var(--dim); margin:8px 0 6px;">المطلوب من اللاعب (علّم يلي بدك ياه)</div>
+        <div id="shopFieldRows"></div>
+        <details style="margin:10px 0;">
+          <summary style="cursor:pointer; font-size:13px; color:var(--dim);">ترجمات اختيارية (للاعبين الأتراك والإنجليز)</summary>
+          <div class="field" style="margin-top:8px;"><label>الاسم بالتركي</label><input type="text" id="shopNameTr" maxlength="80"></div>
+          <div class="field"><label>الاسم بالإنجليزي</label><input type="text" id="shopNameEn" maxlength="80"></div>
+          <div class="field"><label>الوصف بالتركي</label><input type="text" id="shopDescTr" maxlength="300"></div>
+          <div class="field"><label>الوصف بالإنجليزي</label><input type="text" id="shopDescEn" maxlength="300"></div>
+        </details>
+        <label style="display:flex; align-items:center; gap:8px; font-size:14px; margin-bottom:10px;"><input type="checkbox" id="shopEnabled" checked> ظاهر للاعبين</label>
+        <button class="btn" id="btnShopAdd" style="margin-bottom:8px;">إضافة للقائمة</button>
+        <button class="btn" id="btnShopCancel" style="display:none; margin-bottom:8px;">إلغاء التعديل</button>
+      </div>
+
+      <div class="card" style="overflow-x:auto;">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:8px;">عناصر المتجر <span id="shopDirty" style="color:var(--amber);"></span></div>
+        <table><thead><tr><th>الاسم</th><th>النقاط</th><th>ظاهر</th><th></th></tr></thead><tbody id="shopItemsBody"></tbody></table>
+        <div class="field" style="margin-top:12px;"><label>أقل أيام نشاط قبل ما اللاعب يطلب</label><input type="number" id="shopMinDays" min="0" max="60" step="1" inputmode="numeric"></div>
+        <div class="field"><label>أقصى عدد طلبات قيد التنفيذ للاعب الواحد</label><input type="number" id="shopMaxPending" min="1" max="20" step="1" inputmode="numeric"></div>
+        <button class="btn" id="btnShopSave">حفظ المتجر</button>
+        <div class="msg" id="shopMsg"></div>
+        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">التعديلات ما بتظهر للاعبين إلا بعد "حفظ المتجر". المتجر بيظهر بالتطبيق بس إذا في عنصر ظاهر. النقاط بتنخصم من اللاعب أول ما يطلب، وبترجع إذا رفضت الطلب.</div>
       </div>
     </div>
 
@@ -543,12 +587,14 @@ const tabPlayers = document.getElementById('tabPlayers');
 const viewPlayers = document.getElementById('viewPlayers');
 const tabMessages = document.getElementById('tabMessages');
 const viewMessages = document.getElementById('viewMessages');
+const tabShop = document.getElementById('tabShop');
+const viewShop = document.getElementById('viewShop');
 const tabTraffic = document.getElementById('tabTraffic');
 const viewTraffic = document.getElementById('viewTraffic');
 const tabErrors = document.getElementById('tabErrors');
 const viewErrors = document.getElementById('viewErrors');
-const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors, tabTraffic, tabPlayers, tabMessages];
-const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors, viewTraffic, viewPlayers, viewMessages];
+const allTabs = [tabStats, tabRequests, tabWithdraws, tabStore, tabEconomy, tabCodes, tabSettings, tabErrors, tabTraffic, tabPlayers, tabMessages, tabShop];
+const allViews = [viewStats, viewRequests, viewWithdraws, viewStore, viewEconomy, viewCodes, viewSettings, viewErrors, viewTraffic, viewPlayers, viewMessages, viewShop];
 function activateTab(tab, view){
   allTabs.forEach(t => t.classList.toggle('active', t === tab));
   allViews.forEach(v => v.style.display = (v === view) ? 'block' : 'none');
@@ -1007,6 +1053,186 @@ async function loadMsgLog(){
     document.getElementById('msgLog').innerHTML = (j.messages || []).map(m => `<tr><td style="direction:ltr; font-size:11px;">${escapeHtml(new Date(m.createdAt).toLocaleString('en-GB'))}</td><td style="font-size:12px;">${m.target === 'all' ? 'الكل' : escapeHtml(m.toEmail || 'لاعب')}</td><td style="font-size:12px;">${escapeHtml(m.title)}</td><td>${m.sent} / ${m.failed}${m.status === 'sending' ? ' ⏳' : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-note">ما في رسائل بعد</td></tr>';
   }catch(e){ document.getElementById('msgLog').innerHTML = `<tr><td colspan="4" class="empty-note">تعذّر تحميل السجل: ${escapeHtml(e.message)}</td></tr>`; }
 }
+// ===== متجر شحن الألعاب: عناصر المتجر + طلبات اللاعبين =====
+async function shopApi(path, payload){
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const r = await fetch('https://postback.ly-ad.de' + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok || !j.ok){ const e = new Error(j.message || j.error || ('HTTP ' + r.status)); e.code = j.error; throw e; }
+  return j;
+}
+const SHOP_PRESETS = [
+  { key: 'pid', type: 'id', ar: 'ID اللاعب', tr: 'Oyuncu ID', en: 'Player ID' },
+  { key: 'email', type: 'email', ar: 'البريد الإلكتروني', tr: 'E-posta', en: 'Email' },
+  { key: 'phone', type: 'phone', ar: 'رقم التواصل', tr: 'İletişim numarası', en: 'Contact number' },
+  { key: 'extra', type: 'text', ar: '', tr: '', en: '' },
+];
+let SHOP_ITEMS = [], SHOP_EDIT = -1, SHOP_DIRTY = false;
+function shopSetDirty(v){ SHOP_DIRTY = v; document.getElementById('shopDirty').textContent = v ? '— فيه تعديلات غير محفوظة' : ''; }
+function shopRenderFieldRows(fields){
+  const byKey = {}; (fields || []).forEach(f => { byKey[f.key] = f; });
+  document.getElementById('shopFieldRows').innerHTML = SHOP_PRESETS.map(pr => {
+    const f = byKey[pr.key];
+    const on = !!f || (!fields && pr.key === 'pid');
+    const label = f ? f.label : pr.ar;
+    return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <input type="checkbox" id="shopUse_${pr.key}" ${on ? 'checked' : ''}>
+      <input type="text" id="shopLabel_${pr.key}" value="${escapeHtml(label)}" maxlength="60" placeholder="${pr.key === 'extra' ? 'اسم الحقل الإضافي' : ''}" style="flex:1; margin:0;">
+      <label style="display:flex; align-items:center; gap:4px; font-size:12px; white-space:nowrap;"><input type="checkbox" id="shopReq_${pr.key}" ${!f || f.required !== false ? 'checked' : ''}> إجباري</label>
+    </div>`;
+  }).join('');
+}
+function shopReadForm(){
+  const v = id => document.getElementById(id).value.trim();
+  const fields = [];
+  SHOP_PRESETS.forEach(pr => {
+    if(!document.getElementById('shopUse_' + pr.key).checked) return;
+    const label = v('shopLabel_' + pr.key) || pr.ar;
+    if(!label) return;
+    const stock = label === pr.ar;
+    fields.push({ key: pr.key, label, label_tr: stock ? pr.tr : label, label_en: stock ? pr.en : label, type: pr.type, required: document.getElementById('shopReq_' + pr.key).checked });
+  });
+  return { name: v('shopName'), pricePoints: Math.floor(Number(v('shopPrice'))), desc: v('shopDesc'), name_tr: v('shopNameTr'), name_en: v('shopNameEn'), desc_tr: v('shopDescTr'), desc_en: v('shopDescEn'), fields, enabled: document.getElementById('shopEnabled').checked };
+}
+function shopResetForm(){
+  SHOP_EDIT = -1;
+  ['shopName','shopPrice','shopDesc','shopNameTr','shopNameEn','shopDescTr','shopDescEn'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('shopEnabled').checked = true;
+  shopRenderFieldRows(null);
+  document.getElementById('shopFormTitle').textContent = 'إضافة عنصر للمتجر';
+  document.getElementById('btnShopAdd').textContent = 'إضافة للقائمة';
+  document.getElementById('btnShopCancel').style.display = 'none';
+}
+function shopFillForm(i){
+  const it = SHOP_ITEMS[i]; if(!it) return;
+  SHOP_EDIT = i;
+  const set = (id, val) => { document.getElementById(id).value = val == null ? '' : val; };
+  set('shopName', it.name); set('shopPrice', it.pricePoints); set('shopDesc', it.desc);
+  set('shopNameTr', it.name_tr); set('shopNameEn', it.name_en); set('shopDescTr', it.desc_tr); set('shopDescEn', it.desc_en);
+  document.getElementById('shopEnabled').checked = it.enabled !== false;
+  shopRenderFieldRows(it.fields || []);
+  document.getElementById('shopFormTitle').textContent = 'تعديل: ' + it.name;
+  document.getElementById('btnShopAdd').textContent = 'تحديث العنصر';
+  document.getElementById('btnShopCancel').style.display = 'block';
+  document.getElementById('shopName').scrollIntoView && document.getElementById('shopName').scrollIntoView({ block: 'center' });
+}
+function renderShopItems(){
+  const body = document.getElementById('shopItemsBody');
+  if(!SHOP_ITEMS.length){ body.innerHTML = '<tr><td colspan="4" class="empty-note">المتجر فاضي. ضيف أول عنصر من فوق.</td></tr>'; return; }
+  body.innerHTML = SHOP_ITEMS.map((it, i) => `<tr>
+    <td>${escapeHtml(it.name)}<div style="font-size:11px; color:var(--dim);">${(it.fields || []).map(f => escapeHtml(f.label)).join('، ') || 'بدون حقول'}</div></td>
+    <td dir="ltr">${it.pricePoints}</td>
+    <td><input type="checkbox" data-shop-vis="${i}" ${it.enabled !== false ? 'checked' : ''}></td>
+    <td style="white-space:nowrap;"><button class="copy-btn" data-shop-act="edit" data-i="${i}" style="width:auto; padding:4px 8px; margin:0 2px;">تعديل</button><button class="copy-btn" data-shop-act="up" data-i="${i}" style="width:auto; padding:4px 8px; margin:0 2px;">▲</button><button class="copy-btn" data-shop-act="down" data-i="${i}" style="width:auto; padding:4px 8px; margin:0 2px;">▼</button><button class="copy-btn" data-shop-act="del" data-i="${i}" style="width:auto; padding:4px 8px; margin:0 2px; color:#e5533d;">حذف</button></td>
+  </tr>`).join('');
+}
+async function loadShop(){
+  const msg = document.getElementById('shopMsg');
+  msg.style.color = 'var(--dim)'; msg.textContent = 'عم يحمّل...';
+  try{
+    const j = await shopApi('/admin/shop', { action: 'get' });
+    SHOP_ITEMS = j.items || [];
+    document.getElementById('shopMinDays').value = j.settings.minActiveDays;
+    document.getElementById('shopMaxPending').value = j.settings.maxPending;
+    renderShopItems(); shopSetDirty(false); msg.textContent = '';
+  }catch(e){ msg.style.color = '#e5533d'; msg.textContent = 'تعذّر تحميل المتجر: ' + e.message; }
+}
+async function saveShop(){
+  const msg = document.getElementById('shopMsg');
+  msg.style.color = 'var(--dim)'; msg.textContent = 'عم يحفظ...';
+  try{
+    const settings = { minActiveDays: Number(document.getElementById('shopMinDays').value), maxPending: Number(document.getElementById('shopMaxPending').value) };
+    const j = await shopApi('/admin/shop', { action: 'save', items: SHOP_ITEMS, settings });
+    SHOP_ITEMS = j.items || [];
+    renderShopItems(); shopSetDirty(false);
+    msg.style.color = 'var(--ok, #4caf50)';
+    msg.textContent = 'انحفظ ✓ (' + SHOP_ITEMS.length + ' عنصر)' + (j.dropped ? ' — ' + j.dropped + ' عنصر ما انحفظ لأنه ناقص (اسم أو سعر)' : '');
+  }catch(e){ msg.style.color = '#e5533d'; msg.textContent = 'تعذّر الحفظ: ' + e.message; }
+}
+function shopAddOrUpdate(){
+  const msg = document.getElementById('shopMsg');
+  const it = shopReadForm();
+  if(!it.name){ msg.style.color = '#e5533d'; msg.textContent = 'اكتب اسم العنصر.'; return; }
+  if(!(it.pricePoints >= 1)){ msg.style.color = '#e5533d'; msg.textContent = 'اكتب السعر بالنقاط (رقم أكبر من صفر).'; return; }
+  if(SHOP_EDIT >= 0){ it.id = SHOP_ITEMS[SHOP_EDIT].id; SHOP_ITEMS[SHOP_EDIT] = it; } else { SHOP_ITEMS.push(it); }
+  msg.textContent = '';
+  shopResetForm(); renderShopItems(); shopSetDirty(true);
+}
+const SHOP_STATUS_LABEL = { pending: 'قيد التنفيذ', done: 'تم ✅', rejected: 'مرفوض ❌' };
+function renderShopOrders(orders){
+  const box = document.getElementById('shopOrdersList');
+  if(!orders.length){ box.innerHTML = '<div class="empty-note">ما في طلبات.</div>'; return; }
+  box.innerHTML = orders.map(o => {
+    const sn = o.snapshot || {};
+    const fields = (o.fields || []).map(f => `${escapeHtml(f.label)}: <b dir="ltr" style="user-select:all;">${escapeHtml(f.value || '—')}</b>`).join('<br>');
+    const actions = o.status === 'pending'
+      ? `<div style="display:flex; gap:8px; margin-top:10px;"><button class="btn" data-order="${escapeHtml(o.id)}" data-decision="done" style="margin:0;">✅ تم الشحن</button><button class="btn" data-order="${escapeHtml(o.id)}" data-decision="rejected" style="margin:0; background:#7a2a20; color:#fff;">❌ رفض وإرجاع النقاط</button></div>`
+      : `<div style="font-size:12px; color:var(--dim); margin-top:6px;">${SHOP_STATUS_LABEL[o.status] || escapeHtml(o.status)}${o.note ? ' — ' + escapeHtml(o.note) : ''}</div>`;
+    return `<div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; gap:8px;"><b>${escapeHtml(o.itemName)}</b><span dir="ltr">${o.pricePoints} نقطة</span></div>
+      <div style="font-size:12px; color:var(--dim);" dir="ltr">${escapeHtml(new Date(o.createdAt).toLocaleString('en-GB'))}</div>
+      <div style="margin-top:6px;">👤 ${escapeHtml(o.displayName || '—')} · <span dir="ltr">${escapeHtml(o.email || o.uid)}</span></div>
+      <div style="font-size:12px; color:var(--dim);">أيام نشاط: ${Number(sn.activeDays) || 0} · إعلانات: ${Number(sn.adsWatched) || 0} · نقاط مكتسبة: ${Math.round(Number(sn.totalPointsEarned) || 0)} · سحوبات: ${Number(sn.withdrawCount) || 0}</div>
+      <div style="margin-top:8px; line-height:1.9;">${fields || '<span style="color:var(--dim);">بدون تفاصيل</span>'}</div>
+      ${actions}
+    </div>`;
+  }).join('');
+}
+async function loadShopOrders(){
+  const msg = document.getElementById('shopOrdersMsg');
+  const status = document.getElementById('shopOrdersStatus').value;
+  msg.style.color = 'var(--dim)'; msg.textContent = 'عم يحمّل...';
+  try{
+    const j = await shopApi('/admin/shop-orders', { action: 'list', status });
+    renderShopOrders(j.orders || []);
+    if(status === 'pending') document.getElementById('shopBadge').textContent = (j.orders || []).length || '';
+    msg.textContent = '';
+  }catch(e){ msg.style.color = '#e5533d'; msg.textContent = 'تعذّر تحميل الطلبات: ' + e.message; }
+}
+async function refreshShopBadge(){
+  try{ const j = await shopApi('/admin/shop-orders', { action: 'list', status: 'pending' }); document.getElementById('shopBadge').textContent = (j.orders || []).length || ''; }catch(e){}
+}
+async function resolveShopOrder(id, decision){
+  const note = (window.prompt(decision === 'done' ? 'ملاحظة للاعب (اختياري، مثلاً: تم الشحن)' : 'سبب الرفض للاعب (اختياري)', '') );
+  if(note === null) return;
+  const msg = document.getElementById('shopOrdersMsg');
+  msg.style.color = 'var(--dim)'; msg.textContent = 'عم ينفّذ...';
+  try{
+    await shopApi('/admin/shop-orders', { action: 'resolve', orderId: id, decision, note: note || '' });
+    await loadShopOrders();
+    msg.style.color = 'var(--ok, #4caf50)'; msg.textContent = decision === 'done' ? 'تم ✓ وانبعت إشعار وبريد للاعب.' : 'انرفض ورجعت النقاط للاعب ✓';
+  }catch(e){ msg.style.color = '#e5533d'; msg.textContent = 'تعذّر التنفيذ: ' + e.message; await loadShopOrders(); }
+}
+tabShop.onclick = () => { activateTab(tabShop, viewShop); shopResetForm(); loadShopOrders(); if(!SHOP_DIRTY) loadShop(); };
+document.getElementById('btnShopOrdersReload').onclick = loadShopOrders;
+document.getElementById('shopOrdersStatus').addEventListener('change', loadShopOrders);
+document.getElementById('shopOrdersList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-order]'); if(!b) return;
+  resolveShopOrder(b.dataset.order, b.dataset.decision);
+});
+document.getElementById('btnShopAdd').onclick = shopAddOrUpdate;
+document.getElementById('btnShopCancel').onclick = shopResetForm;
+document.getElementById('btnShopSave').onclick = saveShop;
+document.getElementById('shopMinDays').addEventListener('input', () => shopSetDirty(true));
+document.getElementById('shopMaxPending').addEventListener('input', () => shopSetDirty(true));
+document.getElementById('shopItemsBody').addEventListener('click', e => {
+  const b = e.target.closest('button[data-shop-act]'); if(!b) return;
+  const i = Number(b.dataset.i), act = b.dataset.shopAct;
+  if(act === 'edit') return shopFillForm(i);
+  if(act === 'del'){ if(!window.confirm('حذف «' + SHOP_ITEMS[i].name + '» من القائمة؟ (ما بيتأثر الطلبات القديمة)')) return; SHOP_ITEMS.splice(i, 1); if(SHOP_EDIT === i) shopResetForm(); }
+  if(act === 'up' && i > 0) [SHOP_ITEMS[i - 1], SHOP_ITEMS[i]] = [SHOP_ITEMS[i], SHOP_ITEMS[i - 1]];
+  if(act === 'down' && i < SHOP_ITEMS.length - 1) [SHOP_ITEMS[i + 1], SHOP_ITEMS[i]] = [SHOP_ITEMS[i], SHOP_ITEMS[i + 1]];
+  renderShopItems(); shopSetDirty(true);
+});
+document.getElementById('shopItemsBody').addEventListener('change', e => {
+  const c = e.target.closest('input[data-shop-vis]'); if(!c) return;
+  SHOP_ITEMS[Number(c.dataset.shopVis)].enabled = c.checked; shopSetDirty(true);
+});
+
 tabMessages.onclick = async () => {
   activateTab(tabMessages, viewMessages);
   loadMsgLog();
@@ -1636,6 +1862,7 @@ fbAuth.onAuthStateChanged(user => {
     loadStoreConfig();
     loadGameConfig();
     loadMinVersion();
+    refreshShopBadge();
   } else if(user){
     gate.style.display = 'block';
     panel.style.display = 'none';
