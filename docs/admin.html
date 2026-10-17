@@ -236,6 +236,15 @@
         <div style="font-size:13px; color:var(--dim); margin-bottom:8px;">آخر الرسائل المرسلة</div>
         <table><thead><tr><th>الوقت</th><th>إلى</th><th>العنوان</th><th>وصل / فشل</th></tr></thead><tbody id="msgLog"></tbody></table>
       </div>
+      <div class="card">
+        <div style="font-size:13px; color:var(--dim); margin-bottom:10px;">🤖 بوت الدخول عبر تلغرام (@YardovaLoginBot)</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="btnTgSetup" style="margin:0;">ربط البوت بالسيرفر</button>
+          <button class="btn" id="btnTgStatus" style="margin:0;">فحص الحالة</button>
+        </div>
+        <div id="tgAdminOut" style="font-size:13px; line-height:1.9; margin-top:10px;"></div>
+        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">الخطوات: (1) ضيف التوكن بـCloudflare كـSecret باسم TELEGRAM_BOT_TOKEN وعمل Deploy. (2) اضغط "ربط البوت بالسيرفر" مرة وحدة. (3) "فحص الحالة" بيقلك إذا كل شي تمام. التوكن ما بيظهر هون أبداً.</div>
+      </div>
     </div>
 
     <div id="viewShop" style="display:none;">
@@ -1232,6 +1241,28 @@ document.getElementById('shopItemsBody').addEventListener('change', e => {
   const c = e.target.closest('input[data-shop-vis]'); if(!c) return;
   SHOP_ITEMS[Number(c.dataset.shopVis)].enabled = c.checked; shopSetDirty(true);
 });
+
+// ===== بوت الدخول عبر تلغرام: ربط وفحص =====
+async function tgAdmin(action){
+  const out = document.getElementById('tgAdminOut');
+  out.style.color = 'var(--dim)'; out.textContent = 'عم يفحص...';
+  try{
+    const j = await shopApi('/admin/telegram', { action });
+    const lines = [];
+    lines.push(j.username ? ('✅ البوت: @' + j.username + (j.username !== j.expectedUsername ? ' (المتوقع @' + j.expectedUsername + ')' : '')) : '⚠️ ما قدر يقرأ البوت');
+    lines.push(j.webhookOk ? '✅ مربوط بالسيرفر' : '⚠️ مو مربوط بالسيرفر (اضغط "ربط البوت بالسيرفر")');
+    if(j.setupOk === true) lines.push('✅ تم الربط للتو');
+    if(j.setupOk === false) lines.push('❌ فشل الربط: ' + (j.setupMessage || ''));
+    if(j.pending) lines.push('رسائل معلّقة عند تلغرام: ' + j.pending);
+    if(j.lastError) lines.push('آخر خطأ من تلغرام: ' + j.lastError);
+    out.innerHTML = lines.map(escapeHtml).join('<br>');
+  }catch(e){
+    out.style.color = '#e5533d';
+    out.textContent = e.code === 'no_token' ? 'التوكن مو مضاف بعد: ضيفه بـCloudflare كـSecret باسم TELEGRAM_BOT_TOKEN وبعدين Deploy.' : ('تعذّر: ' + e.message);
+  }
+}
+document.getElementById('btnTgSetup').onclick = () => tgAdmin('setup');
+document.getElementById('btnTgStatus').onclick = () => tgAdmin('status');
 
 tabMessages.onclick = async () => {
   activateTab(tabMessages, viewMessages);

@@ -433,7 +433,7 @@ function publicState(p, now, cfg) {
     wallet: { btc: cfg && coinPriceUsd(cfg, "btc") > 0 ? p.balanceUsd / coinPriceUsd(cfg, "btc") : 0, eth: 0 }, // للنسخ القديمة من التطبيق
     shelves: p.shelves.map(sh => shelfForClient(sh, cfg)), tasks: p.tasks, dailyDate: p.dailyDate,
     adsWatched: p.adsWatched, workersRented: p.workersRented, activeDays: p.activeDays,
-    boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now,
+    boostUntil: p.boostUntil, lastWithdrawAt: p.lastWithdrawAt, serverNow: now, tgLinked: !!p.tgLinked,
     serverToday: todaySyria(now),
     ads: cfg ? adsCfg(cfg) : { rewardPoints: AD_REWARD_POINTS, dailyLimit: AD_DAILY_LIMIT },
     daily: { streak: p.dailyStreak, lastClaim: p.lastDailyClaim, rewards: cfg ? dailyRewards(cfg) : DEFAULT_DAILY_REWARDS },
@@ -574,6 +574,7 @@ async function gameAction(action, body, user, env) {
         p.lastActiveDate = today;
         if (user.email && p.email !== user.email) p.email = String(user.email).slice(0, 120);
         if (user.name && p.displayName !== user.name) p.displayName = String(user.name).slice(0, 80);
+  else if (!user.name && user.tgName && !p.displayName) p.displayName = String(user.tgName).slice(0, 80);
         const writes = [statsWrite(env, today, { opens: 1 }, { uids: [uid], newUids: p.firstSeenDate === today ? [uid] : [] }), ...claimWrites];
         if (!p.referralCode) {
           // كود دعوة فريد: مستند referralCodes/{الكود} لازم يكون جديد، ولو صار تكرار بتنعاد المحاولة بكود تاني
@@ -1171,6 +1172,9 @@ async function handleDeleteAccount(request, env) {
       throw new ApiError("pending_requests", "عندك طلب (سحب أو شراء أو شحن) قيد المراجعة. استنى لينتهي قبل ما تحذف حسابك.", 409);
     }
     const code = player.exists && player.data.referralCode ? String(player.data.referralCode) : "";
+    const tgId = player.exists && /^[0-9]{1,20}$/.test(String(player.data.tgUserId || "")) ? String(player.data.tgUserId) : "";
+    const phoneH = player.exists && /^[0-9a-f]{64}$/.test(String(player.data.phoneHash || "")) ? String(player.data.phoneHash) : "";
+    const tgSessions = tgId ? await fsRunQuery(env, "tgSessions", null, 50, 0, { field: "tgUserId", value: Number(tgId) }) : [];
     const blank = (coll, rows, fields) => rows.map(r => ({
       update: { name: docName(env, coll + "/" + r.id), fields: objToFields({ ...fields, accountDeleted: true }) },
       updateMask: { fieldPaths: [...Object.keys(fields), "accountDeleted"] },
@@ -1183,6 +1187,8 @@ async function handleDeleteAccount(request, env) {
       { delete: docName(env, "players/" + uid) }, { delete: docName(env, "pushTokens/" + uid) }, { delete: docName(env, "inbox/" + uid) },
     ];
     if (code && !code.includes("/")) writes.push({ delete: docName(env, "referralCodes/" + code) });
+    if (tgId) writes.push({ delete: docName(env, "tgAccounts/" + tgId) }, ...tgSessions.map(r => ({ delete: docName(env, "tgSessions/" + r.id) })));
+    if (phoneH) writes.push({ delete: docName(env, "phoneHashes/" + phoneH) });
     for (let i = 0; i < writes.length; i += 400) await fsCommit(env, writes.slice(i, i + 400));
     let authDeleted = false;
     try { authDeleted = await deleteAuthUser(env, uid); } catch (e) { console.warn({ message: "auth user delete error", error: String(e.message || e) }); }
@@ -1192,6 +1198,181 @@ async function handleDeleteAccount(request, env) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "delete account error", error: String(e.message || e) });
     return jsonResponse({ ok: false, error: "server_error", message: "صار خطأ بالسيرفر، جرّب بعد شوي." }, 500);
+  }
+}
+
+// ===== الدخول عبر تلغرام (رقم الهاتف) =====
+// الفكرة: اللاعب بيفتح بوت تلغرام، بيكتب رمز بيشوفه باللعبة (حماية من الاحتيال)، وبيشارك رقمه بزر تلغرام (تلغرام بتتحقق إنه رقمه هو).
+// السيرفر بيحوّل الرقم لبصمة مشفّرة (ما بنخزّن الرقم نفسه) وبيعطي التطبيق "توكن دخول مخصص" من فايربيس. حساب واحد لكل حساب تلغرام ولكل رقم.
+// الحالات: started ← awaiting_code ← awaiting_contact ← verified ← used
+const TG_TTL = 5 * 60 * 1000, TG_MAX_ATTEMPTS = 5;
+const TG_TEXT = {
+  welcome: { ar: "👋 أهلاً! افتح لعبة Yardova واضغط «الدخول عبر تلغرام».", tr: "👋 Merhaba! Yardova oyununu aç ve «Telegram ile giriş»e dokun.", en: "👋 Hi! Open the Yardova game and tap “Sign in with Telegram”." },
+  expired: { ar: "انتهت صلاحية الطلب. ارجع للعبة وجرّب من جديد.", tr: "İstek süresi doldu. Oyuna dön ve yeniden dene.", en: "This request expired. Go back to the game and try again." },
+  ask_code: { ar: "للتأكيد، اكتب الرمز المكوّن من 6 أرقام الظاهر على شاشة اللعبة.", tr: "Onaylamak için oyun ekranında görünen 6 haneli kodu yaz.", en: "To confirm, type the 6-digit code shown on the game screen." },
+  wrong_code: { ar: "الرمز غلط. جرّب كمان مرة.", tr: "Kod yanlış. Tekrar dene.", en: "Wrong code. Try again." },
+  too_many: { ar: "محاولات كتير. ارجع للعبة وابدأ من جديد.", tr: "Çok fazla deneme. Oyuna dön ve baştan başla.", en: "Too many attempts. Go back to the game and start over." },
+  ask_contact: { ar: "تمام ✅ هلق اضغط الزر تحت لمشاركة رقمك. تلغرام بتتحقق منه، وما بنخزّن الرقم نفسه.", tr: "Tamam ✅ Şimdi numaranı paylaşmak için aşağıdaki düğmeye dokun. Telegram doğrular; numaranın kendisini saklamayız.", en: "OK ✅ Now tap the button below to share your number. Telegram verifies it, and we do not store the number itself." },
+  button: { ar: "📱 شارك رقمي", tr: "📱 Numaramı paylaş", en: "📱 Share my number" },
+  not_yours: { ar: "لازم تشارك رقمك أنت. استعمل الزر تحت.", tr: "Kendi numaranı paylaşmalısın. Aşağıdaki düğmeyi kullan.", en: "You must share your own number. Use the button below." },
+  done: { ar: "✅ تم التحقق! ارجع للعبة.", tr: "✅ Doğrulandı! Oyuna dön.", en: "✅ Verified! Go back to the game." },
+};
+function tgBotName(env) { return env.TELEGRAM_BOT_USERNAME || "YardovaLoginBot"; }
+function tgToken(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw new ApiError("no_token", "توكن بوت تلغرام مو مضاف بـCloudflare (TELEGRAM_BOT_TOKEN).", 503);
+  return env.TELEGRAM_BOT_TOKEN;
+}
+function tgKey(env, label) { return hmacHex(tgToken(env), "yardova:" + label); }
+async function tgApi(env, method, payload) {
+  const r = await fetch(`https://api.telegram.org/bot${tgToken(env)}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
+  return r.json().catch(() => ({ ok: false }));
+}
+function tgLang(from) { const l = String((from && from.language_code) || "").slice(0, 2); return l === "tr" || l === "en" ? l : "ar"; }
+function tgSay(env, chatId, lang, key, extra) {
+  return tgApi(env, "sendMessage", { chat_id: chatId, text: TG_TEXT[key][lang] || TG_TEXT[key].ar, ...(extra || {}) }).catch(e => console.warn({ message: "telegram send failed", error: String(e.message || e) }));
+}
+function b64urlRandom(n) { return bytesToB64url(crypto.getRandomValues(new Uint8Array(n))); }
+async function tgRateLimit(env, request) {
+  const kv = env.PENDING_CREDITS; if (!kv) return;
+  const key = "tgrl:" + (request.headers.get("CF-Connecting-IP") || "x");
+  const n = Number(await kv.get(key)) || 0;
+  if (n >= 30) throw new ApiError("rate_limited", "محاولات كتير، جرّب بعد شوي.", 429);
+  await kv.put(key, String(n + 1), { expirationTtl: 3600 });
+}
+async function tgMintCustomToken(env, uid, claims) {
+  const sa = JSON.parse(env.FIREBASE_SA); const now = Math.floor(Date.now() / 1000);
+  const header = strToB64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = strToB64url(JSON.stringify({ iss: sa.client_email, sub: sa.client_email, aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit", iat: now, exp: now + 3000, uid, claims }));
+  const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const key = await crypto.subtle.importKey("pkcs8", Uint8Array.from(atob(pem), c => c.charCodeAt(0)), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(header + "." + payload));
+  return header + "." + payload + "." + bytesToB64url(new Uint8Array(sig));
+}
+// تلغرام ← السيرفر
+async function handleTelegramWebhook(request, env) {
+  try {
+    const secret = await tgKey(env, "webhook");
+    if (!safeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "", secret)) return new Response("forbidden", { status: 401 });
+    let update; try { update = await request.json(); } catch (e) { return new Response("ok", { status: 200 }); }
+    await processTelegramUpdate(env, update);
+  } catch (e) { console.error({ message: "telegram webhook error", error: String(e.message || e) }); }
+  return new Response("ok", { status: 200 });                       // دايماً 200 حتى ما تعيد تلغرام الإرسال
+}
+async function processTelegramUpdate(env, update) {
+  const msg = update && update.message;
+  if (!msg || !msg.chat || msg.chat.type !== "private" || !msg.from || msg.from.is_bot) return;
+  const chatId = msg.chat.id, from = msg.from, lang = tgLang(from), now = Date.now();
+  const text = typeof msg.text === "string" ? msg.text.trim() : "";
+  const say = (key, extra) => tgSay(env, chatId, lang, key, extra);
+  if (text.startsWith("/start")) {
+    const nonce = text.split(/\s+/)[1] || "";
+    if (!/^[A-Za-z0-9_-]{16,40}$/.test(nonce)) return say("welcome");
+    const doc = await fsGetDoc(env, "tgSessions/" + nonce);
+    if (!doc.exists || now - Number(doc.data.createdAt) > TG_TTL || !["started", "awaiting_code", "awaiting_contact"].includes(doc.data.status)) return say("expired");
+    await fsCommit(env, [{ update: { name: docName(env, "tgSessions/" + nonce), fields: objToFields({ chatId, tgUserId: from.id, tgName: cleanText(from.first_name, 40), lang, status: "awaiting_code", attempts: 0 }) }, updateMask: { fieldPaths: ["chatId", "tgUserId", "tgName", "lang", "status", "attempts"] } }]);
+    return say("ask_code");
+  }
+  const rows = await fsRunQuery(env, "tgSessions", null, 20, 0, { field: "chatId", value: chatId });
+  const live = rows.filter(r => now - Number(r.data.createdAt) <= TG_TTL && ["awaiting_code", "awaiting_contact"].includes(r.data.status)).sort((a, b) => Number(b.data.createdAt) - Number(a.data.createdAt))[0];
+  if (!live) return say(msg.contact || /^\d{6}$/.test(text) ? "expired" : "welcome");
+  const path = "tgSessions/" + live.id, upd = (obj) => fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(obj) }, updateMask: { fieldPaths: Object.keys(obj) } }]);
+  if (live.data.status === "awaiting_code") {
+    if (!/^\d{6}$/.test(text)) return say("ask_code");
+    if (safeEqual(text, String(live.data.code))) { await upd({ status: "awaiting_contact" }); return say("ask_contact", { reply_markup: { keyboard: [[{ text: TG_TEXT.button[lang] || TG_TEXT.button.ar, request_contact: true }]], one_time_keyboard: true, resize_keyboard: true } }); }
+    const attempts = (Number(live.data.attempts) || 0) + 1;
+    if (attempts >= TG_MAX_ATTEMPTS) { await upd({ status: "failed", attempts }); return say("too_many"); }
+    await upd({ attempts }); return say("wrong_code");
+  }
+  if (live.data.status === "awaiting_contact") {
+    const c = msg.contact;
+    if (!c) return say("ask_contact");
+    if (Number(c.user_id) !== Number(from.id)) return say("not_yours");      // لازم يكون رقمه هو مو جهة اتصال مُحوّلة
+    const digits = String(c.phone_number || "").replace(/\D/g, "");
+    if (digits.length < 6 || digits.length > 16) return say("not_yours");
+    const phoneHash = await hmacHex(await tgKey(env, "phone"), digits);
+    await upd({ status: "verified", phoneHash });
+    return say("done", { reply_markup: { remove_keyboard: true } });
+  }
+}
+// التطبيق ← السيرفر
+async function handleTelegramStart(request, env) {
+  try {
+    let body = {}; try { body = await request.json(); } catch (e) {}
+    const mode = body.mode === "link" ? "link" : "login";
+    const uid = mode === "link" ? (await requireUser(request)).sub : "";
+    tgToken(env);
+    await tgRateLimit(env, request);
+    const nonce = b64urlRandom(16), pollSecret = b64urlRandom(24);
+    const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+    await fsCommit(env, [{ update: { name: docName(env, "tgSessions/" + nonce), fields: objToFields({ pollHash: await sha256Hex(pollSecret), code, mode, uid, status: "started", createdAt: Date.now(), attempts: 0 }) }, currentDocument: { exists: false } }]);
+    return jsonResponse({ ok: true, nonce, pollSecret, code, botUrl: `https://t.me/${tgBotName(env)}?start=${nonce}`, expiresIn: TG_TTL / 1000 }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "telegram start error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error", message: "صار خطأ بالسيرفر، جرّب بعد شوي." }, 500);
+  }
+}
+async function handleTelegramPoll(request, env) {
+  try {
+    let b = {}; try { b = await request.json(); } catch (e) {}
+    const nonce = String(b.nonce || ""), pollSecret = String(b.pollSecret || "");
+    if (!/^[A-Za-z0-9_-]{16,40}$/.test(nonce) || !pollSecret) throw new ApiError("bad_request", "طلب غير صحيح.", 400);
+    const path = "tgSessions/" + nonce, doc = await fsGetDoc(env, path);
+    if (!doc.exists || !safeEqual(await sha256Hex(pollSecret), String(doc.data.pollHash || ""))) throw new ApiError("not_found", "الجلسة غير موجودة.", 404);
+    const sess = doc.data, now = Date.now();
+    if (now - Number(sess.createdAt) > TG_TTL || sess.status === "used") return jsonResponse({ ok: true, status: "expired" }, 200);
+    if (sess.status === "failed") return jsonResponse({ ok: true, status: "failed", reason: "attempts" }, 200);
+    if (sess.status !== "verified") return jsonResponse({ ok: true, status: "waiting", step: { started: "open_bot", awaiting_code: "enter_code", awaiting_contact: "share_contact" }[sess.status] || "open_bot" }, 200);
+    if (sess.mode === "link") { const user = await requireUser(request); if (user.sub !== sess.uid) throw new ApiError("forbidden", "هالطلب مو لحسابك.", 403); }
+    // بنستهلك الجلسة مرة وحدة بس (الأول بيربح لو انبعتوا طلبين مع بعض)
+    await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields({ status: "used", phoneHash: "", usedAt: now }) }, updateMask: { fieldPaths: ["status", "phoneHash", "usedAt"] }, currentDocument: { updateTime: doc.updateTime } }]);
+    const tgId = String(Math.floor(Number(sess.tgUserId))), phoneHash = String(sess.phoneHash || ""), name = String(sess.tgName || "");
+    const [acc, ph] = await Promise.all([fsGetDoc(env, "tgAccounts/" + tgId), fsGetDoc(env, "phoneHashes/" + phoneHash)]);
+    const link = (uid) => ([
+      { update: { name: docName(env, "tgAccounts/" + tgId), fields: objToFields({ uid, phoneHash, linkedAt: now }) } },
+      { update: { name: docName(env, "phoneHashes/" + phoneHash), fields: objToFields({ uid, tgUserId: tgId, linkedAt: now }) } },
+    ]);
+    if (sess.mode === "link") {
+      const uid = String(sess.uid), me = await fsGetDoc(env, "players/" + uid);
+      if (acc.exists && acc.data.uid !== uid) return jsonResponse({ ok: true, status: "failed", reason: "taken" }, 200);
+      if (ph.exists && ph.data.uid !== uid) return jsonResponse({ ok: true, status: "failed", reason: "phone_taken" }, 200);
+      if (me.exists && me.data.tgUserId && String(me.data.tgUserId) !== tgId) return jsonResponse({ ok: true, status: "failed", reason: "already_linked" }, 200);
+      await fsCommit(env, [...link(uid), { update: { name: docName(env, "players/" + uid), fields: objToFields({ tgLinked: true, tgUserId: Number(tgId), phoneHash }) }, updateMask: { fieldPaths: ["tgLinked", "tgUserId", "phoneHash"] } }]);
+      return jsonResponse({ ok: true, status: "linked" }, 200);
+    }
+    let uid = acc.exists ? String(acc.data.uid) : ph.exists ? String(ph.data.uid) : "", isNew = false;
+    if (!uid) {
+      uid = "tg_" + tgId; isNew = true;
+      try { await fsCommit(env, [{ update: { name: docName(env, "players/" + uid), fields: objToFields({ tgLinked: true, tgUserId: Number(tgId), phoneHash, displayName: name }) }, currentDocument: { exists: false } }]); }
+      catch (e) { if (!e.conflict) throw e; }                              // انعمل بنفس اللحظة: ما في مشكلة
+    }
+    await fsCommit(env, link(uid));
+    const customToken = await tgMintCustomToken(env, uid, { tg: true, tgName: name });
+    return jsonResponse({ ok: true, status: "verified", customToken, isNew }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    if (e && e.conflict) return jsonResponse({ ok: true, status: "waiting", step: "open_bot" }, 200);
+    console.error({ message: "telegram poll error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error", message: "صار خطأ بالسيرفر، جرّب بعد شوي." }, 500);
+  }
+}
+// الأدمن: ربط البوت بالسيرفر (مرة وحدة) وفحص حالته. التوكن ما بيظهر لأي حدا، بيضل بـCloudflare.
+async function handleAdminTelegram(request, env) {
+  if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let b = {}; try { b = await request.json(); } catch (e) {}
+  try {
+    tgToken(env);
+    const hookUrl = new URL(request.url).origin + "/telegram/webhook";
+    let setRes = null;
+    if (b.action === "setup") setRes = await tgApi(env, "setWebhook", { url: hookUrl, secret_token: await tgKey(env, "webhook"), allowed_updates: ["message"], drop_pending_updates: true });
+    else if (b.action !== "status") return jsonResponse({ ok: false, error: "bad_action" }, 400);
+    const [me, info] = await Promise.all([tgApi(env, "getMe", {}), tgApi(env, "getWebhookInfo", {})]);
+    const wh = (info && info.result) || {};
+    return jsonResponse({ ok: true, setupOk: setRes ? !!setRes.ok : null, setupMessage: setRes && !setRes.ok ? String(setRes.description || "") : "", username: me && me.result ? me.result.username || "" : "", expectedUsername: tgBotName(env), webhookUrl: wh.url || "", webhookOk: wh.url === hookUrl, pending: wh.pending_update_count || 0, lastError: wh.last_error_message || "" }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "admin telegram error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
   }
 }
 
@@ -1768,6 +1949,10 @@ export default {
     if (url.pathname === "/" && request.method === "POST") return handlePostback(request, env, ctx);
     if (url.pathname === "/sign" && request.method === "POST") return handleSign(request, env);
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
+    if (url.pathname === "/telegram/webhook" && request.method === "POST") return handleTelegramWebhook(request, env);
+    if (url.pathname === "/auth/telegram/start" && request.method === "POST") return handleTelegramStart(request, env);
+    if (url.pathname === "/auth/telegram/poll" && request.method === "POST") return handleTelegramPoll(request, env);
+    if (url.pathname === "/admin/telegram" && request.method === "POST") return handleAdminTelegram(request, env);
     if (url.pathname === "/ow2") return handleOffersWallsPostback(request, env, ctx);
     if (url.pathname === "/wannads") return handleWannadsPostback(request, env, ctx);
     if (url.pathname === "/admin/notify" && request.method === "POST") return handleAdminNotify(request, env, ctx);
