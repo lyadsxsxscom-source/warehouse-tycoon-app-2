@@ -1049,6 +1049,53 @@ async function handleOffersWallsPostback(request, env, ctx) {
   return new Response("ok", { status: 200 });
 }
 
+// ===== جدار المهام التالت: Wannads =====
+// الرابط يلي بنحطه بلوحتهم: https://postback.ly-ad.de/wannads?user_id={user_id}&transaction_id={transaction_id}&reward={reward}&status={status}&signature={signature}
+// التوقيع: MD5(user_id + transaction_id + reward + SECRET). الـSECRET هو "Secret" بتفاصيل التطبيق (مو الـAPI Secret) ومحفوظ بـCloudflare باسم WANNADS_SECRET.
+// الحالة: "credited" أو 1 = إضافة، "rejected" أو 2 = سحب عكسي (نفس رقم العملية). الرد لازم يكون "OK" بالضبط، وأي رد تاني بيعتبروه فاشل وبيعيدوا الإرسال حتى 5 مرات.
+// عنوان IP تبعهم 3.22.177.178: بنسجّل التحذير إذا اختلف، وما بنمنع إلا إذا فعّلنا WANNADS_ENFORCE_IP=1 (التوقيع السري هو الحماية الأساسية).
+const WANNADS_IPS = ["3.22.177.178"];
+async function handleWannadsPostback(request, env, ctx) {
+  if (request.method !== "GET") return new Response("method not allowed", { status: 405 });
+  if (!env.WANNADS_SECRET) return new Response("not configured", { status: 503 });
+  const params = new URL(request.url).searchParams;
+  const uid = validId(params.get("user_id") || "");
+  const tx = validId(params.get("transaction_id") || "", 200);
+  const rewardRaw = params.get("reward") || "";
+  const status = (params.get("status") || "").toLowerCase();
+  const signature = (params.get("signature") || "").toLowerCase();
+  if (!uid || !tx || !signature) return new Response("Missing fields", { status: 400 });
+  const expected = await md5Hex(uid + tx + rewardRaw + env.WANNADS_SECRET);
+  if (!safeEqual(expected, signature)) {
+    console.warn({ message: "Wannads invalid signature" });
+    return new Response("Invalid signature", { status: 403 });
+  }
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  const allowed = env.WANNADS_IPS ? String(env.WANNADS_IPS).split(",").map(x => x.trim()).filter(Boolean) : WANNADS_IPS;
+  if (!allowed.includes(ip)) {
+    console.warn({ message: "Wannads postback from unexpected IP", ip });
+    if (env.WANNADS_ENFORCE_IP === "1") return new Response("forbidden", { status: 403 });
+  }
+  const credit = status === "credited" || status === "1";
+  const reject = status === "rejected" || status === "2";
+  if (!credit && !reject) return new Response("OK", { status: 200 });
+  if (credit) {
+    const amount = validReward(rewardRaw);
+    if (!amount) {
+      console.warn({ message: "Wannads invalid reward", reward: rewardRaw });
+      return new Response("OK", { status: 200 });          // "OK" عشان ما يعيدوا الإرسال لعملية ما منقدر نقبلها
+    }
+    const credited = await creditOfferOnce(env, "wannads", tx, uid, amount);
+    console.info({ message: "Wannads credit", credited, amount });
+    if (credited) ctx.waitUntil(sendPush(env, uid, "offerwall", { points: Math.floor(amount) }));
+    return new Response("OK", { status: 200 });
+  }
+  const result = await reverseOfferOnce(env, "wannads", tx, uid);
+  console.info({ message: "Wannads reversal", result });
+  if (result === "busy") return new Response("busy", { status: 503 });   // بيعيدوا المحاولة
+  return new Response("OK", { status: 200 });
+}
+
 // الأدمن بيطلب إرسال إشعار بعد ما يوافق/يرفض طلب سحب أو يأكد شحنة
 async function handleAdminNotify(request, env, ctx) {
   const user = await verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).catch(() => null);
@@ -1462,6 +1509,7 @@ export default {
     if (url.pathname === "/sign" && request.method === "POST") return handleSign(request, env);
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
     if (url.pathname === "/ow2") return handleOffersWallsPostback(request, env, ctx);
+    if (url.pathname === "/wannads") return handleWannadsPostback(request, env, ctx);
     if (url.pathname === "/admin/notify" && request.method === "POST") return handleAdminNotify(request, env, ctx);
     if (url.pathname === "/admin/withdraw" && request.method === "POST") return handleAdminWithdraw(request, env, ctx);
     if (url.pathname === "/report-error" && request.method === "POST") return handleReportError(request, env);
