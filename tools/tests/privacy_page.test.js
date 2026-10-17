@@ -14,6 +14,7 @@ async function page(lang) {
   ok(!!ar.getElementById("delete-account") && /حذف حسابي/.test(ar.getElementById("delete-account").textContent), "Arabic: section 5 explains deleting the account from the app, and has the #delete-account anchor");
   ok(/بنحتفظ بسجلات السحب والشراء وطلبات المتجر/.test(ar.body.textContent) && /طلبات متجر الألعاب والخدمات/.test(ar.body.textContent), "Arabic: what is kept, and the store orders data, are described");
   ok(/قيد المراجعة/.test(ar.body.textContent), "Arabic: it says deletion waits for pending requests");
+  ok(/الدخول عبر تلغرام:/.test(ar.body.textContent) && /بصمة مشفّرة من رقم هاتفك/.test(ar.body.textContent) && /ربط تلغرام وبصمة رقم الهاتف/.test(ar.body.textContent), "Arabic: Telegram sign-in data (id, first name, hashed phone) and its deletion are described");
   for (const [lang, a, b, c] of [["tr", /Hesabımı sil/, /muhasebe ve dolandırıcılığı önleme/, /mağazası siparişleri/], ["en", /Delete my account/, /accounting and fraud prevention/, /store orders/]]) {
     const d = await page(lang);
     const sec = [...d.querySelectorAll("h2")].find(h => /5\./.test(h.textContent));
@@ -21,6 +22,8 @@ async function page(lang) {
     ok(a.test(txt) && b.test(txt) && c.test(txt), `${lang}: deletion path, retention and store-order texts are translated`);
     const newBits = [d.getElementById("delete-account"), ...[...d.querySelectorAll("#delete-account ~ p, #delete-account ~ ul li")]].filter(Boolean).map(e => e.textContent).join(" ");
     ok(newBits.length > 200 && !/[\u0600-\u06FF]/.test(newBits), `${lang}: the whole new rights section has no leftover Arabic`);
+    const tg = [...d.querySelectorAll("p")].find(p => /Telegram/.test(p.textContent) && /fingerprint|iz/.test(p.textContent));
+    ok(tg && !/[\u0600-\u06FF]/.test(tg.textContent) && /Telegram bağlantısı ve telefon numarası izi|The Telegram link and the phone-number fingerprint/.test(d.body.textContent), `${lang}: the Telegram sign-in paragraph and the deletion item are fully translated`);
     const orders = [...d.querySelectorAll("p")].find(p => /store orders|mağazası siparişleri/.test(p.textContent));
     ok(orders && !/[\u0600-\u06FF]/.test(orders.textContent), `${lang}: the store-orders paragraph is fully translated`);
   }
