@@ -234,9 +234,10 @@ async function fsCommit(env, writes) {
 }
 
 // استعلام بسيط: آخر N مستند من مجموعة، مرتبة حسب حقل تنازلياً
-async function fsRunQuery(env, collectionId, orderField, limit, offset) {
+async function fsRunQuery(env, collectionId, orderField, limit, offset, filter) {
   const token = await getGoogleAccessToken(env);
   const sq = { from: [{ collectionId }], limit };
+  if (filter) sq.where = { fieldFilter: { field: { fieldPath: filter.field }, op: "EQUAL", value: toFs(filter.value) } };   // فلتر واحد (مساواة) ما بيحتاج فهرس
   if (orderField) sq.orderBy = [{ field: { fieldPath: orderField }, direction: "DESCENDING" }];   // بدون ترتيب = كل المستندات (حتى يلي ما فيها حقل الترتيب)
   if (offset > 0) sq.offset = offset;
   const r = await fetch(fsUrl(env, ":runQuery"), {
@@ -267,8 +268,8 @@ function statsWrite(env, day, incs = {}, arrays = {}) {
 let cachedConfig = null;
 async function loadConfig(env) {
   if (cachedConfig && cachedConfig.at > Date.now() - 60000) return cachedConfig.value;
-  const [game, pricing] = await Promise.all([fsGetDoc(env, "config/gameConfig"), fsGetDoc(env, "config/pricing")]);
-  const value = { game: game.data || {}, pricing: pricing.data || {} };
+  const [game, pricing, shop] = await Promise.all([fsGetDoc(env, "config/gameConfig"), fsGetDoc(env, "config/pricing"), fsGetDoc(env, "config/shop")]);
+  const value = { game: game.data || {}, pricing: pricing.data || {}, shop: shop.data || {} };
   cachedConfig = { at: Date.now(), value };
   return value;
 }
@@ -507,8 +508,18 @@ const PUSH_TEXT = {
     en: (p) => ["Your friend is now an active player! 🤝", `${p.points} referral reward points were added.`],
   },
 };
+PUSH_TEXT.shop_done = {
+  ar: (p) => ["تم تنفيذ طلبك ✅", `تم تنفيذ طلب «${p.item}». شوف بريدك داخل اللعبة.`],
+  tr: (p) => ["Siparişin tamamlandı ✅", `«${p.item}» siparişin tamamlandı. Oyun içi postana bak.`],
+  en: (p) => ["Your order is done ✅", `Your order “${p.item}” is complete. Check your in-game mail.`],
+};
+PUSH_TEXT.shop_rejected = {
+  ar: (p) => ["انرفض طلبك", `رجعنالك ${p.points} نقطة. شوف بريدك داخل اللعبة.`],
+  tr: (p) => ["Siparişin reddedildi", `${p.points} puan iade edildi. Oyun içi postana bak.`],
+  en: (p) => ["Your order was declined", `${p.points} points were refunded. Check your in-game mail.`],
+};
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -736,6 +747,37 @@ async function gameAction(action, body, user, env) {
       });
     }
 
+    case "shopOrder": {
+      const item = shopItemsFrom(cfg).find(x => x.id === String(body.itemId || ""));
+      if (!item || !item.enabled) throw new ApiError("shop_item", "هذا العنصر مو متوفر حالياً.", 404);
+      const sent = body.fields && typeof body.fields === "object" ? body.fields : {};
+      const values = item.fields.map(f => ({ key: f.key, label: f.label, value: validateShopField(f, sent[f.key]) }));
+      const reqId = validId(String(body.reqId || ""), 64) || randomId();
+      const orderId = (await sha256Hex(uid + "|" + reqId)).slice(0, 32);
+      const st = shopSettings(cfg);
+      return mutatePlayer(env, uid, async (p, now) => {
+        if ((await fsGetDoc(env, "shopOrders/" + orderId)).exists) throw new ApiError("duplicate_order", "طلبك انبعت قبل، ما لازم تبعته مرة تانية.", 409);
+        if (p.activeDays < st.minActiveDays) throw new ApiError("shop_locked", `هالخدمة بتتفتح بعد ${st.minActiveDays} أيام نشاط (عندك ${p.activeDays}).`);
+        if (p.points < item.pricePoints) throw new ApiError("not_enough_points", "نقاط غير كافية.");
+        const mine = await fsRunQuery(env, "shopOrders", null, 50, 0, { field: "uid", value: uid });
+        if (mine.filter(o => o.data.status === "pending").length >= st.maxPending) throw new ApiError("too_many_pending", `عندك ${st.maxPending} طلبات قيد التنفيذ، استنى لتخلص قبل ما تطلب غيرها.`);
+        p.points -= item.pricePoints;
+        const order = {
+          uid, displayName: user.name || "", email: user.email || "",
+          itemId: item.id, itemName: item.name, itemNameTr: item.name_tr || "", itemNameEn: item.name_en || "",
+          pricePoints: item.pricePoints, fields: values, status: "pending", createdAt: now,
+          snapshot: { activeDays: p.activeDays, adsWatched: p.adsWatched, totalPointsEarned: p.totalPointsEarned, workersRented: p.workersRented, withdrawCount: Number(p.withdrawCount) || 0, pointsAfter: p.points },
+        };
+        return {
+          writes: [
+            { update: { name: docName(env, "shopOrders/" + orderId), fields: objToFields(order) }, currentDocument: { exists: false } },
+            statsWrite(env, todaySyria(now), { shopOrders: 1, shopPoints: item.pricePoints }),
+          ],
+          result: { orderId, pricePoints: item.pricePoints },
+        };
+      });
+    }
+
     case "inboxRead":
       return mutatePlayer(env, uid, (p, now) => { p.inboxReadAt = now; });
 
@@ -823,6 +865,7 @@ async function handleInbox(request, env) {
 
 async function handleGame(request, env, action) {
   if (action === "inbox") return handleInbox(request, env);
+  if (action === "shop") return handleShopList(request, env);
   try {
     const user = await requireUser(request);
     let body = {};
@@ -1094,6 +1137,167 @@ async function handleWannadsPostback(request, env, ctx) {
   console.info({ message: "Wannads reversal", result });
   if (result === "busy") return new Response("busy", { status: 503 });   // بيعيدوا المحاولة
   return new Response("OK", { status: 200 });
+}
+
+// ===== متجر شحن الألعاب (طلبات يدوية بالنقاط، الأدمن بيعبّي العناصر وبينفّذ الطلبات) =====
+// العناصر محفوظة بـconfig/shop. اللاعب بيطلب فبتنخصم نقاطه وبينعمل طلب "pending". الأدمن بينفّذه يدوياً وبيأكّد (done) أو بيرفضه (rejected) فبترجع النقاط.
+const SHOP_MAX_ITEMS = 60, SHOP_MAX_FIELDS = 5, SHOP_FIELD_TYPES = ["id", "email", "phone", "text"];
+function cleanText(v, max) { return String(v == null ? "" : v).replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max); }
+function locText(o, base, lang) { return String((lang !== "ar" && o[base + "_" + lang]) || o[base] || ""); }
+function sanitizeShopItem(x, idx) {
+  if (!x || typeof x !== "object") return null;
+  const name = cleanText(x.name, 80);
+  const price = Math.floor(Number(x.pricePoints));
+  if (!name || !Number.isFinite(price) || price < 1 || price > 10000000) return null;
+  const fields = [];
+  for (const f of (Array.isArray(x.fields) ? x.fields : []).slice(0, SHOP_MAX_FIELDS)) {
+    const label = cleanText(f && f.label, 60);
+    if (!label) continue;
+    const key = /^[a-z0-9_]{1,24}$/.test(String((f && f.key) || "")) ? String(f.key) : "f" + fields.length;
+    if (fields.some(g => g.key === key)) continue;
+    fields.push({ key, label, label_tr: cleanText(f.label_tr, 60), label_en: cleanText(f.label_en, 60), type: SHOP_FIELD_TYPES.includes(f.type) ? f.type : "text", required: f.required !== false });
+  }
+  return {
+    id: /^[A-Za-z0-9_-]{1,40}$/.test(String(x.id || "")) ? String(x.id) : "it_" + randomId().slice(0, 10),
+    name, name_tr: cleanText(x.name_tr, 80), name_en: cleanText(x.name_en, 80),
+    desc: cleanText(x.desc, 300), desc_tr: cleanText(x.desc_tr, 300), desc_en: cleanText(x.desc_en, 300),
+    pricePoints: price, fields, enabled: x.enabled !== false, sort: Number.isFinite(Number(x.sort)) ? Number(x.sort) : idx,
+  };
+}
+function shopItemsFrom(cfg) {
+  const raw = cfg && cfg.shop && Array.isArray(cfg.shop.items) ? cfg.shop.items : [];
+  return raw.map(sanitizeShopItem).filter(Boolean);
+}
+function shopSettings(cfg) {
+  const sh = (cfg && cfg.shop) || {};
+  const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.floor(n))) : d; };
+  return { minActiveDays: num(sh.minActiveDays, 3, 0, 60), maxPending: num(sh.maxPending, 3, 1, 20) };
+}
+function validateShopField(def, raw) {
+  const v = cleanText(raw, 120);
+  if (!v) { if (def.required) throw new ApiError("bad_field", `اكتب «${def.label}».`); return ""; }
+  if (def.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) throw new ApiError("bad_field", `«${def.label}» مو بريد إلكتروني صحيح.`);
+  if (def.type === "phone" && !/^\+?[0-9][0-9 ()-]{5,19}$/.test(v)) throw new ApiError("bad_field", `«${def.label}» مو رقم صحيح.`);
+  return v;
+}
+function adminOnly(request) {
+  return verifyFirebaseToken((request.headers.get("Authorization") || "").replace("Bearer ", "")).then(u => (u && u.sub === ADMIN_UID ? u : null)).catch(() => null);
+}
+async function handleShopList(request, env) {
+  try {
+    const user = await requireUser(request);
+    let body = {}; try { body = await request.json(); } catch (e) {}
+    const lang = ["ar", "tr", "en"].includes(body.lang) ? body.lang : "ar";
+    const cfg = await loadConfig(env);
+    const st = shopSettings(cfg);
+    const items = shopItemsFrom(cfg).filter(x => x.enabled).sort((a, b) => a.sort - b.sort).map(x => ({
+      id: x.id, name: locText(x, "name", lang), desc: locText(x, "desc", lang), pricePoints: x.pricePoints,
+      fields: x.fields.map(f => ({ key: f.key, label: locText(f, "label", lang), type: f.type, required: f.required })),
+    }));
+    const rows = await fsRunQuery(env, "shopOrders", null, 50, 0, { field: "uid", value: user.sub });
+    const orders = rows.map(r => ({
+      id: r.id, itemName: locText({ name: r.data.itemName, name_tr: r.data.itemNameTr, name_en: r.data.itemNameEn }, "name", lang),
+      pricePoints: Number(r.data.pricePoints) || 0, status: String(r.data.status || "pending"), createdAt: Number(r.data.createdAt) || 0,
+      note: String(r.data.note || ""), fields: Array.isArray(r.data.fields) ? r.data.fields.map(f => ({ label: String(f.label || ""), value: String(f.value || "") })) : [],
+    })).sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
+    return jsonResponse({ ok: true, shop: { items, minActiveDays: st.minActiveDays, maxPending: st.maxPending }, orders }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "shop list error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error", message: "صار خطأ بالسيرفر، جرّب بعد شوي." }, 500);
+  }
+}
+// الأدمن: قراءة وحفظ عناصر المتجر وإعداداته (كل العناصر بدفعة وحدة)
+async function handleAdminShop(request, env) {
+  if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let b; try { b = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: "bad_json" }, 400); }
+  try {
+    if (b.action === "get") {
+      const doc = await fsGetDoc(env, "config/shop");
+      const cfg = { shop: doc.data || {} };
+      return jsonResponse({ ok: true, items: shopItemsFrom(cfg), settings: shopSettings(cfg) }, 200);
+    }
+    if (b.action === "save") {
+      if (!Array.isArray(b.items) || b.items.length > SHOP_MAX_ITEMS) return jsonResponse({ ok: false, error: "bad_items", message: "قائمة العناصر غير صحيحة (الحد الأقصى " + SHOP_MAX_ITEMS + ")." }, 400);
+      const seen = new Set(); const items = [];
+      b.items.forEach((x, i) => { const it = sanitizeShopItem(x, i); if (it && !seen.has(it.id)) { seen.add(it.id); items.push(it); } });
+      const st = shopSettings({ shop: b.settings || {} });
+      await fsCommit(env, [{ update: { name: docName(env, "config/shop"), fields: objToFields({ items, minActiveDays: st.minActiveDays, maxPending: st.maxPending, updatedAt: Date.now() }) } }]);
+      cachedConfig = null;
+      return jsonResponse({ ok: true, items, settings: st, dropped: b.items.length - items.length }, 200);
+    }
+    return jsonResponse({ ok: false, error: "bad_action" }, 400);
+  } catch (e) {
+    console.error({ message: "admin shop error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+async function notifyShopResult(env, order, kind, note) {
+  const names = { ar: order.itemName || "", tr: order.itemNameTr || order.itemName || "", en: order.itemNameEn || order.itemName || "" };
+  const n = note ? "\n" + note : "";
+  const pts = Number(order.pricePoints) || 0;
+  const T = kind === "done"
+    ? { ar: ["تم تنفيذ طلبك ✅", `تم تنفيذ طلب «${names.ar}».${n}`], tr: ["Siparişin tamamlandı ✅", `«${names.tr}» siparişin tamamlandı.${n}`], en: ["Your order is done ✅", `Your order “${names.en}” is complete.${n}`] }
+    : { ar: ["انرفض طلبك", `طلب «${names.ar}» انرفض ورجعنالك ${pts} نقطة.${n}`], tr: ["Siparişin reddedildi", `«${names.tr}» siparişin reddedildi, ${pts} puan iade edildi.${n}`], en: ["Your order was declined", `Your order “${names.en}” was declined and ${pts} points were refunded.${n}`] };
+  try {
+    await appendInbox(env, "inbox/" + order.uid, { id: randomId(), title: T.ar[0], body: T.ar[1], title_tr: T.tr[0], body_tr: T.tr[1], title_en: T.en[0], body_en: T.en[1], createdAt: Date.now() });
+  } catch (e) { console.warn({ message: "shop inbox failed", error: String(e.message || e) }); }
+  await sendPush(env, order.uid, kind === "done" ? "shop_done" : "shop_rejected", { item: names.ar, points: pts });
+}
+// الأدمن: قائمة الطلبات وتنفيذها أو رفضها (الرفض بيرجّع النقاط بنفس العملية)
+async function handleAdminShopOrders(request, env) {
+  if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let b; try { b = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: "bad_json" }, 400); }
+  try {
+    if (b.action === "list") {
+      const status = ["pending", "done", "rejected"].includes(b.status) ? b.status : "all";
+      const rows = status === "all" ? await fsRunQuery(env, "shopOrders", "createdAt", 100) : await fsRunQuery(env, "shopOrders", null, 200, 0, { field: "status", value: status });
+      const orders = rows.map(r => ({
+        id: r.id, uid: String(r.data.uid || ""), displayName: String(r.data.displayName || ""), email: String(r.data.email || ""),
+        itemId: String(r.data.itemId || ""), itemName: String(r.data.itemName || ""), pricePoints: Number(r.data.pricePoints) || 0,
+        fields: Array.isArray(r.data.fields) ? r.data.fields : [], status: String(r.data.status || "pending"), createdAt: Number(r.data.createdAt) || 0,
+        resolvedAt: Number(r.data.resolvedAt) || 0, note: String(r.data.note || ""), snapshot: r.data.snapshot || {},
+      })).sort((a, c) => (status === "pending" ? a.createdAt - c.createdAt : c.createdAt - a.createdAt));
+      return jsonResponse({ ok: true, orders }, 200);
+    }
+    if (b.action === "resolve") {
+      const id = validId(String(b.orderId || ""), 64);
+      const decision = b.decision === "done" || b.decision === "rejected" ? b.decision : null;
+      if (!id || !decision) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+      const note = cleanText(b.note, 200);
+      const path = "shopOrders/" + id;
+      const first = await fsGetDoc(env, path);
+      if (!first.exists) return jsonResponse({ ok: false, error: "not_found" }, 404);
+      const resolveWrite = (doc, now) => ({
+        update: { name: docName(env, path), fields: objToFields({ status: decision, note, resolvedAt: now }) },
+        updateMask: { fieldPaths: ["status", "note", "resolvedAt"] },
+        currentDocument: { updateTime: doc.updateTime },
+      });
+      let order = first.data;
+      if (decision === "rejected") {
+        const uid = String(first.data.uid || "");
+        if (!uid || uid.includes("/")) return jsonResponse({ ok: false, error: "bad_order" }, 400);
+        await mutatePlayer(env, uid, async (p, now) => {
+          const cur = await fsGetDoc(env, path);                                    // نقرأه من جديد بكل محاولة (حتى ما ينرجّع مرتين)
+          if (!cur.exists || cur.data.status !== "pending") throw new ApiError("already_resolved", "هالطلب انحسم من قبل.", 409);
+          order = cur.data;
+          const pts = Number(cur.data.pricePoints) || 0;
+          p.points += pts;
+          return { writes: [resolveWrite(cur, now), statsWrite(env, todaySyria(now), { shopRefunds: 1, shopRefundPoints: pts })] };
+        });
+      } else {
+        if (first.data.status !== "pending") return jsonResponse({ ok: false, error: "already_resolved", message: "هالطلب انحسم من قبل." }, 409);
+        await fsCommit(env, [resolveWrite(first, Date.now()), statsWrite(env, todaySyria(), { shopDone: 1 })]);
+      }
+      await notifyShopResult(env, order, decision, note);
+      return jsonResponse({ ok: true, status: decision }, 200);
+    }
+    return jsonResponse({ ok: false, error: "bad_action" }, 400);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "admin shop orders error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
 }
 
 // الأدمن بيطلب إرسال إشعار بعد ما يوافق/يرفض طلب سحب أو يأكد شحنة
@@ -1521,6 +1725,8 @@ export default {
     if (url.pathname === "/admin/traffic" && request.method === "POST") return handleAdminTraffic(request, env);
     if (url.pathname === "/admin/players" && request.method === "POST") return handleAdminPlayers(request, env);
     if (url.pathname === "/admin/message" && request.method === "POST") return handleAdminMessage(request, env);
+    if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
+    if (url.pathname === "/admin/shop-orders" && request.method === "POST") return handleAdminShopOrders(request, env);
     if (url.pathname === "/public-config" && request.method === "GET") return handlePublicConfig(env);
     return new Response("Not found", { status: 404 });
   },
