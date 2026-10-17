@@ -149,15 +149,17 @@ function randomId() {
 }
 
 // ===== صلاحية الـWorker على Firestore =====
-let cachedGoogleToken = null;
-async function getGoogleAccessToken(env) {
+let cachedGoogleTokens = {};
+const DEFAULT_GOOGLE_SCOPE = "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging";
+async function getGoogleAccessToken(env, scope = DEFAULT_GOOGLE_SCOPE) {
   const now = Math.floor(Date.now() / 1000);
-  if (cachedGoogleToken && cachedGoogleToken.exp > now + 60) return cachedGoogleToken.token;
+  const cached = cachedGoogleTokens[scope];
+  if (cached && cached.exp > now + 60) return cached.token;
   if (!env.FIREBASE_SA) throw new Error("FIREBASE_SA secret is missing");
   const sa = JSON.parse(env.FIREBASE_SA);
   const header = strToB64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claim = strToB64url(JSON.stringify({
-    iss: sa.client_email, scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging",
+    iss: sa.client_email, scope,
     aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
   }));
   const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
@@ -172,7 +174,7 @@ async function getGoogleAccessToken(env) {
   });
   const j = await r.json();
   if (!j.access_token) throw new Error("google token failed: " + JSON.stringify(j));
-  cachedGoogleToken = { token: j.access_token, exp: now + (j.expires_in || 3600) };
+  cachedGoogleTokens[scope] = { token: j.access_token, exp: now + (j.expires_in || 3600) };
   return j.access_token;
 }
 function projectId(env) { return JSON.parse(env.FIREBASE_SA).project_id; }
@@ -866,6 +868,7 @@ async function handleInbox(request, env) {
 async function handleGame(request, env, action) {
   if (action === "inbox") return handleInbox(request, env);
   if (action === "shop") return handleShopList(request, env);
+  if (action === "deleteAccount") return handleDeleteAccount(request, env);
   try {
     const user = await requireUser(request);
     let body = {};
@@ -1137,6 +1140,59 @@ async function handleWannadsPostback(request, env, ctx) {
   console.info({ message: "Wannads reversal", result });
   if (result === "busy") return new Response("busy", { status: 503 });   // بيعيدوا المحاولة
   return new Response("OK", { status: 200 });
+}
+
+// ===== حذف الحساب (بطلب اللاعب من التطبيق) =====
+// بنحذف: بيانات اللاعب، جهاز الإشعارات، البريد الداخلي، كود الدعوة، شحنات البريد، وحساب الدخول نفسه.
+// بنحتفظ بسجلات السحب والشراء والطلبات (المبلغ والتاريخ والمحفظة) لأغراض محاسبية ومنع الاحتيال، بس بنمسح منها الاسم والبريد والإيصال والتفاصيل.
+const AUTH_ADMIN_SCOPE = "https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform";
+async function deleteAuthUser(env, uid) {
+  const token = await getGoogleAccessToken(env, AUTH_ADMIN_SCOPE);
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId(env)}/accounts:delete`, {
+    method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ localId: uid }),
+  });
+  if (!r.ok) console.warn({ message: "auth user delete failed", status: r.status, body: String(await r.text()).slice(0, 200) });
+  return r.ok;
+}
+async function handleDeleteAccount(request, env) {
+  try {
+    const user = await requireUser(request);
+    let body = {}; try { body = await request.json(); } catch (e) {}
+    if (body.confirm !== true) throw new ApiError("confirm_required", "أكّد الحذف أول.", 400);
+    const uid = user.sub;
+    const [wds, orders, purchases, mails, player] = await Promise.all([
+      fsRunQuery(env, "withdrawRequests", null, 200, 0, { field: "uid", value: uid }),
+      fsRunQuery(env, "shopOrders", null, 200, 0, { field: "uid", value: uid }),
+      fsRunQuery(env, "purchaseRequests", null, 200, 0, { field: "uid", value: uid }),
+      fsRunQuery(env, "mail", null, 200, 0, { field: "uid", value: uid }),
+      fsGetDoc(env, "players/" + uid),
+    ]);
+    if ([...wds, ...orders, ...purchases].some(r => r.data.status === "pending")) {
+      throw new ApiError("pending_requests", "عندك طلب (سحب أو شراء أو شحن) قيد المراجعة. استنى لينتهي قبل ما تحذف حسابك.", 409);
+    }
+    const code = player.exists && player.data.referralCode ? String(player.data.referralCode) : "";
+    const blank = (coll, rows, fields) => rows.map(r => ({
+      update: { name: docName(env, coll + "/" + r.id), fields: objToFields({ ...fields, accountDeleted: true }) },
+      updateMask: { fieldPaths: [...Object.keys(fields), "accountDeleted"] },
+    }));
+    const writes = [
+      ...blank("withdrawRequests", wds, { displayName: "", email: "" }),
+      ...blank("shopOrders", orders, { displayName: "", email: "", fields: [] }),
+      ...blank("purchaseRequests", purchases, { displayName: "", email: "", proofImage: "", note: "" }),
+      ...mails.map(r => ({ delete: docName(env, "mail/" + r.id) })),
+      { delete: docName(env, "players/" + uid) }, { delete: docName(env, "pushTokens/" + uid) }, { delete: docName(env, "inbox/" + uid) },
+    ];
+    if (code && !code.includes("/")) writes.push({ delete: docName(env, "referralCodes/" + code) });
+    for (let i = 0; i < writes.length; i += 400) await fsCommit(env, writes.slice(i, i + 400));
+    let authDeleted = false;
+    try { authDeleted = await deleteAuthUser(env, uid); } catch (e) { console.warn({ message: "auth user delete error", error: String(e.message || e) }); }
+    console.info({ message: "account deleted", authDeleted });
+    return jsonResponse({ ok: true, deleted: true, authDeleted }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "delete account error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error", message: "صار خطأ بالسيرفر، جرّب بعد شوي." }, 500);
+  }
 }
 
 // ===== متجر شحن الألعاب (طلبات يدوية بالنقاط، الأدمن بيعبّي العناصر وبينفّذ الطلبات) =====
