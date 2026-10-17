@@ -65,7 +65,7 @@ const WEBHOOK_SECRET = hmac(env.TELEGRAM_BOT_TOKEN, "yardova:webhook");
   let r = await post("/admin/telegram", "admin", { action: "setup" });
   const sw = tgCalls.find(t => t.method === "setWebhook");
   ok(r.json.ok && r.json.setupOk === true && r.json.username === "YardovaLoginBot" && r.json.webhookOk === true, "setup connects the bot to the server and reports its username and webhook state");
-  ok(sw && sw.body.url === "https://x/telegram/webhook" && sw.body.secret_token === WEBHOOK_SECRET && JSON.stringify(sw.body.allowed_updates) === '["message"]' && sw.body.drop_pending_updates === true, "the webhook is registered with a secret derived from the bot token, for messages only");
+  ok(sw && sw.body.url === "https://x/telegram/webhook" && sw.body.secret_token === WEBHOOK_SECRET && JSON.stringify(sw.body.allowed_updates) === '["message","callback_query"]' && sw.body.drop_pending_updates === true, "the webhook is registered with a secret derived from the bot token, for messages and button clicks");
   ok(!/123456:TESTTOKEN/.test(r.text) && !r.text.includes(WEBHOOK_SECRET), "neither the bot token nor the webhook secret is ever returned");
   tgCalls.length = 0; r = await post("/admin/telegram", "admin", { action: "status" });
   ok(r.json.ok && r.json.setupOk === null && !tgCalls.some(t => t.method === "setWebhook"), "'status' only reads, it never changes the webhook");

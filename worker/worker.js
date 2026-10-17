@@ -1216,6 +1216,10 @@ const TG_TEXT = {
   button: { ar: "📱 شارك رقمي", tr: "📱 Numaramı paylaş", en: "📱 Share my number" },
   not_yours: { ar: "لازم تشارك رقمك أنت. استعمل الزر تحت.", tr: "Kendi numaranı paylaşmalısın. Aşağıdaki düğmeyi kullan.", en: "You must share your own number. Use the button below." },
   done: { ar: "✅ تم التحقق! ارجع للعبة.", tr: "✅ Doğrulandı! Oyuna dön.", en: "✅ Verified! Go back to the game." },
+  ask_sub: { ar: "قبل ما نكمّل، لازم تكون مشترك بقناة Yardova الرسمية. اشترك وبعدين اضغط «✅ اشتركت».", tr: "Devam etmeden önce resmi Yardova kanalına abone olmalısın. Abone ol ve «✅ Katıldım»a dokun.", en: "Before we continue, you need to join the official Yardova channel. Join it, then tap “✅ I joined”." },
+  not_subscribed: { ar: "لسا ما لقيناك مشترك بالقناة. اشترك وجرّب كمان مرة.", tr: "Henüz kanala abone olmadığını görüyoruz. Abone ol ve tekrar dene.", en: "We can't see you in the channel yet. Join it and try again." },
+  btn_channel: { ar: "📢 اشترك بالقناة", tr: "📢 Kanala katıl", en: "📢 Join the channel" },
+  btn_joined: { ar: "✅ اشتركت", tr: "✅ Katıldım", en: "✅ I joined" },
 };
 function tgBotName(env) { return env.TELEGRAM_BOT_USERNAME || "YardovaLoginBot"; }
 function tgToken(env) {
@@ -1248,6 +1252,47 @@ async function tgMintCustomToken(env, uid, claims) {
   const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(header + "." + payload));
   return header + "." + payload + "." + bytesToB64url(new Uint8Array(sig));
 }
+// ===== اشتراط الاشتراك بقناة Yardova قبل التحقق (بيتفعّل من بطاقة بوت تلغرام بالأدمن) =====
+// لازم البوت يكون أدمن بالقناة حتى يقدر يفحص الأعضاء. إذا تعذّر الفحص (مثلاً شالوه من الأدمن) ما منقفل الدخول عالناس، بنسجّل تحذير وبيطلع بالأدمن.
+function tgChannel(env) { return env.TELEGRAM_CHANNEL || "@YardovaGame"; }
+async function tgAuthConfig(env) { const d = await fsGetDoc(env, "config/tgAuth"); return d.exists && d.data ? d.data : {}; }
+async function tgIsChannelMember(env, userId) {
+  try {
+    const r = await tgApi(env, "getChatMember", { chat_id: tgChannel(env), user_id: userId });
+    if (!r || !r.ok || !r.result) { console.warn({ message: "channel check failed", description: String((r && r.description) || "") }); return null; }
+    const st = r.result.status;
+    return st === "creator" || st === "administrator" || st === "member" || (st === "restricted" && r.result.is_member === true);
+  } catch (e) { console.warn({ message: "channel check error", error: String(e.message || e) }); return null; }
+}
+function tgSubKeyboard(env, lang, nonce) {
+  return { inline_keyboard: [
+    [{ text: TG_TEXT.btn_channel[lang] || TG_TEXT.btn_channel.ar, url: "https://t.me/" + tgChannel(env).replace(/^@/, "") }],
+    [{ text: TG_TEXT.btn_joined[lang] || TG_TEXT.btn_joined.ar, callback_data: "sub:" + nonce }],
+  ] };
+}
+async function tgChannelStatus(env, botId) {
+  const out = { name: tgChannel(env), canCheck: false, botStatus: "", note: "" };
+  try {
+    const r = await tgApi(env, "getChatMember", { chat_id: out.name, user_id: botId });
+    if (r && r.ok && r.result) { out.botStatus = String(r.result.status || ""); out.canCheck = out.botStatus === "administrator" || out.botStatus === "creator"; }
+    else out.note = String((r && r.description) || "");
+  } catch (e) { out.note = String(e.message || e); }
+  return out;
+}
+async function processTelegramCallback(env, cq) {
+  const answer = (text, alert) => tgApi(env, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text, show_alert: !!alert } : {}) }).catch(() => {});
+  const from = cq.from, data = String(cq.data || ""), chatId = cq.message && cq.message.chat && cq.message.chat.id;
+  if (!from || from.is_bot || !chatId || !data.startsWith("sub:")) return answer();
+  const lang = tgLang(from), nonce = data.slice(4);
+  if (!/^[A-Za-z0-9_-]{16,40}$/.test(nonce)) return answer();
+  const doc = await fsGetDoc(env, "tgSessions/" + nonce);
+  const live = doc.exists && Date.now() - Number(doc.data.createdAt) <= TG_TTL && doc.data.status === "awaiting_sub" && Number(doc.data.tgUserId) === Number(from.id);
+  if (!live) return answer(TG_TEXT.expired[lang] || TG_TEXT.expired.ar, true);
+  if ((await tgIsChannelMember(env, from.id)) === false) return answer(TG_TEXT.not_subscribed[lang] || TG_TEXT.not_subscribed.ar, true);
+  await fsCommit(env, [{ update: { name: docName(env, "tgSessions/" + nonce), fields: objToFields({ status: "awaiting_code" }) }, updateMask: { fieldPaths: ["status"] } }]);
+  await answer();
+  return tgSay(env, chatId, lang, "ask_code");
+}
 // تلغرام ← السيرفر
 async function handleTelegramWebhook(request, env) {
   try {
@@ -1259,6 +1304,7 @@ async function handleTelegramWebhook(request, env) {
   return new Response("ok", { status: 200 });                       // دايماً 200 حتى ما تعيد تلغرام الإرسال
 }
 async function processTelegramUpdate(env, update) {
+  if (update && update.callback_query) return processTelegramCallback(env, update.callback_query);
   const msg = update && update.message;
   if (!msg || !msg.chat || msg.chat.type !== "private" || !msg.from || msg.from.is_bot) return;
   const chatId = msg.chat.id, from = msg.from, lang = tgLang(from), now = Date.now();
@@ -1268,14 +1314,19 @@ async function processTelegramUpdate(env, update) {
     const nonce = text.split(/\s+/)[1] || "";
     if (!/^[A-Za-z0-9_-]{16,40}$/.test(nonce)) return say("welcome");
     const doc = await fsGetDoc(env, "tgSessions/" + nonce);
-    if (!doc.exists || now - Number(doc.data.createdAt) > TG_TTL || !["started", "awaiting_code", "awaiting_contact"].includes(doc.data.status)) return say("expired");
-    await fsCommit(env, [{ update: { name: docName(env, "tgSessions/" + nonce), fields: objToFields({ chatId, tgUserId: from.id, tgName: cleanText(from.first_name, 40), lang, status: "awaiting_code", attempts: 0 }) }, updateMask: { fieldPaths: ["chatId", "tgUserId", "tgName", "lang", "status", "attempts"] } }]);
-    return say("ask_code");
+    if (!doc.exists || now - Number(doc.data.createdAt) > TG_TTL || !["started", "awaiting_sub", "awaiting_code", "awaiting_contact"].includes(doc.data.status)) return say("expired");
+    const needSub = (await tgAuthConfig(env)).requireChannel === true && (await tgIsChannelMember(env, from.id)) === false;
+    await fsCommit(env, [{ update: { name: docName(env, "tgSessions/" + nonce), fields: objToFields({ chatId, tgUserId: from.id, tgName: cleanText(from.first_name, 40), lang, status: needSub ? "awaiting_sub" : "awaiting_code", attempts: 0 }) }, updateMask: { fieldPaths: ["chatId", "tgUserId", "tgName", "lang", "status", "attempts"] } }]);
+    return needSub ? say("ask_sub", { reply_markup: tgSubKeyboard(env, lang, nonce) }) : say("ask_code");
   }
   const rows = await fsRunQuery(env, "tgSessions", null, 20, 0, { field: "chatId", value: chatId });
-  const live = rows.filter(r => now - Number(r.data.createdAt) <= TG_TTL && ["awaiting_code", "awaiting_contact"].includes(r.data.status)).sort((a, b) => Number(b.data.createdAt) - Number(a.data.createdAt))[0];
+  const live = rows.filter(r => now - Number(r.data.createdAt) <= TG_TTL && ["awaiting_sub", "awaiting_code", "awaiting_contact"].includes(r.data.status)).sort((a, b) => Number(b.data.createdAt) - Number(a.data.createdAt))[0];
   if (!live) return say(msg.contact || /^\d{6}$/.test(text) ? "expired" : "welcome");
   const path = "tgSessions/" + live.id, upd = (obj) => fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(obj) }, updateMask: { fieldPaths: Object.keys(obj) } }]);
+  if (live.data.status === "awaiting_sub") {
+    if ((await tgIsChannelMember(env, from.id)) === false) return say("ask_sub", { reply_markup: tgSubKeyboard(env, lang, live.id) });
+    await upd({ status: "awaiting_code" }); return say("ask_code");
+  }
   if (live.data.status === "awaiting_code") {
     if (!/^\d{6}$/.test(text)) return say("ask_code");
     if (safeEqual(text, String(live.data.code))) { await upd({ status: "awaiting_contact" }); return say("ask_contact", { reply_markup: { keyboard: [[{ text: TG_TEXT.button[lang] || TG_TEXT.button.ar, request_contact: true }]], one_time_keyboard: true, resize_keyboard: true } }); }
@@ -1322,7 +1373,7 @@ async function handleTelegramPoll(request, env) {
     const sess = doc.data, now = Date.now();
     if (now - Number(sess.createdAt) > TG_TTL || sess.status === "used") return jsonResponse({ ok: true, status: "expired" }, 200);
     if (sess.status === "failed") return jsonResponse({ ok: true, status: "failed", reason: "attempts" }, 200);
-    if (sess.status !== "verified") return jsonResponse({ ok: true, status: "waiting", step: { started: "open_bot", awaiting_code: "enter_code", awaiting_contact: "share_contact" }[sess.status] || "open_bot" }, 200);
+    if (sess.status !== "verified") return jsonResponse({ ok: true, status: "waiting", step: { started: "open_bot", awaiting_sub: "subscribe", awaiting_code: "enter_code", awaiting_contact: "share_contact" }[sess.status] || "open_bot" }, 200);
     if (sess.mode === "link") { const user = await requireUser(request); if (user.sub !== sess.uid) throw new ApiError("forbidden", "هالطلب مو لحسابك.", 403); }
     // بنستهلك الجلسة مرة وحدة بس (الأول بيربح لو انبعتوا طلبين مع بعض)
     await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields({ status: "used", phoneHash: "", usedAt: now }) }, updateMask: { fieldPaths: ["status", "phoneHash", "usedAt"] }, currentDocument: { updateTime: doc.updateTime } }]);
@@ -1362,13 +1413,20 @@ async function handleAdminTelegram(request, env) {
   let b = {}; try { b = await request.json(); } catch (e) {}
   try {
     tgToken(env);
+    if (!["setup", "status", "require"].includes(b.action)) return jsonResponse({ ok: false, error: "bad_action" }, 400);
     const hookUrl = new URL(request.url).origin + "/telegram/webhook";
     let setRes = null;
-    if (b.action === "setup") setRes = await tgApi(env, "setWebhook", { url: hookUrl, secret_token: await tgKey(env, "webhook"), allowed_updates: ["message"], drop_pending_updates: true });
-    else if (b.action !== "status") return jsonResponse({ ok: false, error: "bad_action" }, 400);
+    if (b.action === "setup") setRes = await tgApi(env, "setWebhook", { url: hookUrl, secret_token: await tgKey(env, "webhook"), allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
     const [me, info] = await Promise.all([tgApi(env, "getMe", {}), tgApi(env, "getWebhookInfo", {})]);
     const wh = (info && info.result) || {};
-    return jsonResponse({ ok: true, setupOk: setRes ? !!setRes.ok : null, setupMessage: setRes && !setRes.ok ? String(setRes.description || "") : "", username: me && me.result ? me.result.username || "" : "", expectedUsername: tgBotName(env), webhookUrl: wh.url || "", webhookOk: wh.url === hookUrl, pending: wh.pending_update_count || 0, lastError: wh.last_error_message || "" }, 200);
+    const channel = await tgChannelStatus(env, me && me.result ? me.result.id : 0);
+    if (b.action === "require") {
+      const want = b.value === true;
+      if (want && !channel.canCheck) return jsonResponse({ ok: false, error: "bot_not_admin", message: "ضيف البوت كأدمن بقناة " + channel.name + " أول، وبعدين فعّل الاشتراط." }, 400);
+      await fsCommit(env, [{ update: { name: docName(env, "config/tgAuth"), fields: objToFields({ requireChannel: want, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["requireChannel", "updatedAt"] } }]);
+    }
+    const cfg = await tgAuthConfig(env);
+    return jsonResponse({ ok: true, setupOk: setRes ? !!setRes.ok : null, setupMessage: setRes && !setRes.ok ? String(setRes.description || "") : "", username: me && me.result ? me.result.username || "" : "", expectedUsername: tgBotName(env), webhookUrl: wh.url || "", webhookOk: wh.url === hookUrl, pending: wh.pending_update_count || 0, lastError: wh.last_error_message || "", callbacksOk: Array.isArray(wh.allowed_updates) ? wh.allowed_updates.includes("callback_query") : null, channel: { ...channel, required: cfg.requireChannel === true } }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "admin telegram error", error: String(e.message || e) });

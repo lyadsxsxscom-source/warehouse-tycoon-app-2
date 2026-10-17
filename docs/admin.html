@@ -242,8 +242,9 @@
           <button class="btn" id="btnTgSetup" style="margin:0;">ربط البوت بالسيرفر</button>
           <button class="btn" id="btnTgStatus" style="margin:0;">فحص الحالة</button>
         </div>
+        <button class="btn" id="btnTgRequire" style="margin:8px 0 0;" disabled>اشتراط الاشتراك بالقناة (اضغط "فحص الحالة" أول)</button>
         <div id="tgAdminOut" style="font-size:13px; line-height:1.9; margin-top:10px;"></div>
-        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">الخطوات: (1) ضيف التوكن بـCloudflare كـSecret باسم TELEGRAM_BOT_TOKEN وعمل Deploy. (2) اضغط "ربط البوت بالسيرفر" مرة وحدة. (3) "فحص الحالة" بيقلك إذا كل شي تمام. التوكن ما بيظهر هون أبداً.</div>
+        <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">الخطوات: (1) ضيف التوكن بـCloudflare كـSecret باسم TELEGRAM_BOT_TOKEN وعمل Deploy. (2) اضغط "ربط البوت بالسيرفر" مرة وحدة. (3) "فحص الحالة" بيقلك إذا كل شي تمام. التوكن ما بيظهر هون أبداً. (4) لاشتراط الاشتراك بالقناة: ضيف البوت كأدمن بالقناة، اضغط "فحص الحالة"، ثم زر الاشتراط.</div>
       </div>
     </div>
 
@@ -1243,16 +1244,28 @@ document.getElementById('shopItemsBody').addEventListener('change', e => {
 });
 
 // ===== بوت الدخول عبر تلغرام: ربط وفحص =====
-async function tgAdmin(action){
+let TG_REQUIRED = null;
+function tgRequireLabel(){
+  const b = document.getElementById('btnTgRequire');
+  b.disabled = TG_REQUIRED === null;
+  b.textContent = TG_REQUIRED === null ? 'اشتراط الاشتراك بالقناة (اضغط "فحص الحالة" أول)' : (TG_REQUIRED ? '🔓 إيقاف اشتراط الاشتراك بالقناة' : '🔒 تفعيل اشتراط الاشتراك بالقناة');
+}
+async function tgAdmin(action, extra){
   const out = document.getElementById('tgAdminOut');
   out.style.color = 'var(--dim)'; out.textContent = 'عم يفحص...';
   try{
-    const j = await shopApi('/admin/telegram', { action });
+    const j = await shopApi('/admin/telegram', Object.assign({ action }, extra || {}));
     const lines = [];
     lines.push(j.username ? ('✅ البوت: @' + j.username + (j.username !== j.expectedUsername ? ' (المتوقع @' + j.expectedUsername + ')' : '')) : '⚠️ ما قدر يقرأ البوت');
     lines.push(j.webhookOk ? '✅ مربوط بالسيرفر' : '⚠️ مو مربوط بالسيرفر (اضغط "ربط البوت بالسيرفر")');
+    if(j.callbacksOk === false) lines.push('⚠️ اضغط "ربط البوت بالسيرفر" كمان مرة (لازم لزر "اشتركت")');
     if(j.setupOk === true) lines.push('✅ تم الربط للتو');
     if(j.setupOk === false) lines.push('❌ فشل الربط: ' + (j.setupMessage || ''));
+    if(j.channel){
+      lines.push(j.channel.canCheck ? ('✅ البوت أدمن بقناة ' + j.channel.name + ' (بيقدر يفحص الاشتراك)') : ('⚠️ البوت مو أدمن بقناة ' + j.channel.name + (j.channel.note ? ' (' + j.channel.note + ')' : '') + ': ضيفه كأدمن حتى تفعّل الاشتراط'));
+      lines.push(j.channel.required ? '🔒 اشتراط الاشتراك بالقناة: شغّال' : '🔓 اشتراط الاشتراك بالقناة: موقوف');
+      TG_REQUIRED = j.channel.required === true; tgRequireLabel();
+    }
     if(j.pending) lines.push('رسائل معلّقة عند تلغرام: ' + j.pending);
     if(j.lastError) lines.push('آخر خطأ من تلغرام: ' + j.lastError);
     out.innerHTML = lines.map(escapeHtml).join('<br>');
@@ -1263,6 +1276,7 @@ async function tgAdmin(action){
 }
 document.getElementById('btnTgSetup').onclick = () => tgAdmin('setup');
 document.getElementById('btnTgStatus').onclick = () => tgAdmin('status');
+document.getElementById('btnTgRequire').onclick = () => { if(TG_REQUIRED !== null) tgAdmin('require', { value: !TG_REQUIRED }); };
 
 tabMessages.onclick = async () => {
   activateTab(tabMessages, viewMessages);
