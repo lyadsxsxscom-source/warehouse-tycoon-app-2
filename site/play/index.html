@@ -504,6 +504,7 @@ window.__errQueue = [];
   <div id="gameShopBox" style="display:none; margin-top:18px;">
     <h3><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px; margin-left:4px;"><rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 10v5M4.5 12.5h5"/><circle cx="16" cy="11" r="1"/><circle cx="18.5" cy="14" r="1"/></svg>شحن ألعاب وخدمات</h3>
     <div class="note">اشحن لعبتك أو اشترك بخدمة بنقاطك. الطلب بيتنفّذ يدوياً، ورح توصلك رسالة بالبريد لما يخلص.</div>
+    <div class="hint" id="shopLimit" style="display:none;"></div>
     <div class="hint" id="shopMsg"></div>
     <div id="shopItems"></div>
     <div id="shopOrdersBox" style="display:none; margin-top:14px;">
@@ -1926,18 +1927,22 @@ document.getElementById('optOfferwall').onclick = async () => {
 };
 
 // ===== متجر شحن الألعاب والخدمات (طلبات يدوية بنقاط اللاعب، الأدمن بيعبّي العناصر وبينفّذ الطلبات) =====
-let SHOP = { items: [], orders: [], minActiveDays: 0 };
+let SHOP = { items: [], orders: [], minActiveDays: 0, maxPerWeek: 0, weeklyUsed: 0 };
 let shopCurrent = null, shopReqId = '', shopBusy = false;
 async function loadShop(){
   if(!currentUser) return;
   try{
     const data = await gameApi('shop', { lang: window.I18N ? I18N.lang : 'ar' });
-    if(data.shop){ SHOP.items = data.shop.items || []; SHOP.minActiveDays = Number(data.shop.minActiveDays) || 0; SHOP.orders = data.orders || []; renderShop(); }
+    if(data.shop){ SHOP.items = data.shop.items || []; SHOP.minActiveDays = Number(data.shop.minActiveDays) || 0; SHOP.maxPerWeek = Number(data.shop.maxPerWeek) || 0; SHOP.weeklyUsed = Number(data.shop.weeklyUsed) || 0; SHOP.orders = data.orders || []; renderShop(); }
   }catch(e){}
 }
 function renderShop(){
   const box = document.getElementById('gameShopBox');
   box.style.display = (SHOP.items.length || SHOP.orders.length) ? 'block' : 'none';
+  const capped = SHOP.maxPerWeek > 0 && SHOP.weeklyUsed >= SHOP.maxPerWeek;
+  const limEl = document.getElementById('shopLimit');
+  limEl.style.display = SHOP.maxPerWeek > 0 && SHOP.items.length ? 'block' : 'none';
+  limEl.textContent = SHOP.maxPerWeek > 0 ? tr(`الحد: ${SHOP.maxPerWeek} طلب بالأسبوع (استخدمت ${Math.min(SHOP.weeklyUsed, SHOP.maxPerWeek)})`) : '';
   const list = document.getElementById('shopItems'); list.innerHTML = '';
   SHOP.items.forEach(it => {
     const row = document.createElement('div'); row.className = 'card shop-item';
@@ -1947,10 +1952,11 @@ function renderShop(){
     const pr = document.createElement('div'); pr.className = 'shop-price'; pr.textContent = tr(`${it.pricePoints} نقطة`); info.appendChild(pr);
     const btn = document.createElement('button'); btn.className = 'btn-main shop-btn'; btn.textContent = tr('اطلب');
     const locked = srvActiveDays < SHOP.minActiveDays;
-    btn.disabled = locked;
+    btn.disabled = locked || capped;
     btn.onclick = () => openShopOrder(it);
     row.append(info, btn);
     if(locked){ const lk = document.createElement('div'); lk.className = 'shop-lock'; lk.textContent = tr(`بتتفتح بعد ${SHOP.minActiveDays} أيام نشاط (عندك ${srvActiveDays})`); row.appendChild(lk); }
+    else if(capped){ const lk = document.createElement('div'); lk.className = 'shop-lock'; lk.textContent = tr('وصلت للحد الأسبوعي، جرّب بعد كم يوم'); row.appendChild(lk); }
     list.appendChild(row);
   });
   const ob = document.getElementById('shopOrdersBox'), ol = document.getElementById('shopOrdersList');

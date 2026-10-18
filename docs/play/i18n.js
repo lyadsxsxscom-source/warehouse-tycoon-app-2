@@ -6,6 +6,7 @@
 (function(){
   // [تركي, إنجليزي]
   const EXACT = {
+    "وصلت للحد الأسبوعي، جرّب بعد كم يوم": ["Haftalık sınıra ulaştın, birkaç gün sonra dene", "You've reached the weekly limit, try again in a few days"],
     "✈️ الدخول عبر تلغرام": ["✈️ Telegram ile giriş", "✈️ Sign in with Telegram"],
     "الدخول عبر تلغرام": ["Telegram ile giriş", "Sign in with Telegram"],
     "1. اضغط «افتح تلغرام» وبعدين Start بالبوت.": ["1. «Telegram'ı aç»a dokun, sonra botta Start'a bas.", "1. Tap “Open Telegram”, then press Start in the bot."],
@@ -273,6 +274,8 @@
 
   // نصوص فيها أرقام أو أسماء متغيرة: {0} {1} {2}
   const PATTERNS = [
+    ["الحد: {0} طلب بالأسبوع (استخدمت {1})", "Sınır: haftada {0} sipariş ({1} kullandın)", "Limit: {0} orders per week (you used {1})"],
+    ["وصلت لحد الطلبات الأسبوعي ({0}). تقدر تطلب كمان بعد حوالي {1} يوم.", "Haftalık sipariş sınırına ulaştın ({0}). Yaklaşık {1} gün sonra tekrar sipariş verebilirsin.", "You've reached the weekly order limit ({0}). You can order again in about {1} day(s)."],
     ["رصيدك الحالي ({0}$ و{1} نقطة) رح يضيع.", "Mevcut bakiyen ({0}$ ve {1} puan) kaybolacak.", "Your current balance ({0}$ and {1} points) will be lost."],
     ["السعر: {0} نقطة · رصيدك: {1} نقطة", "Fiyat: {0} puan · Bakiyen: {1} puan", "Price: {0} points · Your balance: {1} points"],
     ["اكتب «{0}».", "«{0}» alanını doldur.", "Fill in “{0}”."],

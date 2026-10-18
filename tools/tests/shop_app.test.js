@@ -19,7 +19,7 @@ const ORDERS = [
 function open(opts = {}) {
   const errors = []; const vc = new VirtualConsole(); vc.on("jsdomError", e => errors.push(String(e.message).slice(0, 140)));
   const html = RAW.replace(/<script src="https?:[^"]*"><\/script>/g, "").replace('<script src="i18n.js"></script>', () => "<script>" + I18N + "</script>");
-  const h = { authCb: null, calls: [], items: opts.items || ITEMS_AR, orders: opts.orders || [], minActiveDays: opts.minActiveDays == null ? 3 : opts.minActiveDays, points: opts.points == null ? 5000 : opts.points, orderResponse: null, delay: 0 };
+  const h = { authCb: null, calls: [], items: opts.items || ITEMS_AR, orders: opts.orders || [], minActiveDays: opts.minActiveDays == null ? 3 : opts.minActiveDays, points: opts.points == null ? 5000 : opts.points, orderResponse: null, delay: 0, maxPerWeek: opts.maxPerWeek || 0, weeklyUsed: opts.weeklyUsed || 0 };
   const dom = new JSDOM(html, { url: "https://example.test/", runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: vc, beforeParse(w) {
     try { w.localStorage.setItem("lang", opts.lang || "ar"); w.localStorage.setItem("guide_seen_v1", "1"); } catch (e) {}
     w.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
@@ -31,7 +31,7 @@ function open(opts = {}) {
     const R = (j, status = 200) => ({ ok: status < 400, status, json: async () => j });
     w.fetch = async (url, o) => { const u = String(url); let body = {}; try { body = JSON.parse(o.body); } catch (e) {} h.calls.push({ u, body });
       if (u.endsWith("/game/state")) return R({ ok: true, state: baseState(h.points) });
-      if (u.endsWith("/game/shop")) return R({ ok: true, shop: { items: h.items, minActiveDays: h.minActiveDays, maxPending: 3 }, orders: h.orders });
+      if (u.endsWith("/game/shop")) return R({ ok: true, shop: { items: h.items, minActiveDays: h.minActiveDays, maxPending: 3, maxPerWeek: h.maxPerWeek || 0, weeklyUsed: h.weeklyUsed || 0 }, orders: h.orders });
       if (u.endsWith("/game/shopOrder")) { if (h.delay) await sleep(h.delay); if (h.orderResponse) return h.orderResponse(body); h.points -= 700; return R({ ok: true, state: baseState(h.points), result: { orderId: "x", pricePoints: 700 } }); }
       return R({ ok: true }); };
   } });
@@ -98,6 +98,23 @@ const $ = (h, id) => h.d.getElementById(id);
     h.d.querySelector('.navbtn[data-screen="store"]').click(); await sleep(200);
     ok(h.n("/game/shop") === 0 && $(h, "gameShopBox").style.display === "none", "signed out: the store section stays hidden and nothing is requested"); }
 
+  /* ---- weekly cap ---- */
+  { const h = open({ items: ITEMS_AR, maxPerWeek: 2, weeklyUsed: 1 }); await h.login(); await h.store();
+    ok(h.d.getElementById("shopLimit").style.display === "block" && /الحد: 2 طلب بالأسبوع \(استخدمت 1\)/.test(h.d.getElementById("shopLimit").textContent), "the store says the weekly limit and how much the player used");
+    ok([...h.d.querySelectorAll("#shopItems .shop-item button")].every(b => !b.disabled), "with orders left the buttons are enabled"); }
+  { const h = open({ items: ITEMS_AR, maxPerWeek: 2, weeklyUsed: 2 }); await h.login(); await h.store();
+    const bs = [...h.d.querySelectorAll("#shopItems .shop-item button")];
+    ok(bs.every(b => b.disabled) && /وصلت للحد الأسبوعي/.test(h.d.getElementById("shopItems").textContent), "when the weekly limit is used up the buttons are locked with a clear note"); }
+  { const h = open({ items: ITEMS_AR, maxPerWeek: 0 }); await h.login(); await h.store();
+    ok(h.d.getElementById("shopLimit").style.display === "none" && [...h.d.querySelectorAll("#shopItems .shop-item button")].every(b => !b.disabled), "with no weekly limit nothing extra is shown"); }
+  { const h = open({ items: ITEMS_AR, maxPerWeek: 2, weeklyUsed: 0, lang: "tr" }); await h.login(); await h.store();
+    ok(/Sınır: haftada 2 sipariş \(0 kullandın\)/.test(h.d.getElementById("shopLimit").textContent), "Turkish limit line");
+    h.d.querySelector("#shopItems .shop-item button").click(); h.type("shopF_pid", "1");
+    h.orderResponse = () => ({ ok: false, status: 400, json: async () => ({ ok: false, error: "weekly_cap", message: "وصلت لحد الطلبات الأسبوعي (2). تقدر تطلب كمان بعد حوالي 3 يوم." }) });
+    h.d.getElementById("shopSubmit").click(); await sleep(250);
+    ok(/Haftalık sipariş sınırına ulaştın \(2\)\. Yaklaşık 3 gün/.test(h.d.getElementById("shopHint").textContent), "the server's weekly-cap refusal is shown in Turkish"); }
+  { const h = open({ items: ITEMS_TR, maxPerWeek: 2, weeklyUsed: 1, lang: "en" }); await h.login(); await h.store();
+    ok(/Limit: 2 orders per week \(you used 1\)/.test(h.d.getElementById("shopLimit").textContent), "English limit line"); }
   /* ---- languages ---- */
   { const h = open({ items: ITEMS_TR, orders: ORDERS, lang: "tr" }); await h.login(); await h.store();
     ok(h.calls.find(c => c.u.endsWith("/game/shop")).body.lang === "tr", "the app asks for Turkish names");
