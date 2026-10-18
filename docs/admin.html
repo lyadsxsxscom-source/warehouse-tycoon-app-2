@@ -192,6 +192,26 @@
     </div>
 
     <div id="viewPlayers" style="display:none;">
+      <div class="card" id="inactCard">
+        <div style="font-size:14px; font-weight:700; margin-bottom:6px;">⏳ سياسة عدم النشاط</div>
+        <div style="font-size:12px; color:var(--dim); line-height:1.8; margin-bottom:10px;">تذكير ثم تحذير ثم تنفيذ بعد مهلة. الحساب <b>المحسوب</b> (كسب نقاط من نشاط أو شحن نقاط أو عنده رصيد أو سحوبات) بيتعلّق ولا بينحذف. الحساب <b>غير المحسوب</b> (نقاطه من المكافأة اليومية وهدية البداية بس) بينحذف. جرّب "بدون تنفيذ" قبل ما تفعّلها.</div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:14px; margin-bottom:10px;"><input type="checkbox" id="inactEnabled"> السياسة مفعّلة (المهمة بتشتغل يومياً)</label>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div class="field"><label>تذكير بعد (يوم)</label><input type="number" id="inactRemind" min="1" max="365" inputmode="numeric"></div>
+          <div class="field"><label>تحذير بعد (يوم)</label><input type="number" id="inactWarn" min="2" max="365" inputmode="numeric"></div>
+          <div class="field"><label>تنفيذ بعد (يوم)</label><input type="number" id="inactAction" min="3" max="730" inputmode="numeric"></div>
+          <div class="field"><label>مهلة بعد التحذير (يوم)</label><input type="number" id="inactGrace" min="1" max="60" inputmode="numeric"></div>
+        </div>
+        <div class="field"><label>أقصى عدد تعليق/حذف بالمرة الواحدة</label><input type="number" id="inactMax" min="1" max="200" inputmode="numeric"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn" id="btnInactSave" style="margin:0;">حفظ</button>
+          <button class="btn" id="btnInactDry" style="margin:0;">🔍 تجربة بدون تنفيذ</button>
+          <button class="btn" id="btnInactRun" style="margin:0; background:#7a2a20; color:#fff;">⚡ نفّذ الآن</button>
+          <button class="btn" id="btnInactSusp" style="margin:0;">🔒 المعلّقين</button>
+        </div>
+        <div id="inactMsg" style="font-size:12px; line-height:1.8; margin-top:10px;"></div>
+        <div id="inactOut" style="overflow-x:auto; margin-top:8px;"></div>
+      </div>
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <div style="font-size:13px; color:var(--dim);">رحلة اللاعب الجديد (آخر 30 يوم)</div>
@@ -1024,7 +1044,7 @@ async function loadPlayers(){
   try{ PLAYERS = (await adminPlayers()).players || []; msg.textContent = ''; renderPlayers(); }
   catch(e){ msg.textContent = 'تعذّر تحميل اللاعبين: ' + e.message; }
 }
-tabPlayers.onclick = () => { activateTab(tabPlayers, viewPlayers); loadPlayers(); };
+tabPlayers.onclick = () => { activateTab(tabPlayers, viewPlayers); loadPlayers(); loadInactivity(); };
 document.getElementById('btnPlayersReload').onclick = loadPlayers;
 document.getElementById('playersSearch').addEventListener('input', renderPlayers);
 
@@ -1320,6 +1340,77 @@ async function tgAdmin(action, extra){
 document.getElementById('btnTgSetup').onclick = () => tgAdmin('setup');
 document.getElementById('btnTgStatus').onclick = () => tgAdmin('status');
 document.getElementById('btnTgRequire').onclick = () => { if(TG_REQUIRED !== null) tgAdmin('require', { value: !TG_REQUIRED }); };
+
+// ===== سياسة عدم النشاط =====
+const INACT_ACTION = { remind: 'تذكير', warn: 'تحذير', suspend: '🔒 تعليق', delete: '🗑 حذف' };
+function inactMsg(text, kind){ const m = document.getElementById('inactMsg'); m.style.color = kind === 'err' ? '#e5533d' : kind === 'ok' ? 'var(--ok, #4caf50)' : 'var(--dim)'; m.textContent = text; }
+function inactFill(cfg){
+  document.getElementById('inactEnabled').checked = cfg.enabled === true;
+  document.getElementById('inactRemind').value = cfg.remindDays; document.getElementById('inactWarn').value = cfg.warnDays;
+  document.getElementById('inactAction').value = cfg.actionDays; document.getElementById('inactGrace').value = cfg.graceDays; document.getElementById('inactMax').value = cfg.maxActions;
+}
+function inactRead(){
+  const n = id => Number(document.getElementById(id).value);
+  return { enabled: document.getElementById('inactEnabled').checked, remindDays: n('inactRemind'), warnDays: n('inactWarn'), actionDays: n('inactAction'), graceDays: n('inactGrace'), maxActions: n('inactMax') };
+}
+async function loadInactivity(){
+  try{
+    const j = await shopApi('/admin/inactivity', { action: 'get' });
+    inactFill(j.config);
+    inactMsg(j.lastRunAt ? ('آخر تشغيل: ' + new Date(j.lastRunAt).toLocaleString('en-GB') + ' — ' + j.lastRunSummary) : 'ما اشتغلت لسا.', 'dim');
+  }catch(e){ inactMsg('تعذّر التحميل: ' + e.message, 'err'); }
+}
+function renderInactPlan(j){
+  const out = document.getElementById('inactOut');
+  const plan = j.plan || [];
+  if(!plan.length){ out.innerHTML = '<div class="empty-note">ما في حسابات بتحتاج إجراء هلق.</div>'; return; }
+  const counts = {}; plan.forEach(x => { counts[x.action] = (counts[x.action] || 0) + 1; });
+  const summary = Object.keys(INACT_ACTION).filter(k => counts[k]).map(k => INACT_ACTION[k] + ': ' + counts[k]).join(' · ');
+  out.innerHTML = '<div style="font-size:13px; margin-bottom:6px;"><b>' + escapeHtml(summary) + '</b>' + (j.capped ? ' (فحصنا أول 500 حساب بس)' : '') + '</div>' +
+    '<table><thead><tr><th>الحساب</th><th>غياب</th><th>محسوب؟</th><th>الإجراء</th></tr></thead><tbody>' +
+    plan.map(x => '<tr><td>' + escapeHtml(x.name || '—') + '<div style="font-size:11px; color:var(--dim);" dir="ltr">' + escapeHtml(x.email || x.uid) + '</div></td><td>' + x.idleDays + ' يوم</td><td>' + (x.counted === null ? '—' : (x.counted ? '✅' : '❌')) + (x.reason ? '<div style="font-size:11px; color:var(--dim);">' + escapeHtml(x.reason) + '</div>' : '') + '</td><td><b>' + escapeHtml(INACT_ACTION[x.action] || x.action) + '</b></td></tr>').join('') + '</tbody></table>';
+}
+document.getElementById('btnInactSave').onclick = async () => {
+  try{
+    const j = await shopApi('/admin/inactivity', { action: 'save', config: inactRead() });
+    inactFill(j.config); inactMsg('انحفظ ✓ (' + (j.config.enabled ? 'مفعّلة' : 'مطفية') + ')', 'ok');
+  }catch(e){ inactMsg('تعذّر الحفظ: ' + e.message, 'err'); }
+};
+document.getElementById('btnInactDry').onclick = async () => {
+  inactMsg('عم يحسب الخطة (بدون ما ينفّذ شي)...', 'dim');
+  try{
+    const j = await shopApi('/admin/inactivity', { action: 'dryrun' });
+    renderInactPlan(j); inactMsg('هاي تجربة بس: ما انغيّر ولا انبعت شي. ' + (j.candidates || 0) + ' حساب غايب، ' + (j.planTotal || 0) + ' منهم بيحتاج إجراء.', 'ok');
+  }catch(e){ inactMsg('تعذّرت التجربة: ' + e.message, 'err'); }
+};
+document.getElementById('btnInactRun').onclick = async () => {
+  if(!window.confirm('هيك رح ينفّذ التذكير والتحذير والتعليق والحذف فعلياً حسب السياسة. جرّبت "بدون تنفيذ" قبل؟ متأكد؟')) return;
+  inactMsg('عم ينفّذ...', 'dim');
+  try{
+    const j = await shopApi('/admin/inactivity', { action: 'run', confirm: true });
+    if(j.skipped){ inactMsg('السياسة مطفية: فعّلها وحفظ أول.', 'err'); return; }
+    const d = j.done || {};
+    inactMsg('تم ✓ تذكير ' + (d.remind || 0) + '، تحذير ' + (d.warn || 0) + '، تعليق ' + (d.suspend || 0) + '، حذف ' + (d.delete || 0) + (d.skipped ? '، تخطّينا ' + d.skipped : ''), 'ok');
+    document.getElementById('inactOut').innerHTML = '';
+  }catch(e){ inactMsg('تعذّر التنفيذ: ' + e.message, 'err'); }
+};
+async function loadInactSuspended(){
+  const out = document.getElementById('inactOut');
+  try{
+    const j = await shopApi('/admin/inactivity', { action: 'suspended' });
+    const list = j.players || [];
+    if(!list.length){ out.innerHTML = '<div class="empty-note">ما في حسابات معلّقة.</div>'; return; }
+    out.innerHTML = '<table><thead><tr><th>الحساب</th><th>رصيد</th><th>غياب</th><th></th></tr></thead><tbody>' + list.map(x => '<tr><td>' + escapeHtml(x.name || '—') + '<div style="font-size:11px; color:var(--dim);" dir="ltr">' + escapeHtml(x.email || x.uid) + '</div></td><td dir="ltr">$' + (Number(x.balanceUsd) || 0).toFixed(2) + '</td><td>' + (Number(x.idleDays) || 0) + ' يوم</td><td><button class="copy-btn" data-unsusp="' + escapeHtml(x.uid) + '" style="width:auto; padding:4px 10px; margin:0;">فكّ التعليق</button></td></tr>').join('') + '</tbody></table>';
+    inactMsg(list.length + ' حساب معلّق.', 'dim');
+  }catch(e){ inactMsg('تعذّر التحميل: ' + e.message, 'err'); }
+}
+document.getElementById('btnInactSusp').onclick = loadInactSuspended;
+document.getElementById('inactOut').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-unsusp]'); if(!b) return;
+  if(!window.confirm('فكّ التعليق عن هالحساب؟')) return;
+  try{ await shopApi('/admin/inactivity', { action: 'unsuspend', uid: b.dataset.unsusp }); inactMsg('انفكّ التعليق ✓', 'ok'); await loadInactSuspended(); }
+  catch(err){ inactMsg('تعذّر: ' + err.message, 'err'); }
+});
 
 tabMessages.onclick = async () => {
   activateTab(tabMessages, viewMessages);
