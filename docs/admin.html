@@ -292,6 +292,7 @@
         <table><thead><tr><th>الاسم</th><th>النقاط</th><th>ظاهر</th><th></th></tr></thead><tbody id="shopItemsBody"></tbody></table>
         <div class="field" style="margin-top:12px;"><label>أقل أيام نشاط قبل ما اللاعب يطلب</label><input type="number" id="shopMinDays" min="0" max="60" step="1" inputmode="numeric"></div>
         <div class="field"><label>أقصى عدد طلبات قيد التنفيذ للاعب الواحد</label><input type="number" id="shopMaxPending" min="1" max="20" step="1" inputmode="numeric"></div>
+        <div class="field"><label>أقصى عدد طلبات للاعب بالأسبوع (آخر 7 أيام، 0 = بدون حد)</label><input type="number" id="shopMaxWeek" min="0" max="50" step="1" inputmode="numeric"></div>
         <button class="btn" id="btnShopSave">حفظ المتجر</button>
         <div class="msg" id="shopMsg"></div>
         <div style="font-size:11px; color:var(--dim); margin-top:10px; line-height:1.8;">التعديلات ما بتظهر للاعبين إلا بعد "حفظ المتجر". المتجر بيظهر بالتطبيق بس إذا في عنصر ظاهر. النقاط بتنخصم من اللاعب أول ما يطلب، وبترجع إذا رفضت الطلب.</div>
@@ -1188,6 +1189,7 @@ async function loadShop(){
     SHOP_ITEMS = j.items || [];
     document.getElementById('shopMinDays').value = j.settings.minActiveDays;
     document.getElementById('shopMaxPending').value = j.settings.maxPending;
+    document.getElementById('shopMaxWeek').value = j.settings.maxPerWeek;
     renderShopItems(); shopSetDirty(false); msg.textContent = '';
   }catch(e){ msg.style.color = '#e5533d'; msg.textContent = 'تعذّر تحميل المتجر: ' + e.message; }
 }
@@ -1195,7 +1197,7 @@ async function saveShop(){
   const msg = document.getElementById('shopMsg');
   msg.style.color = 'var(--dim)'; msg.textContent = 'عم يحفظ...';
   try{
-    const settings = { minActiveDays: Number(document.getElementById('shopMinDays').value), maxPending: Number(document.getElementById('shopMaxPending').value) };
+    const settings = { minActiveDays: Number(document.getElementById('shopMinDays').value), maxPending: Number(document.getElementById('shopMaxPending').value), maxPerWeek: Number(document.getElementById('shopMaxWeek').value) };
     const j = await shopApi('/admin/shop', { action: 'save', items: SHOP_ITEMS, settings });
     SHOP_ITEMS = j.items || [];
     renderShopItems(); shopSetDirty(false);
@@ -1269,6 +1271,7 @@ document.getElementById('btnShopCancel').onclick = shopResetForm;
 document.getElementById('btnShopSave').onclick = saveShop;
 document.getElementById('shopMinDays').addEventListener('input', () => shopSetDirty(true));
 document.getElementById('shopMaxPending').addEventListener('input', () => shopSetDirty(true));
+document.getElementById('shopMaxWeek').addEventListener('input', () => shopSetDirty(true));
 document.getElementById('shopItemsBody').addEventListener('click', e => {
   const b = e.target.closest('button[data-shop-act]'); if(!b) return;
   const i = Number(b.dataset.i), act = b.dataset.shopAct;

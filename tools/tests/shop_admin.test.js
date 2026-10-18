@@ -6,7 +6,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const html = fs.readFileSync(path.join(__dirname, "../../docs/admin.html"), "utf8").replace(/<script src="[^"]*"><\/script>/g, "");
 const ADMIN = "09DZoXtB6afGTGHtFghiUx5t71N2";
 const calls = []; let confirmAnswer = true, promptAnswer = "";
-let serverItems = [], serverSettings = { minActiveDays: 3, maxPending: 3 };
+let serverItems = [], serverSettings = { minActiveDays: 3, maxPending: 3, maxPerWeek: 2 };
 let orders = [
   { id: "o1", uid: "u1", displayName: "Ahmad <b>X</b>", email: "a@x.com", itemName: "PUBG <img src=x onerror=alert(1)>", pricePoints: 700, fields: [{ key: "pid", label: "ID اللاعب", value: "5123456789" }, { key: "phone", label: "رقم التواصل", value: "0933123456" }], status: "pending", createdAt: Date.now() - 3600000, snapshot: { activeDays: 5, adsWatched: 12, totalPointsEarned: 5260, withdrawCount: 1 } },
   { id: "o2", uid: "u2", displayName: "Sara", email: "s@x.com", itemName: "اشتراك", pricePoints: 1500, fields: [], status: "pending", createdAt: Date.now() - 1800000, snapshot: {} },
@@ -46,7 +46,7 @@ const type = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event("inpu
   ok(shopCalls("/admin/shop-orders").some(c => c.body.action === "list" && c.body.status === "pending" && c.auth === "Bearer ADMTOKEN") && $("shopBadge").textContent === "2", "right after sign-in the tab badge shows the 2 pending orders");
   $("tabShop").click(); await sleep(300);
   ok(shopCalls("/admin/shop").some(c => c.body.action === "get" && c.auth === "Bearer ADMTOKEN"), "opening the tab loads the store with the admin token");
-  ok(/المتجر فاضي/.test($("shopItemsBody").textContent) && $("shopMinDays").value === "3" && $("shopMaxPending").value === "3", "the store starts empty and shows the default rules");
+  ok(/المتجر فاضي/.test($("shopItemsBody").textContent) && $("shopMinDays").value === "3" && $("shopMaxPending").value === "3" && $("shopMaxWeek").value === "2", "the store starts empty and shows the default rules (including the weekly cap)");
   // pending orders
   const cards = [...d.querySelectorAll("#shopOrdersList > div")];
   ok(cards.length === 2 && /5123456789/.test(cards[0].textContent) && /0933123456/.test(cards[0].textContent) && /a@x\.com/.test(cards[0].textContent) && /700/.test(cards[0].textContent), "each order shows the item, price, player email and the details he typed");
@@ -82,10 +82,10 @@ const type = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event("inpu
   ok(/ChatGPT/.test($("shopItemsBody").children[0].textContent) && /PUBG/.test($("shopItemsBody").children[1].textContent), "items can be moved");
   const vis = d.querySelector('input[data-shop-vis="0"]'); vis.checked = false; vis.dispatchEvent(new w.Event("change", { bubbles: true }));
   // save everything
-  type("shopMinDays", "5"); type("shopMaxPending", "2");
+  type("shopMinDays", "5"); type("shopMaxPending", "2"); type("shopMaxWeek", "4");
   $("btnShopSave").click(); await sleep(250);
   const save = shopCalls("/admin/shop").find(c => c.body.action === "save");
-  ok(!!save && save.body.items.length === 2 && save.body.settings.minActiveDays === 5 && save.body.settings.maxPending === 2, "saving sends all items and the rules in one call");
+  ok(!!save && save.body.items.length === 2 && save.body.settings.minActiveDays === 5 && save.body.settings.maxPending === 2 && save.body.settings.maxPerWeek === 4, "saving sends all items and the rules in one call");
   const pubg = save.body.items.find(x => /PUBG/.test(x.name)), gpt = save.body.items.find(x => /ChatGPT/.test(x.name));
   ok(pubg.pricePoints === 720 && pubg.enabled === true && pubg.fields.length === 2 && pubg.fields[0].key === "pid" && pubg.fields[0].type === "id" && pubg.fields[0].label === "ID PUBG" && pubg.fields[0].required === true && pubg.fields[1].key === "phone" && pubg.fields[1].required === false && pubg.fields[1].label_tr === "İletişim numarası" && pubg.fields[1].label_en === "Contact number", "the item has the right fields: custom ID label, optional phone with built-in Turkish and English labels");
   ok(pubg.fields[0].label_tr === "ID PUBG" && pubg.fields[0].label_en === "ID PUBG", "a custom label is used as is for Turkish and English");

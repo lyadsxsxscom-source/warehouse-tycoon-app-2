@@ -769,6 +769,12 @@ async function gameAction(action, body, user, env) {
         if (p.points < item.pricePoints) throw new ApiError("not_enough_points", "نقاط غير كافية.");
         const mine = await fsRunQuery(env, "shopOrders", null, 50, 0, { field: "uid", value: uid });
         if (mine.filter(o => o.data.status === "pending").length >= st.maxPending) throw new ApiError("too_many_pending", `عندك ${st.maxPending} طلبات قيد التنفيذ، استنى لتخلص قبل ما تطلب غيرها.`);
+        // سقف أسبوعي (آخر 7 أيام؛ الطلبات المرفوضة ما بتنحسب لأنه نقاطها رجعت)
+        const WEEK = 7 * 86400000, recent = mine.filter(o => o.data.status !== "rejected" && Number(o.data.createdAt) >= now - WEEK);
+        if (st.maxPerWeek > 0 && recent.length >= st.maxPerWeek) {
+          const days = Math.max(1, Math.ceil((Math.min(...recent.map(o => Number(o.data.createdAt))) + WEEK - now) / 86400000));
+          throw new ApiError("weekly_cap", `وصلت لحد الطلبات الأسبوعي (${st.maxPerWeek}). تقدر تطلب كمان بعد حوالي ${days} يوم.`);
+        }
         p.points -= item.pricePoints;
         const order = {
           uid, displayName: user.name || "", email: user.email || "",
@@ -1506,7 +1512,7 @@ function shopItemsFrom(cfg) {
 function shopSettings(cfg) {
   const sh = (cfg && cfg.shop) || {};
   const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.floor(n))) : d; };
-  return { minActiveDays: num(sh.minActiveDays, 3, 0, 60), maxPending: num(sh.maxPending, 3, 1, 20) };
+  return { minActiveDays: num(sh.minActiveDays, 3, 0, 60), maxPending: num(sh.maxPending, 3, 1, 20), maxPerWeek: num(sh.maxPerWeek, 2, 0, 50) };   // maxPerWeek: 0 = بدون حد
 }
 function validateShopField(def, raw) {
   const v = cleanText(raw, 120);
@@ -1535,7 +1541,8 @@ async function handleShopList(request, env) {
       pricePoints: Number(r.data.pricePoints) || 0, status: String(r.data.status || "pending"), createdAt: Number(r.data.createdAt) || 0,
       note: String(r.data.note || ""), fields: Array.isArray(r.data.fields) ? r.data.fields.map(f => ({ label: String(f.label || ""), value: String(f.value || "") })) : [],
     })).sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
-    return jsonResponse({ ok: true, shop: { items, minActiveDays: st.minActiveDays, maxPending: st.maxPending }, orders }, 200);
+    const weeklyUsed = rows.filter(r => r.data.status !== "rejected" && Number(r.data.createdAt) >= Date.now() - 7 * 86400000).length;
+    return jsonResponse({ ok: true, shop: { items, minActiveDays: st.minActiveDays, maxPending: st.maxPending, maxPerWeek: st.maxPerWeek, weeklyUsed }, orders }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "shop list error", error: String(e.message || e) });
@@ -1557,7 +1564,7 @@ async function handleAdminShop(request, env) {
       const seen = new Set(); const items = [];
       b.items.forEach((x, i) => { const it = sanitizeShopItem(x, i); if (it && !seen.has(it.id)) { seen.add(it.id); items.push(it); } });
       const st = shopSettings({ shop: b.settings || {} });
-      await fsCommit(env, [{ update: { name: docName(env, "config/shop"), fields: objToFields({ items, minActiveDays: st.minActiveDays, maxPending: st.maxPending, updatedAt: Date.now() }) } }]);
+      await fsCommit(env, [{ update: { name: docName(env, "config/shop"), fields: objToFields({ items, minActiveDays: st.minActiveDays, maxPending: st.maxPending, maxPerWeek: st.maxPerWeek, updatedAt: Date.now() }) } }]);
       cachedConfig = null;
       return jsonResponse({ ok: true, items, settings: st, dropped: b.items.length - items.length }, 200);
     }

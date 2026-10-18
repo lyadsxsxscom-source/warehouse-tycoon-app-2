@@ -50,14 +50,14 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   /* ---- A) admin saves the catalog (sanitised) ---- */
   ok((await call("/admin/shop", "u1", { action: "get" })).status === 401 && (await call("/admin/shop", "", { action: "get" })).status === 401, "the catalog editor is admin-only");
   let r = await call("/admin/shop", "admin", { action: "get" });
-  ok(r.status === 200 && r.json.items.length === 0 && r.json.settings.minActiveDays === 3 && r.json.settings.maxPending === 3, "an empty store by default, with safe default rules (3 active days, 3 pending orders)");
+  ok(r.status === 200 && r.json.items.length === 0 && r.json.settings.minActiveDays === 3 && r.json.settings.maxPending === 3 && r.json.settings.maxPerWeek === 2, "an empty store by default, with safe default rules (3 active days, 3 pending orders)");
   const items = [
     { name: "  PUBG <b>60</b> شدة ", name_en: "PUBG 60 UC", desc: "شحن فوري", pricePoints: 700.9, fields: [{ key: "pid", label: "ID اللاعب", label_en: "Player ID", type: "id", required: true }, { key: "contact", label: "رقم التواصل", type: "phone", required: false }] },
     { name: "مخفي", pricePoints: 100, enabled: false },
     { name: "اشتراك", pricePoints: 1500, fields: [{ key: "mail", label: "البريد", type: "email" }, { label: "اسم", type: "weird" }, { key: "mail", label: "مكرر", type: "text" }, { label: "", type: "text" }] },
     { name: "", pricePoints: 5 }, { name: "بدون سعر" }, { name: "سعر سالب", pricePoints: -3 }, null, "x",
   ];
-  r = await call("/admin/shop", "admin", { action: "save", items, settings: { minActiveDays: 2, maxPending: 3 } });
+  r = await call("/admin/shop", "admin", { action: "save", items, settings: { minActiveDays: 2, maxPending: 3, maxPerWeek: 0 } });
   ok(r.status === 200 && r.json.items.length === 3 && r.json.dropped === 5, "invalid items are dropped, valid ones are saved");
   const saved = r.json.items;
   ok(saved[0].name === "PUBG 60 شدة" && !/[<>]/.test(saved[0].name) && saved[0].pricePoints === 700, "names are cleaned (no tags, no extra spaces) and the price is a whole number");
@@ -138,6 +138,31 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   r = await call("/game/shop", "u1", { lang: "ar" });
   ok(["done", "rejected", "rejected"].every(s => r.json.orders.some(o => o.status === s)) && r.json.orders.find(o => o.status === "rejected" && o.note === "الـID غلط"), "the player sees the new status and the admin's note");
   r = await order("u1", ID1, { pid: "1" }, "req-12"); ok(r.status === 200, "after orders are resolved the player can order again");
+
+  /* ---- E2) weekly cap ---- */
+  r = await call("/admin/shop", "admin", { action: "save", items: [{ name: "x", pricePoints: 5 }], settings: { minActiveDays: 1, maxPending: 5, maxPerWeek: 999 } });
+  ok(r.json.settings.maxPerWeek === 50, "the weekly cap is limited to 50");
+  r = await call("/admin/shop", "admin", { action: "save", items: [{ name: "x", pricePoints: 5 }], settings: { maxPerWeek: -4 } }); ok(r.json.settings.maxPerWeek === 0, "a negative cap means unlimited (0)");
+  r = await call("/admin/shop", "admin", { action: "save", items: [{ name: "x", pricePoints: 5 }], settings: {} }); ok(r.json.settings.maxPerWeek === 2, "without a value the cap defaults to 2 per week");
+  r = await call("/admin/shop", "admin", { action: "save", items: items.slice(0, 1), settings: { minActiveDays: 0, maxPending: 10, maxPerWeek: 2 } });
+  CFG.shop = get("config/shop"); let CAPITEM = r.json.items[0].id; TOK.u4 = { sub: "u4", name: "Dan", email: "d@x.com" };
+  put("players/u4", { shelves: c.defaultShelves(), points: 20000, totalPointsEarned: 20000, activeDays: 5, adsWatched: 5, firstSeenAt: NOW });
+  r = await order("u4", CAPITEM, { pid: "1" }, "cap-1"); ok(r.status === 200, "cap 2/week: first order accepted");
+  r = await order("u4", CAPITEM, { pid: "2" }, "cap-2"); ok(r.status === 200, "cap 2/week: second order accepted");
+  r = await order("u4", CAPITEM, { pid: "3" }, "cap-3");
+  ok(r.status === 400 && r.json.error === "weekly_cap" && /\(2\)/.test(r.json.message) && /7 يوم/.test(r.json.message), "the third order within a week is refused, saying the limit and how many days to wait");
+  r = await call("/game/shop", "u4", {}); ok(r.json.shop.maxPerWeek === 2 && r.json.shop.weeklyUsed === 2, "the player is told the weekly limit and how much he used");
+  const u4orders = [...store.keys()].filter(k => k.startsWith("shopOrders/")).map(k => ({ id: k.split("/")[1], ...get(k) })).filter(o => o.uid === "u4");
+  await call("/admin/shop-orders", "admin", { action: "resolve", orderId: u4orders[0].id, decision: "rejected", note: "x" });
+  r = await call("/game/shop", "u4", {}); ok(r.json.shop.weeklyUsed === 1, "a rejected (refunded) order does not count against the cap");
+  r = await order("u4", CAPITEM, { pid: "3" }, "cap-4"); ok(r.status === 200, "so after a rejection he can order again");
+  for (const o of [...store.keys()].filter(k => k.startsWith("shopOrders/"))) { const d0 = get(o); if (d0.uid === "u4") put(o, { ...d0, createdAt: Date.now() - 5 * 86400000 }); }
+  r = await order("u4", CAPITEM, { pid: "4" }, "cap-5"); ok(r.status === 400 && /2 يوم/.test(r.json.message), "with orders from 5 days ago the message says to wait about 2 more days");
+  for (const o of [...store.keys()].filter(k => k.startsWith("shopOrders/"))) { const d0 = get(o); if (d0.uid === "u4") put(o, { ...d0, createdAt: Date.now() - 8 * 86400000 }); }
+  r = await order("u4", CAPITEM, { pid: "5" }, "cap-6"); ok(r.status === 200, "orders older than 7 days do not count");
+  r = await call("/admin/shop", "admin", { action: "save", items: items.slice(0, 1), settings: { minActiveDays: 0, maxPending: 10, maxPerWeek: 0 } }); CFG.shop = get("config/shop"); CAPITEM = r.json.items[0].id;
+  for (let k = 0; k < 4; k++) { r = await order("u4", CAPITEM, { pid: "u" + k }, "cap-u" + k); if (r.status !== 200) break; }
+  ok(r.status === 200, "with the cap set to 0 there is no weekly limit");
 
   /* ---- F) an empty store ---- */
   CFG.shop = {}; r = await call("/game/shop", "u1", {}); ok(r.status === 200 && r.json.shop.items.length === 0, "with no items the store list is simply empty");
