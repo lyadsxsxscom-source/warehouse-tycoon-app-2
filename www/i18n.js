@@ -6,6 +6,9 @@
 (function(){
   // [تركي, إنجليزي]
   const EXACT = {
+    "حسابك معلّق": ["Hesabın askıya alındı", "Your account is suspended"],
+    "حسابك معلّق بسبب عدم النشاط. تواصل معنا على تلغرام عشان نفكّ التعليق.": ["Hesabın etkinlik olmadığı için askıya alındı. Askıyı kaldırmak için bizimle Telegram'da iletişime geç.", "Your account was suspended due to inactivity. Contact us on Telegram to lift the suspension."],
+    "✈️ تواصل معنا على تلغرام": ["✈️ Bize Telegram'dan ulaş", "✈️ Contact us on Telegram"],
     "وصلت للحد الأسبوعي، جرّب بعد كم يوم": ["Haftalık sınıra ulaştın, birkaç gün sonra dene", "You've reached the weekly limit, try again in a few days"],
     "✈️ الدخول عبر تلغرام": ["✈️ Telegram ile giriş", "✈️ Sign in with Telegram"],
     "الدخول عبر تلغرام": ["Telegram ile giriş", "Sign in with Telegram"],

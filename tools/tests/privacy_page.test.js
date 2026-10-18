@@ -15,12 +15,14 @@ async function page(lang) {
   ok(/بنحتفظ بسجلات السحب والشراء وطلبات المتجر/.test(ar.body.textContent) && /طلبات متجر الألعاب والخدمات/.test(ar.body.textContent), "Arabic: what is kept, and the store orders data, are described");
   ok(/قيد المراجعة/.test(ar.body.textContent), "Arabic: it says deletion waits for pending requests");
   ok(/بصمة مشفّرة من عنوان المحفظة/.test(ar.body.textContent), "Arabic: the wallet fingerprint (multiple accounts check) is disclosed");
+  ok(/الحسابات غير النشطة: إذا غبت 15 يوم/.test(ar.body.textContent) && /بيتعلّق/.test(ar.body.textContent), "Arabic: the inactive-accounts policy (reminder, warning, delete or suspend) is disclosed");
   ok(/الدخول عبر تلغرام:/.test(ar.body.textContent) && /بصمة مشفّرة من رقم هاتفك/.test(ar.body.textContent) && /ربط تلغرام وبصمة رقم الهاتف/.test(ar.body.textContent), "Arabic: Telegram sign-in data (id, first name, hashed phone) and its deletion are described");
   for (const [lang, a, b, c] of [["tr", /Hesabımı sil/, /muhasebe ve dolandırıcılığı önleme/, /mağazası siparişleri/], ["en", /Delete my account/, /accounting and fraud prevention/, /store orders/]]) {
     const d = await page(lang);
     const sec = [...d.querySelectorAll("h2")].find(h => /5\./.test(h.textContent));
     const txt = d.body.textContent.replace(/\s+/g, " ");
     ok(/encrypted fingerprint|şifrelenmiş bir parmak izi/.test(txt), `${lang}: the wallet fingerprint disclosure is translated`);
+    ok(/Inactive accounts: if you stay away for 15 days|Etkin olmayan hesaplar: 15 gün/.test(txt), `${lang}: the inactive-accounts policy is translated`);
     ok(a.test(txt) && b.test(txt) && c.test(txt), `${lang}: deletion path, retention and store-order texts are translated`);
     const newBits = [d.getElementById("delete-account"), ...[...d.querySelectorAll("#delete-account ~ p, #delete-account ~ ul li")]].filter(Boolean).map(e => e.textContent).join(" ");
     ok(newBits.length > 200 && !/[\u0600-\u06FF]/.test(newBits), `${lang}: the whole new rights section has no leftover Arabic`);

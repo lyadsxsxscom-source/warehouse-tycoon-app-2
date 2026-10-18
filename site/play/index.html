@@ -423,6 +423,14 @@ window.__errQueue = [];
   <button class="btn-main" id="btnTelegramLoginGate" style="max-width:320px; margin-top:12px; background:#229ED9; color:#fff;">✈️ الدخول عبر تلغرام</button>
 </div>
 
+<div id="suspendedGate" class="overlay" style="z-index:98; background:var(--bg);">
+<div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#F4C21F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+<h1 style="margin:0 0 4px;">حسابك معلّق</h1>
+<div class="subtitle" id="suspendedMsg" style="margin-bottom:22px; text-align:center; max-width:290px;"></div>
+<button class="btn-main" id="btnSuspTelegram" style="max-width:280px; background:#229ED9; color:#fff;">✈️ تواصل معنا على تلغرام</button>
+<div class="close" id="btnSuspLogout" style="margin-top:14px;">تسجيل الخروج</div>
+</div>
+
 <div id="forceUpdateGate" class="overlay" style="z-index:100; background:var(--bg);">
   <div style="margin-bottom:6px;"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#F4C21F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg></div>
   <h1 style="margin:0 0 4px;">تحديث مطلوب</h1>
@@ -1535,6 +1543,14 @@ document.getElementById('guideTg').onclick = () => openLink(TELEGRAM_URL);
 document.getElementById('btnGuide').onclick = openGuide;
 document.getElementById('btnTelegram').onclick = () => openLink(TELEGRAM_URL);
 
+// حساب معلّق (عدم نشاط): شاشة كاملة فيها رسالة وزر تواصل وتسجيل خروج
+function showSuspended(msg){
+  document.getElementById('suspendedMsg').textContent = tr(msg || 'حسابك معلّق بسبب عدم النشاط. تواصل معنا على تلغرام عشان نفكّ التعليق.');
+  document.getElementById('suspendedGate').classList.add('show');
+  if(typeof bootFinish === 'function') bootFinish();
+}
+document.getElementById('btnSuspTelegram').onclick = () => openLink('https://t.me/YardovaGame');
+document.getElementById('btnSuspLogout').onclick = async () => { document.getElementById('suspendedGate').classList.remove('show'); await handleGoogleAuthClick(); };
 async function gameApi(action, body){
   if(!currentUser) throw new Error('لازم تسجّل دخول أول.');
   const idToken = await currentUser.getIdToken();
@@ -1552,6 +1568,7 @@ async function gameApi(action, body){
     throw new Error('تعذّر الاتصال بالسيرفر، تأكد من الإنترنت وجرّب كمان مرة.');
   }
   if(res.status >= 500 && window.__pushClientError) window.__pushClientError('api', `${action}: HTTP ${res.status} ${data.error || ''}`.trim(), '');
+  if(data && data.error === 'account_suspended') showSuspended(data.message);
   if(!res.ok || !data.ok){ const err = new Error(data.message || 'صار خطأ، جرّب كمان مرة.'); err.code = data.error; throw err; }
   applyServerState(data.state);
   return data;
@@ -2164,7 +2181,7 @@ function showExitHint(){
   clearTimeout(showExitHint._t); showExitHint._t = setTimeout(() => { el.style.opacity = '0'; }, 2000);
 }
 function handleBack(){
-  const GATES = ['loginGate','forceUpdateGate','vpnGate']; // بوابات إجبارية، ما بتنسكّر بزر الرجوع
+  const GATES = ['loginGate','forceUpdateGate','vpnGate','suspendedGate']; // بوابات إجبارية، ما بتنسكّر بزر الرجوع
   // 1) نافذة منبثقة مفتوحة → سكّرها
   const open = [...document.querySelectorAll('.overlay.show')].filter(o => !GATES.includes(o.id));
   if(open.length){ open[open.length - 1].classList.remove('show'); return; }
