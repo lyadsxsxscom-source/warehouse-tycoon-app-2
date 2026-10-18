@@ -710,11 +710,16 @@ async function gameAction(action, body, user, env) {
           adsWatchedSnapshot: p.adsWatched,
           status: "pending", createdAt: now,
         };
+        // هل نفس المحفظة استُخدمت بحساب تاني؟ (علامة للأدمن بس)
+        const wKey = await walletKey(address);
+        const widx = await fsGetDoc(env, "walletIndex/" + wKey);
+        const others = widx.exists && widx.data && Array.isArray(widx.data.uids) ? widx.data.uids.filter(u => u && u !== uid).slice(0, 5) : [];
+        if (others.length) { request.walletShared = true; request.walletOtherUids = others; }
         return {
           writes: [{
             update: { name: docName(env, "withdrawRequests/" + randomId()), fields: objToFields(request) },
             currentDocument: { exists: false },
-          }, statsWrite(env, todaySyria(now), { withdraws: 1, withdrawUsd: Math.round(amountUsd * 100) / 100, ...(reduced ? { reducedWithdrawUsd: Math.round(amountUsd * 100) / 100 } : {}) })],
+          }, { update: { name: docName(env, "walletIndex/" + wKey), fields: {} }, updateMask: { fieldPaths: [] }, updateTransforms: [{ fieldPath: "uids", appendMissingElements: { values: [{ stringValue: uid }] } }] }, statsWrite(env, todaySyria(now), { withdraws: 1, withdrawUsd: Math.round(amountUsd * 100) / 100, ...(reduced ? { reducedWithdrawUsd: Math.round(amountUsd * 100) / 100 } : {}) })],
         };
       });
     }
@@ -1143,6 +1148,33 @@ async function handleWannadsPostback(request, env, ctx) {
   return new Response("OK", { status: 200 });
 }
 
+// ===== علامة "هالمحفظة مستخدمة بحساب تاني" (حماية من الحسابات المتعددة؛ علامة بس، ما بنمنع السحب) =====
+// فهرس walletIndex/{بصمة العنوان}.uids = الحسابات يلي طلبت سحب لهالعنوان. العنوان نفسه ما بينحفظ هون، بس بصمته.
+function normalizeWallet(a) { const t = String(a || "").trim().replace(/\s+/g, ""); return /^0x[0-9a-fA-F]{40}$/.test(t) ? t.toLowerCase() : t; }
+async function walletKey(a) { return (await sha256Hex("wallet|" + normalizeWallet(a))).slice(0, 40); }
+// الأدمن: يبني الفهرس من طلبات السحب القديمة ويعلّم الطلبات يلي محفظتها مشتركة (بيشتغل مرة وحدة بعد التفعيل، وآمن يتكرر)
+async function handleAdminWalletReindex(request, env) {
+  if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  try {
+    const rows = (await fsRunQuery(env, "withdrawRequests", "createdAt", 1000)).filter(r => !r.data.accountDeleted && r.data.uid && r.data.walletAddress && !String(r.data.uid).includes("/"));
+    const byKey = new Map();
+    for (const r of rows) { r.k = await walletKey(r.data.walletAddress); if (!byKey.has(r.k)) byKey.set(r.k, new Set()); byKey.get(r.k).add(String(r.data.uid)); }
+    const writes = [];
+    for (const [k, set] of byKey) writes.push({ update: { name: docName(env, "walletIndex/" + k), fields: objToFields({ uids: [...set] }) } });
+    let flagged = 0;
+    for (const r of rows) {
+      const set = byKey.get(r.k), others = [...set].filter(u => u !== String(r.data.uid)).slice(0, 5), shared = others.length > 0;
+      if (shared) flagged++;
+      writes.push({ update: { name: docName(env, "withdrawRequests/" + r.id), fields: objToFields({ walletShared: shared, walletOtherUids: others }) }, updateMask: { fieldPaths: ["walletShared", "walletOtherUids"] } });
+    }
+    for (let i = 0; i < writes.length; i += 400) await fsCommit(env, writes.slice(i, i + 400));
+    return jsonResponse({ ok: true, requests: rows.length, wallets: byKey.size, sharedWallets: [...byKey.values()].filter(x => x.size > 1).length, flaggedRequests: flagged, capped: rows.length >= 1000 }, 200);
+  } catch (e) {
+    console.error({ message: "wallet reindex error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+
 // ===== حذف الحساب (بطلب اللاعب من التطبيق) =====
 // بنحذف: بيانات اللاعب، جهاز الإشعارات، البريد الداخلي، كود الدعوة، شحنات البريد، وحساب الدخول نفسه.
 // بنحتفظ بسجلات السحب والشراء والطلبات (المبلغ والتاريخ والمحفظة) لأغراض محاسبية ومنع الاحتيال، بس بنمسح منها الاسم والبريد والإيصال والتفاصيل.
@@ -1175,12 +1207,20 @@ async function handleDeleteAccount(request, env) {
     const tgId = player.exists && /^[0-9]{1,20}$/.test(String(player.data.tgUserId || "")) ? String(player.data.tgUserId) : "";
     const phoneH = player.exists && /^[0-9a-f]{64}$/.test(String(player.data.phoneHash || "")) ? String(player.data.phoneHash) : "";
     const tgSessions = tgId ? await fsRunQuery(env, "tgSessions", null, 50, 0, { field: "tgUserId", value: Number(tgId) }) : [];
+    const walletWrites = [];
+    for (const k of new Set(await Promise.all(wds.filter(r => r.data.walletAddress).map(r => walletKey(r.data.walletAddress))))) {
+      const idx = await fsGetDoc(env, "walletIndex/" + k);
+      if (!idx.exists || !Array.isArray(idx.data.uids)) continue;
+      const rest = idx.data.uids.filter(u => u !== uid);
+      walletWrites.push(rest.length ? { update: { name: docName(env, "walletIndex/" + k), fields: objToFields({ uids: rest }) }, updateMask: { fieldPaths: ["uids"] } } : { delete: docName(env, "walletIndex/" + k) });
+    }
     const blank = (coll, rows, fields) => rows.map(r => ({
       update: { name: docName(env, coll + "/" + r.id), fields: objToFields({ ...fields, accountDeleted: true }) },
       updateMask: { fieldPaths: [...Object.keys(fields), "accountDeleted"] },
     }));
     const writes = [
-      ...blank("withdrawRequests", wds, { displayName: "", email: "" }),
+      ...blank("withdrawRequests", wds, { displayName: "", email: "", walletOtherUids: [] }),
+      ...walletWrites,
       ...blank("shopOrders", orders, { displayName: "", email: "", fields: [] }),
       ...blank("purchaseRequests", purchases, { displayName: "", email: "", proofImage: "", note: "" }),
       ...mails.map(r => ({ delete: docName(env, "mail/" + r.id) })),
@@ -2025,6 +2065,7 @@ export default {
     if (url.pathname === "/admin/players" && request.method === "POST") return handleAdminPlayers(request, env);
     if (url.pathname === "/admin/message" && request.method === "POST") return handleAdminMessage(request, env);
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
+    if (url.pathname === "/admin/wallet-reindex" && request.method === "POST") return handleAdminWalletReindex(request, env);
     if (url.pathname === "/admin/shop-orders" && request.method === "POST") return handleAdminShopOrders(request, env);
     if (url.pathname === "/public-config" && request.method === "GET") return handlePublicConfig(env);
     return new Response("Not found", { status: 404 });

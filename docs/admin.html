@@ -181,6 +181,13 @@
     </div>
 
     <div id="viewWithdraws" style="display:none;">
+      <div class="card" style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <div style="font-size:12px; color:var(--dim); line-height:1.7;">الطلبات الجديدة بتنعلّم لحالها إذا المحفظة مستخدمة بحساب تاني. هالزر بيفحص الطلبات القديمة (مرة وحدة بعد التفعيل).</div>
+          <button class="copy-btn" id="btnWalletReindex" style="width:auto; padding:6px 12px; margin:0; white-space:nowrap;">🔄 فحص المحافظ المكررة</button>
+        </div>
+        <div id="walletReindexOut" style="font-size:12px; line-height:1.8; margin-top:8px;"></div>
+      </div>
       <div id="withdrawsList"></div>
     </div>
 
@@ -838,6 +845,7 @@ function watchWithdrawRequests(){
           </div>
           <div class="req-who">${escapeHtml(d.displayName || '')} ${d.email ? '· ' + escapeHtml(d.email) : ''}</div>
           <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${d.coin === 'shamcash' ? 'شام كاش: ' : ''}${escapeHtml(d.walletAddress || '')}</div>
+          ${d.walletShared ? `<div class="req-note wal-warn" style="color:var(--ember); font-weight:700;">⚠️ هالمحفظة مستخدمة بحساب تاني (${(d.walletOtherUids || []).length || 1}) <button class="copy-btn" data-walwho="${doc.id}" style="width:auto; padding:3px 10px; margin:0 6px;">مين؟</button><div data-walbox="${doc.id}" style="font-weight:400; color:var(--text); margin-top:6px; line-height:1.9;"></div></div>` : ''}
           ${d.coin === 'shamcash' && d.status === 'fulfilled' && d.payoutCurrency ? `<div class="req-note">تم التحويل: ${d.payoutCurrency === 'SYP' ? Math.round(d.payoutAmount).toLocaleString('en-US') + ' ل.س' : '$' + d.payoutAmount}</div>` : ''}
           ${d.coin === 'shamcash' && d.status === 'pending' ? `<div class="req-note" data-pay="${doc.id}" style="display:flex; gap:6px; align-items:center;">
             <select data-paycur="${doc.id}" style="flex:1;"><option value="USD">دولار</option><option value="SYP">ليرة سورية</option></select>
@@ -899,6 +907,38 @@ async function checkWithdrawPlausibility(reqId, d){
     el.style.color = 'var(--dim)';
   }
 }
+
+// ===== علامة المحفظة المشتركة: "مين؟" بيعرض الحسابات التانية، وزر فحص الطلبات القديمة =====
+const WALLET_UIDS = {};   // reqId ← قائمة معرّفات الحسابات التانية
+document.getElementById('withdrawsList').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-walwho]'); if(!btn) return;
+  const id = btn.dataset.walwho, box = document.querySelector(`[data-walbox="${id}"]`);
+  if(box.dataset.loaded === '1'){ box.style.display = box.style.display === 'none' ? 'block' : 'none'; return; }
+  box.textContent = 'عم يحمّل...';
+  try{
+    const reqDoc = await fbDb.collection('withdrawRequests').doc(id).get();
+    const uids = (reqDoc.exists && reqDoc.data().walletOtherUids) || [];
+    const lines = [];
+    for(const uid of uids){
+      const pd = await fbDb.collection('players').doc(uid).get();
+      if(!pd.exists){ lines.push('🗑 حساب محذوف'); continue; }
+      const p = pd.data();
+      lines.push('• ' + escapeHtml(p.displayName || '—') + ' · <span dir="ltr">' + escapeHtml(p.email || uid) + '</span> · أيام نشاط ' + (Number(p.activeDays) || 0) + ' · نقاط مكتسبة ' + Math.round(Number(p.totalPointsEarned) || 0) + ' · رصيد $' + (Number(p.balanceUsd) || 0).toFixed(2));
+    }
+    box.innerHTML = lines.join('<br>') || 'ما لقيت تفاصيل.';
+    box.dataset.loaded = '1';
+  }catch(err){ box.textContent = 'تعذّر: ' + err.message; }
+});
+document.getElementById('btnWalletReindex').onclick = async () => {
+  const out = document.getElementById('walletReindexOut'), b = document.getElementById('btnWalletReindex');
+  b.disabled = true; out.style.color = 'var(--dim)'; out.textContent = 'عم يفحص...';
+  try{
+    const j = await shopApi('/admin/wallet-reindex', {});
+    out.style.color = 'var(--ok, #4caf50)';
+    out.textContent = 'تم ✓ ' + j.requests + ' طلب، ' + j.wallets + ' محفظة، ' + j.sharedWallets + ' محفظة مشتركة، ' + j.flaggedRequests + ' طلب معلّم' + (j.capped ? ' (فحصنا آخر 1000 طلب بس)' : '');
+  }catch(err){ out.style.color = '#e5533d'; out.textContent = 'تعذّر: ' + err.message; }
+  b.disabled = false;
+};
 
 document.getElementById('withdrawsList').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-wdact]');
