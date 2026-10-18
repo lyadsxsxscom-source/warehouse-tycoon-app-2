@@ -5,6 +5,7 @@
 (function(){
   // [تركي, إنجليزي]
   const EXACT = {
+  "لمنع الحسابات المتعددة، بنحتفظ ببصمة مشفّرة من عنوان المحفظة (مو العنوان نفسه) ونقارنها بين الحسابات. لو انحذف حسابك، بتنمسح بصمته منها.": ["Birden fazla hesabı önlemek için cüzdan adresinin şifrelenmiş bir parmak izini (adresin kendisini değil) saklar ve hesaplar arasında karşılaştırırız. Hesabın silinirse parmak izin de silinir.", "To prevent multiple accounts, we keep an encrypted fingerprint of the wallet address (not the address itself) and compare it between accounts. If your account is deleted, its fingerprint is removed."],
   "الدخول عبر تلغرام:": ["Telegram ile giriş:", "Sign-in with Telegram:"],
   "لما تدخل أو تربط حسابك بتلغرام، بنحفظ رقم حساب تلغرام واسمك الأول، وبصمة مشفّرة من رقم هاتفك (مو الرقم نفسه) لمنع تكرار الحسابات.": ["Telegram ile giriş yaptığında veya hesabını bağladığında Telegram hesap numaranı ve adını, ayrıca hesapların tekrarını önlemek için telefon numarandan üretilmiş şifreli bir iz (numaranın kendisi değil) saklarız.", "When you sign in with or link Telegram, we keep your Telegram account number and first name, plus an encrypted fingerprint of your phone number (not the number itself) to prevent duplicate accounts."],
   "ربط تلغرام وبصمة رقم الهاتف": ["Telegram bağlantısı ve telefon numarası izi", "The Telegram link and the phone-number fingerprint"],
