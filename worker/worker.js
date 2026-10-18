@@ -78,13 +78,13 @@ function newRefCode() {
   return Array.from(b, x => REF_ALPHABET[x % REF_ALPHABET.length]).join("");
 }
 // إضافة ذرّية لنقاط لاعب تاني (الداعي) بدون ما نقرأ مستنده
-function creditWrite(env, uid, pts, extra = {}) {
+function creditWrite(env, uid, pts, extra = {}, setFields = {}) {
   const t = [
     { fieldPath: "points", increment: { doubleValue: pts } },
     { fieldPath: "totalPointsEarned", increment: { doubleValue: pts } },
   ];
   for (const [f, v] of Object.entries(extra)) t.push({ fieldPath: f, increment: Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v } });
-  return { update: { name: docName(env, "players/" + uid), fields: {} }, updateMask: { fieldPaths: [] }, updateTransforms: t };
+  return { update: { name: docName(env, "players/" + uid), fields: objToFields(setFields) }, updateMask: { fieldPaths: Object.keys(setFields) }, updateTransforms: t };
 }
 // إذا المدعو وصل لشرط النشاط: مكافأة الداعي (مرة وحدة بس)
 function referralRewardWrites(env, cfg, p, today) {
@@ -239,7 +239,7 @@ async function fsCommit(env, writes) {
 async function fsRunQuery(env, collectionId, orderField, limit, offset, filter) {
   const token = await getGoogleAccessToken(env);
   const sq = { from: [{ collectionId }], limit };
-  if (filter) sq.where = { fieldFilter: { field: { fieldPath: filter.field }, op: "EQUAL", value: toFs(filter.value) } };   // فلتر واحد (مساواة) ما بيحتاج فهرس
+  if (filter) sq.where = { fieldFilter: { field: { fieldPath: filter.field }, op: filter.op || "EQUAL", value: toFs(filter.value) } };   // فلتر واحد (مساواة) ما بيحتاج فهرس
   if (orderField) sq.orderBy = [{ field: { fieldPath: orderField }, direction: "DESCENDING" }];   // بدون ترتيب = كل المستندات (حتى يلي ما فيها حقل الترتيب)
   if (offset > 0) sq.offset = offset;
   const r = await fetch(fsUrl(env, ":runQuery"), {
@@ -451,13 +451,15 @@ function publicState(p, now, cfg) {
 }
 
 // تعديل مستند اللاعب بشكل ذرّي (لو حدا تاني عدّله بنفس اللحظة، منعيد المحاولة)
-async function mutatePlayer(env, uid, fn) {
+const mutatePlayerAdmin = (env, uid, fn) => mutatePlayer(env, uid, fn, { allowSuspended: true });   // عمليات الأدمن (إرجاع نقاط...) ما بتنمنع على حساب معلّق
+async function mutatePlayer(env, uid, fn, opts = {}) {
   const path = "players/" + uid;
   for (let attempt = 0; attempt < 4; attempt++) {
     const doc = await fsGetDoc(env, path);
     const now = Date.now();
     const cfg = await loadConfig(env);
     const p = normalizePlayer(doc.data, now, todaySyria(now), cfg);
+    if (p.suspended === true && !opts.allowSuspended) throw new ApiError("account_suspended", "حسابك معلّق بسبب عدم النشاط. تواصل معنا على تلغرام عشان نفكّ التعليق.", 403);
     settle(p, now);
     const extra = (await fn(p, now)) || {};
     p.updatedAt = now;
@@ -510,6 +512,21 @@ const PUSH_TEXT = {
     en: (p) => ["Your friend is now an active player! 🤝", `${p.points} referral reward points were added.`],
   },
 };
+PUSH_TEXT.inactive_remind = {
+  ar: (p) => ["اشتقنالك! 👋", `صرلك ${p.days} يوم ما فتحت Yardova. ارجع وكمّل لعبك.`],
+  tr: (p) => ["Seni özledik! 👋", `${p.days} gündür Yardova'yı açmadın. Dön ve oynamaya devam et.`],
+  en: (p) => ["We miss you! 👋", `You haven't opened Yardova for ${p.days} days. Come back and keep playing.`],
+};
+PUSH_TEXT.inactive_warn = {
+  ar: (p) => ["تنبيه: حسابك غير نشط", p.counted ? `إذا ما رجعت خلال ${p.left} يوم، رح نعلّق حسابك (بيضل محفوظ ورصيدك آمن).` : `إذا ما رجعت خلال ${p.left} يوم، رح ينحذف حسابك.`],
+  tr: (p) => ["Uyarı: hesabın etkin değil", p.counted ? `${p.left} gün içinde dönmezsen hesabını askıya alacağız (saklı kalır, bakiyen güvende).` : `${p.left} gün içinde dönmezsen hesabın silinecek.`],
+  en: (p) => ["Heads-up: your account is inactive", p.counted ? `If you don't come back within ${p.left} days, we'll suspend your account (it stays saved and your balance is safe).` : `If you don't come back within ${p.left} days, your account will be deleted.`],
+};
+PUSH_TEXT.inactive_suspend = {
+  ar: () => ["تم تعليق حسابك", "بسبب عدم النشاط. تواصل معنا على تلغرام لفكّ التعليق."],
+  tr: () => ["Hesabın askıya alındı", "Etkinlik olmadığı için. Askıyı kaldırmak için bizimle Telegram'da iletişime geç."],
+  en: () => ["Your account was suspended", "Due to inactivity. Contact us on Telegram to lift the suspension."],
+};
 PUSH_TEXT.shop_done = {
   ar: (p) => ["تم تنفيذ طلبك ✅", `تم تنفيذ طلب «${p.item}». شوف بريدك داخل اللعبة.`],
   tr: (p) => ["Siparişin tamamlandı ✅", `«${p.item}» siparişin tamamlandı. Oyun içi postana bak.`],
@@ -521,7 +538,7 @@ PUSH_TEXT.shop_rejected = {
   en: (p) => ["Your order was declined", `${p.points} points were refunded. Check your in-game mail.`],
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -568,10 +585,11 @@ async function gameAction(action, body, user, env) {
           total = pending.reduce((sum, c) => { const n = Number(c.reward); return sum + (Number.isFinite(n) && n > 0 ? n : 0); }, 0);
           claimWrites.push({ update: { name: docName(env, claimPath), fields: objToFields({ uid, amount: total, type: "legacy_pending", createdAt: now }) }, currentDocument: { exists: false } });
         }
-        if (total > 0) { p.points += total; p.totalPointsEarned += total; }
+        if (total > 0) { p.points += total; p.totalPointsEarned += total; p.earnedActive = true; }
         const today = todaySyria(now);
         if (p.lastActiveDate !== today) p.activeDays += 1;
         p.lastActiveDate = today;
+        if (p.inactivityStage) { p.inactivityStage = ""; p.inactivityWarnedAt = 0; p.inactivityRemindedAt = 0; }   // رجع للعبة: بنلغي تحذيرات عدم النشاط
         if (user.email && p.email !== user.email) p.email = String(user.email).slice(0, 120);
         if (user.name && p.displayName !== user.name) p.displayName = String(user.name).slice(0, 80);
   else if (!user.name && user.tgName && !p.displayName) p.displayName = String(user.tgName).slice(0, 80);
@@ -636,6 +654,7 @@ async function gameAction(action, body, user, env) {
         t.claimed = true;
         p.points += t.reward;
         p.totalPointsEarned += t.reward;
+        p.earnedActive = true;
       });
     }
 
@@ -647,6 +666,7 @@ async function gameAction(action, body, user, env) {
         p.points += ads.rewardPoints;
         p.totalPointsEarned += ads.rewardPoints;
         p.adsWatched += 1;
+        p.earnedActive = true;
         p.adsToday += 1;
         p.lastAdAt = now;
         p.boostFrom = now;
@@ -751,6 +771,7 @@ async function gameAction(action, body, user, env) {
         }
         p.points += award;
         p.totalPointsEarned += award;
+        p.earnedActive = true;
         return { writes, result: { awarded: award } };
       });
     }
@@ -963,7 +984,7 @@ async function creditOfferOnce(env, provider, txId, uid, amount) {
       }) },
       currentDocument: { exists: false },
     },
-    creditWrite(env, uid, amount),
+    creditWrite(env, uid, amount, {}, { earnedActive: true }),
     statsWrite(env, todaySyria(), { offers: 1, offerPoints: amount }),
   ];
   if (inviter && commission) writes.push(creditWrite(env, inviter, commission, { referralEarnings: commission }));
@@ -1181,6 +1202,119 @@ async function handleAdminWalletReindex(request, env) {
   }
 }
 
+// ===== سياسة عدم النشاط =====
+// 15 يوم تذكير ← 35 يوم تحذير ← 60 يوم تنفيذ (بعد مهلة بعد التحذير): الحساب "المحسوب" (كسب نقاط من نشاط أو شحن نقاط أو عنده رصيد) بيتعلّق، وغير المحسوب (نقاطه من المكافأة اليومية بس) بينحذف.
+// مطفية افتراضياً. الأدمن بيجرّب "بدون تنفيذ" وبعدين بيفعّلها. المهمة بتشتغل يومياً (cron) وفيها حد أقصى للإجراءات بكل مرة.
+const INACT_DEFAULTS = { enabled: false, remindDays: 15, warnDays: 35, actionDays: 60, graceDays: 7, maxActions: 20 };
+function inactivityNorm(o) {
+  const n = (v, d, lo, hi) => { const k = Number(v); return Number.isFinite(k) ? Math.min(hi, Math.max(lo, Math.floor(k))) : d; };
+  o = o || {};
+  const remindDays = n(o.remindDays, INACT_DEFAULTS.remindDays, 1, 365);
+  const warnDays = Math.max(remindDays + 1, n(o.warnDays, INACT_DEFAULTS.warnDays, 1, 365));
+  const actionDays = Math.max(warnDays + 1, n(o.actionDays, INACT_DEFAULTS.actionDays, 1, 730));
+  return { enabled: o.enabled === true, remindDays, warnDays, actionDays, graceDays: n(o.graceDays, INACT_DEFAULTS.graceDays, 1, 60), maxActions: n(o.maxActions, INACT_DEFAULTS.maxActions, 1, 200) };
+}
+function dayNum(d) { const [y, m, dd] = String(d || "").split("-").map(Number); return Math.floor(Date.UTC(y, (m || 1) - 1, dd || 1) / 86400000); }
+function shiftDate(d, days) { return new Date((dayNum(d) + days) * 86400000).toISOString().slice(0, 10); }
+// حساب "محسوب"؟ كسب نقاط من نشاط، أو شحن نقاط، أو عنده رصيد أو سحوبات. المكافأة اليومية وهدية البداية وحدها ما بتحسب.
+async function classifyAccount(env, uid, p) {
+  if (p.earnedActive === true) return { counted: true, reason: "كسب نقاط من نشاط أو شحن نقاط" };
+  if (Number(p.balanceUsd) > 0.0001) return { counted: true, reason: "عنده رصيد" };
+  if (Number(p.withdrawCount) > 0) return { counted: true, reason: "عنده سحوبات" };
+  if (Number(p.adsWatched) > 0) return { counted: true, reason: "شاهد إعلانات" };
+  const [ot, rc] = await Promise.all([fsRunQuery(env, "offerTx", null, 1, 0, { field: "uid", value: uid }), fsRunQuery(env, "redeemCodes", null, 1, 0, { field: "usedBy", value: uid })]);
+  if (ot.length) return { counted: true, reason: "كسب من جدار المهام" };
+  if (rc.length) return { counted: true, reason: "شحن نقاط بكود" };
+  return { counted: false, reason: "نقاطه من المكافأة اليومية وهدية البداية بس" };
+}
+async function inactivityNotify(env, uid, kind, params) {
+  const T = kind === "remind"
+    ? { ar: ["اشتقنالك! 👋", `صرلك ${params.days} يوم ما فتحت Yardova. ارجع وكمّل لعبك.`], tr: ["Seni özledik! 👋", `${params.days} gündür Yardova'yı açmadın. Dön ve oynamaya devam et.`], en: ["We miss you! 👋", `You haven't opened Yardova for ${params.days} days. Come back and keep playing.`] }
+    : { ar: ["تنبيه: حسابك غير نشط", params.counted ? `إذا ما رجعت خلال ${params.left} يوم، رح نعلّق حسابك (بيضل محفوظ ورصيدك آمن).` : `إذا ما رجعت خلال ${params.left} يوم، رح ينحذف حسابك.`], tr: ["Uyarı: hesabın etkin değil", params.counted ? `${params.left} gün içinde dönmezsen hesabını askıya alacağız (saklı kalır, bakiyen güvende).` : `${params.left} gün içinde dönmezsen hesabın silinecek.`], en: ["Heads-up: your account is inactive", params.counted ? `If you don't come back within ${params.left} days, we'll suspend your account (it stays saved and your balance is safe).` : `If you don't come back within ${params.left} days, your account will be deleted.`] };
+  try { await appendInbox(env, "inbox/" + uid, { id: randomId(), title: T.ar[0], body: T.ar[1], title_tr: T.tr[0], body_tr: T.tr[1], title_en: T.en[0], body_en: T.en[1], createdAt: Date.now() }); }
+  catch (e) { console.warn({ message: "inactivity inbox failed", error: String(e.message || e) }); }
+  await sendPush(env, uid, "inactive_" + kind, params);
+}
+async function runInactivity(env, { dryRun = false, now = Date.now() } = {}) {
+  const cfg = inactivityNorm((await fsGetDoc(env, "config/inactivity")).data);
+  if (!dryRun && !cfg.enabled) return { ok: true, skipped: "disabled", config: cfg };
+  const today = todaySyria(now), cutoff = shiftDate(today, -cfg.remindDays);
+  const rows = await fsRunQuery(env, "players", null, 500, 0, { field: "lastActiveDate", op: "LESS_THAN_OR_EQUAL", value: cutoff });
+  const plan = [];
+  for (const r of rows) {
+    const p = r.data, uid = r.id;
+    if (!uid || uid.includes("/") || p.suspended === true || p.accountDeleted) continue;
+    const idle = dayNum(today) - dayNum(p.lastActiveDate);
+    if (!Number.isFinite(idle) || idle < cfg.remindDays) continue;
+    const warnedAt = Number(p.inactivityWarnedAt) || 0;
+    let action = null;
+    if (idle >= cfg.actionDays && warnedAt && now - warnedAt >= cfg.graceDays * 86400000) action = "act";
+    else if (idle >= cfg.warnDays && p.inactivityStage !== "warn") action = "warn";
+    else if (!p.inactivityStage) action = "remind";
+    if (!action) continue;
+    const cls = idle >= cfg.warnDays ? await classifyAccount(env, uid, p) : null;
+    if (action === "act") action = cls.counted ? "suspend" : "delete";
+    plan.push({ uid, email: String(p.email || ""), name: String(p.displayName || ""), idleDays: idle, action, counted: cls ? cls.counted : null, reason: cls ? cls.reason : "" });
+  }
+  if (dryRun) return { ok: true, config: cfg, candidates: rows.length, capped: rows.length >= 500, plan };
+  const done = { remind: 0, warn: 0, suspend: 0, delete: 0, skipped: 0 }; let actions = 0;
+  for (const it of plan) {
+    try {
+      const path = "players/" + it.uid;
+      if (it.action === "remind" || it.action === "warn") {
+        const left = Math.max(cfg.graceDays, cfg.actionDays - it.idleDays);
+        await inactivityNotify(env, it.uid, it.action, { days: it.idleDays, left, counted: it.counted === true });
+        const f = it.action === "remind" ? { inactivityStage: "remind", inactivityRemindedAt: now } : { inactivityStage: "warn", inactivityWarnedAt: now };
+        await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(f) }, updateMask: { fieldPaths: Object.keys(f) }, currentDocument: { exists: true } }]);
+        done[it.action]++; continue;
+      }
+      if (actions >= cfg.maxActions) { done.skipped++; continue; }
+      actions++;
+      if (it.action === "suspend") {
+        const f = { suspended: true, suspendedAt: now, suspendedReason: "inactivity" };
+        await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(f) }, updateMask: { fieldPaths: Object.keys(f) }, currentDocument: { exists: true } }]);
+        await sendPush(env, it.uid, "inactive_suspend", {});
+      } else {
+        await deleteAccountCore(env, it.uid);
+      }
+      await fsCommit(env, [{ update: { name: docName(env, "inactivityLog/" + randomId()), fields: objToFields({ uid: it.uid, action: it.action, idleDays: it.idleDays, counted: it.counted === true, reason: it.reason, at: now }) }, currentDocument: { exists: false } }]);
+      done[it.action]++;
+    } catch (e) { done.skipped++; console.warn({ message: "inactivity step failed", action: it.action, error: String(e.message || e) }); }
+  }
+  await fsCommit(env, [{ update: { name: docName(env, "config/inactivity"), fields: objToFields({ lastRunAt: now, lastRunSummary: JSON.stringify(done) }) }, updateMask: { fieldPaths: ["lastRunAt", "lastRunSummary"] } }]);
+  return { ok: true, config: cfg, candidates: rows.length, done };
+}
+async function handleAdminInactivity(request, env) {
+  if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let b = {}; try { b = await request.json(); } catch (e) {}
+  try {
+    if (b.action === "get") { const d = await fsGetDoc(env, "config/inactivity"); const x = d.exists && d.data ? d.data : {}; return jsonResponse({ ok: true, config: inactivityNorm(x), lastRunAt: Number(x.lastRunAt) || 0, lastRunSummary: String(x.lastRunSummary || "") }, 200); }
+    if (b.action === "save") {
+      const cfg = inactivityNorm(b.config);
+      await fsCommit(env, [{ update: { name: docName(env, "config/inactivity"), fields: objToFields({ ...cfg, updatedAt: Date.now() }) }, updateMask: { fieldPaths: [...Object.keys(cfg), "updatedAt"] } }]);
+      return jsonResponse({ ok: true, config: cfg }, 200);
+    }
+    if (b.action === "dryrun") { const r = await runInactivity(env, { dryRun: true }); return jsonResponse({ ...r, plan: r.plan.slice(0, 300), planTotal: r.plan.length }, 200); }
+    if (b.action === "run") { if (b.confirm !== true) return jsonResponse({ ok: false, error: "confirm_required" }, 400); return jsonResponse(await runInactivity(env, { dryRun: false }), 200); }
+    if (b.action === "suspended") {
+      const rows = await fsRunQuery(env, "players", null, 200, 0, { field: "suspended", value: true });
+      const today = todaySyria();
+      return jsonResponse({ ok: true, players: rows.map(r => ({ uid: r.id, email: String(r.data.email || ""), name: String(r.data.displayName || ""), suspendedAt: Number(r.data.suspendedAt) || 0, idleDays: dayNum(today) - dayNum(r.data.lastActiveDate), balanceUsd: Number(r.data.balanceUsd) || 0 })) }, 200);
+    }
+    if (b.action === "unsuspend") {
+      const uid = validId(String(b.uid || ""));
+      if (!uid) return jsonResponse({ ok: false, error: "bad_request" }, 400);
+      const f = { suspended: false, inactivityStage: "", inactivityWarnedAt: 0, inactivityRemindedAt: 0, lastActiveDate: todaySyria() };
+      await fsCommit(env, [{ update: { name: docName(env, "players/" + uid), fields: objToFields(f) }, updateMask: { fieldPaths: Object.keys(f) }, currentDocument: { exists: true } }]);
+      return jsonResponse({ ok: true }, 200);
+    }
+    return jsonResponse({ ok: false, error: "bad_action" }, 400);
+  } catch (e) {
+    console.error({ message: "admin inactivity error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+
 // ===== حذف الحساب (بطلب اللاعب من التطبيق) =====
 // بنحذف: بيانات اللاعب، جهاز الإشعارات، البريد الداخلي، كود الدعوة، شحنات البريد، وحساب الدخول نفسه.
 // بنحتفظ بسجلات السحب والشراء والطلبات (المبلغ والتاريخ والمحفظة) لأغراض محاسبية ومنع الاحتيال، بس بنمسح منها الاسم والبريد والإيصال والتفاصيل.
@@ -1193,12 +1327,7 @@ async function deleteAuthUser(env, uid) {
   if (!r.ok) console.warn({ message: "auth user delete failed", status: r.status, body: String(await r.text()).slice(0, 200) });
   return r.ok;
 }
-async function handleDeleteAccount(request, env) {
-  try {
-    const user = await requireUser(request);
-    let body = {}; try { body = await request.json(); } catch (e) {}
-    if (body.confirm !== true) throw new ApiError("confirm_required", "أكّد الحذف أول.", 400);
-    const uid = user.sub;
+async function deleteAccountCore(env, uid) {
     const [wds, orders, purchases, mails, player] = await Promise.all([
       fsRunQuery(env, "withdrawRequests", null, 200, 0, { field: "uid", value: uid }),
       fsRunQuery(env, "shopOrders", null, 200, 0, { field: "uid", value: uid }),
@@ -1239,6 +1368,15 @@ async function handleDeleteAccount(request, env) {
     let authDeleted = false;
     try { authDeleted = await deleteAuthUser(env, uid); } catch (e) { console.warn({ message: "auth user delete error", error: String(e.message || e) }); }
     console.info({ message: "account deleted", authDeleted });
+    return { authDeleted };
+}
+async function handleDeleteAccount(request, env) {
+  try {
+    const user = await requireUser(request);
+    let body = {}; try { body = await request.json(); } catch (e) {}
+    if (body.confirm !== true) throw new ApiError("confirm_required", "أكّد الحذف أول.", 400);
+    const r = await deleteAccountCore(env, user.sub);
+    const authDeleted = r.authDeleted;
     return jsonResponse({ ok: true, deleted: true, authDeleted }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
@@ -1619,7 +1757,7 @@ async function handleAdminShopOrders(request, env) {
       if (decision === "rejected") {
         const uid = String(first.data.uid || "");
         if (!uid || uid.includes("/")) return jsonResponse({ ok: false, error: "bad_order" }, 400);
-        await mutatePlayer(env, uid, async (p, now) => {
+        await mutatePlayerAdmin(env, uid, async (p, now) => {
           const cur = await fsGetDoc(env, path);                                    // نقرأه من جديد بكل محاولة (حتى ما ينرجّع مرتين)
           if (!cur.exists || cur.data.status !== "pending") throw new ApiError("already_resolved", "هالطلب انحسم من قبل.", 409);
           order = cur.data;
@@ -1707,7 +1845,7 @@ async function handleAdminWithdraw(request, env, ctx) {
       const refund = refundUsdOf(req.data, cfg);
       if (!(refund > 0)) return jsonResponse({ ok: false, error: "no_refund_value" }, 400);
       const patch = { status: "rejected", reviewedAt: now, reviewedBy: user.sub, refundedUsd: refund };
-      await mutatePlayer(env, req.data.uid, (p) => {
+      await mutatePlayerAdmin(env, req.data.uid, (p) => {
         p.balanceUsd += refund;
         return { writes: [{
           update: { name: docName(env, path), fields: objToFields(patch) },
@@ -2072,9 +2210,14 @@ export default {
     if (url.pathname === "/admin/players" && request.method === "POST") return handleAdminPlayers(request, env);
     if (url.pathname === "/admin/message" && request.method === "POST") return handleAdminMessage(request, env);
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
+    if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
     if (url.pathname === "/admin/wallet-reindex" && request.method === "POST") return handleAdminWalletReindex(request, env);
     if (url.pathname === "/admin/shop-orders" && request.method === "POST") return handleAdminShopOrders(request, env);
     if (url.pathname === "/public-config" && request.method === "GET") return handlePublicConfig(env);
     return new Response("Not found", { status: 404 });
+  },
+  // مهمة يومية (cron): تذكير، تحذير، وتنفيذ سياسة عدم النشاط إذا الأدمن فعّلها
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runInactivity(env, { dryRun: false }).then(r => console.info({ message: "inactivity run", ...r, plan: undefined })).catch(e => console.error({ message: "inactivity run failed", error: String(e.message || e) })));
   },
 };

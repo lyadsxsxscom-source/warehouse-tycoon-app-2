@@ -6,6 +6,7 @@
   "main": "worker.js",
   "compatibility_date": "2025-02-04",
   "keep_vars": true,
+  "triggers": { "crons": ["30 3 * * *"] },   // مهمة يومية 03:30 UTC: سياسة عدم النشاط
   "observability": {
     "enabled": true,
     "logs": { "invocation_logs": true }
