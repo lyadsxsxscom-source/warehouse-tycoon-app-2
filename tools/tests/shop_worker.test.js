@@ -118,12 +118,14 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   r = await call("/admin/shop-orders", "admin", { action: "resolve", orderId: o1, decision: "done", note: "تم الشحن" });
   ok(r.status === 200 && get("shopOrders/" + o1).status === "done" && get("shopOrders/" + o1).note === "تم الشحن" && get("players/u1").points === 5000 - 2100, "marking an order done keeps the points spent");
   const msgs = get("inbox/u1").items;
-  ok(msgs.length === 1 && /تم تنفيذ/.test(msgs[0].title) && /PUBG 60/.test(msgs[0].body) && /تم الشحن/.test(msgs[0].body) && msgs[0].title_en && msgs[0].title_tr, "the player gets a mail message in all three languages with the admin's note");
+  const doneMsg = msgs.find(m => /تم تنفيذ/.test(m.title));
+  ok(doneMsg && /PUBG 60/.test(doneMsg.body) && /تم الشحن/.test(doneMsg.body) && doneMsg.title_en && doneMsg.title_tr, "the player gets a mail message in all three languages with the admin's note");
   ok(pushes.length === 1 && pushes[0].type === "shop_done" && pushes[0].uid === "u1", "and a push notification");
   const pts = get("players/u1").points;
   r = await call("/admin/shop-orders", "admin", { action: "resolve", orderId: o2, decision: "rejected", note: "الـID غلط" });
   ok(r.status === 200 && get("shopOrders/" + o2).status === "rejected" && get("players/u1").points === pts + 700, "rejecting an order gives the points back");
-  ok(get("inbox/u1").items.length === 2 && /رجعنالك 700/.test(get("inbox/u1").items[0].body) && /الـID غلط/.test(get("inbox/u1").items[0].body) && pushes[1].type === "shop_rejected", "the refund message says how many points came back and why");
+  const rejMsg = get("inbox/u1").items.find(m => /انرفض/.test(m.title));
+  ok(rejMsg && /رجعنالك 700/.test(rejMsg.body) && /الـID غلط/.test(rejMsg.body) && pushes[1].type === "shop_rejected", "the refund message says how many points came back and why");
   r = await call("/admin/shop-orders", "admin", { action: "resolve", orderId: o2, decision: "rejected" });
   ok(r.status === 409 && r.json.error === "already_resolved" && get("players/u1").points === pts + 700, "rejecting twice does NOT refund twice");
   r = await call("/admin/shop-orders", "admin", { action: "resolve", orderId: o1, decision: "done" }); ok(r.status === 409, "an order that is already done cannot be resolved again");

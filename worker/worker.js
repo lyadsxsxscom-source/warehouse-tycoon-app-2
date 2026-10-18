@@ -512,6 +512,7 @@ const PUSH_TEXT = {
     en: (p) => ["Your friend is now an active player! 🤝", `${p.points} referral reward points were added.`],
   },
 };
+for (const t of ["withdraw_ok", "withdraw_rejected"]) for (const l of ["ar", "tr", "en"]) { const f = PUSH_TEXT[t][l]; PUSH_TEXT[t][l] = (p) => { const r = f(p); return p.code ? [r[0], r[1] + "\n" + ({ ar: "رقم الطلب", tr: "Talep no", en: "Request no" })[l] + ": " + p.code] : r; }; }
 PUSH_TEXT.inactive_remind = {
   ar: (p) => ["اشتقنالك! 👋", `صرلك ${p.days} يوم ما فتحت Yardova. ارجع وكمّل لعبك.`],
   tr: (p) => ["Seni özledik! 👋", `${p.days} gündür Yardova'yı açmadın. Dön ve oynamaya devam et.`],
@@ -735,8 +736,12 @@ async function gameAction(action, body, user, env) {
         const widx = await fsGetDoc(env, "walletIndex/" + wKey);
         const others = widx.exists && widx.data && Array.isArray(widx.data.uids) ? widx.data.uids.filter(u => u && u !== uid).slice(0, 5) : [];
         if (others.length) { request.walletShared = true; request.walletOtherUids = others; }
+        const ctr = await nextRequestNo(env, "withdraw");
+        request.reqNo = ctr.no; request.reqCode = "W-" + ctr.no;
         return {
-          writes: [{
+          result: { reqCode: request.reqCode },
+          after: () => notifyRequestReceived(env, uid, { kind: "withdraw", code: request.reqCode, label: coin === "shamcash" ? `${amountUsd.toFixed(2)}$ (شام كاش)` : `${amount} ${String(coin).toUpperCase()}${network ? " (" + network + ")" : ""}` }),
+          writes: [ctr.write, {
             update: { name: docName(env, "withdrawRequests/" + randomId()), fields: objToFields(request) },
             currentDocument: { exists: false },
           }, { update: { name: docName(env, "walletIndex/" + wKey), fields: {} }, updateMask: { fieldPaths: [] }, updateTransforms: [{ fieldPath: "uids", appendMissingElements: { values: [{ stringValue: uid }] } }] }, statsWrite(env, todaySyria(now), { withdraws: 1, withdrawUsd: Math.round(amountUsd * 100) / 100, ...(reduced ? { reducedWithdrawUsd: Math.round(amountUsd * 100) / 100 } : {}) })],
@@ -803,12 +808,16 @@ async function gameAction(action, body, user, env) {
           pricePoints: item.pricePoints, fields: values, status: "pending", createdAt: now,
           snapshot: { activeDays: p.activeDays, adsWatched: p.adsWatched, totalPointsEarned: p.totalPointsEarned, workersRented: p.workersRented, withdrawCount: Number(p.withdrawCount) || 0, pointsAfter: p.points },
         };
+        const ctr = await nextRequestNo(env, "shop");
+        order.reqNo = ctr.no; order.reqCode = "S-" + ctr.no;
         return {
           writes: [
+            ctr.write,
             { update: { name: docName(env, "shopOrders/" + orderId), fields: objToFields(order) }, currentDocument: { exists: false } },
             statsWrite(env, todaySyria(now), { shopOrders: 1, shopPoints: item.pricePoints }),
           ],
-          result: { orderId, pricePoints: item.pricePoints },
+          result: { orderId, pricePoints: item.pricePoints, reqCode: order.reqCode },
+          after: () => notifyRequestReceived(env, uid, { kind: "shop", code: order.reqCode, names: { ar: item.name, tr: item.name_tr || item.name, en: item.name_en || item.name } }),
         };
       });
     }
@@ -1173,6 +1182,33 @@ async function handleWannadsPostback(request, env, ctx) {
   console.info({ message: "Wannads reversal", result });
   if (result === "busy") return new Response("busy", { status: 503 });   // بيعيدوا المحاولة
   return new Response("OK", { status: 200 });
+}
+
+// ===== رقم تعريف الطلب =====
+// كل طلب جديد بياخد رقم تسلسلي: W-1001 للسحب، S-1001 لطلبات المتجر (والشراء P-xxxxx مشتق من معرّف المستند). الطلبات القديمة بدون رقم بتاخد رمز مشتق من معرّفها.
+const REQ_WORD = { ar: "رقم الطلب", tr: "Talep no", en: "Request no" };
+function reqCodeFallback(prefix, id) { return prefix + "-" + String(id || "").slice(0, 5).toUpperCase(); }
+function reqCodeOf(prefix, id, data) { return (data && data.reqCode) || reqCodeFallback(prefix, id); }
+async function nextRequestNo(env, name) {          // بيتكتب بنفس الـcommit تبع الطلب، فإذا تضارب طلبين بيعيد المحاولة برقم جديد (ما بيتكرر رقم)
+  const d = await fsGetDoc(env, "counters/" + name);
+  const no = (d.exists && Number(d.data.n) > 1000 ? Number(d.data.n) : 1000) + 1;
+  return { no, write: { update: { name: docName(env, "counters/" + name), fields: objToFields({ n: no }) }, currentDocument: d.exists ? { updateTime: d.updateTime } : { exists: false } } };
+}
+async function notifyRequestReceived(env, uid, info) {      // رسالة بريد داخل اللعبة بتأكيد الاستلام مع الرقم (ما بتفشّل الطلب إذا فشلت)
+  try {
+    const w = REQ_WORD, c = info.code;
+    const T = info.kind === "withdraw"
+      ? { ar: ["استلمنا طلب سحبك ✅", `${w.ar}: ${c}\nالمبلغ: ${info.label}\nرح نراجعه ونبلّغك. احتفظ بالرقم إذا احتجت تتواصل معنا.`], tr: ["Çekim talebini aldık ✅", `${w.tr}: ${c}\nTutar: ${info.label}\nİnceleyip sana haber vereceğiz. Bize ulaşman gerekirse numarayı sakla.`], en: ["We received your withdrawal request ✅", `${w.en}: ${c}\nAmount: ${info.label}\nWe'll review it and let you know. Keep the number in case you need to contact us.`] }
+      : { ar: ["استلمنا طلبك ✅", `${w.ar}: ${c}\n«${info.names.ar}»\nرح ننفّذه ونبلّغك. احتفظ بالرقم إذا احتجت تتواصل معنا.`], tr: ["Siparişini aldık ✅", `${w.tr}: ${c}\n«${info.names.tr}»\nİşleme alıp sana haber vereceğiz. Bize ulaşman gerekirse numarayı sakla.`], en: ["We received your order ✅", `${w.en}: ${c}\n“${info.names.en}”\nWe'll process it and let you know. Keep the number in case you need to contact us.`] };
+    await appendInbox(env, "inbox/" + uid, { id: randomId(), title: T.ar[0], body: T.ar[1], title_tr: T.tr[0], body_tr: T.tr[1], title_en: T.en[0], body_en: T.en[1], createdAt: Date.now() });
+  } catch (e) { console.warn({ message: "request received notice failed", error: String(e.message || e) }); }
+}
+async function notifyWithdrawResult(env, uid, type, params) {   // بريد داخل اللعبة + إشعار، كلاهما فيهم رقم الطلب
+  try {
+    const t = l => PUSH_TEXT[type][l](params);
+    await appendInbox(env, "inbox/" + uid, { id: randomId(), title: t("ar")[0], body: t("ar")[1], title_tr: t("tr")[0], body_tr: t("tr")[1], title_en: t("en")[0], body_en: t("en")[1], createdAt: Date.now() });
+  } catch (e) { console.warn({ message: "withdraw result inbox failed", error: String(e.message || e) }); }
+  await sendPush(env, uid, type, params);
 }
 
 // ===== علامة "هالمحفظة مستخدمة بحساب تاني" (حماية من الحسابات المتعددة؛ علامة بس، ما بنمنع السحب) =====
@@ -1714,11 +1750,12 @@ async function handleAdminShop(request, env) {
 }
 async function notifyShopResult(env, order, kind, note) {
   const names = { ar: order.itemName || "", tr: order.itemNameTr || order.itemName || "", en: order.itemNameEn || order.itemName || "" };
-  const n = note ? "\n" + note : "";
+  const n = (note ? "\n" + note : "") + (order.reqCode ? "\n" + REQ_WORD.ar + ": " + order.reqCode : "");
+  const nTr = (note ? "\n" + note : "") + (order.reqCode ? "\n" + REQ_WORD.tr + ": " + order.reqCode : ""), nEn = (note ? "\n" + note : "") + (order.reqCode ? "\n" + REQ_WORD.en + ": " + order.reqCode : "");
   const pts = Number(order.pricePoints) || 0;
   const T = kind === "done"
-    ? { ar: ["تم تنفيذ طلبك ✅", `تم تنفيذ طلب «${names.ar}».${n}`], tr: ["Siparişin tamamlandı ✅", `«${names.tr}» siparişin tamamlandı.${n}`], en: ["Your order is done ✅", `Your order “${names.en}” is complete.${n}`] }
-    : { ar: ["انرفض طلبك", `طلب «${names.ar}» انرفض ورجعنالك ${pts} نقطة.${n}`], tr: ["Siparişin reddedildi", `«${names.tr}» siparişin reddedildi, ${pts} puan iade edildi.${n}`], en: ["Your order was declined", `Your order “${names.en}” was declined and ${pts} points were refunded.${n}`] };
+    ? { ar: ["تم تنفيذ طلبك ✅", `تم تنفيذ طلب «${names.ar}».${n}`], tr: ["Siparişin tamamlandı ✅", `«${names.tr}» siparişin tamamlandı.${nTr}`], en: ["Your order is done ✅", `Your order “${names.en}” is complete.${nEn}`] }
+    : { ar: ["انرفض طلبك", `طلب «${names.ar}» انرفض ورجعنالك ${pts} نقطة.${n}`], tr: ["Siparişin reddedildi", `«${names.tr}» siparişin reddedildi, ${pts} puan iade edildi.${nTr}`], en: ["Your order was declined", `Your order “${names.en}” was declined and ${pts} points were refunded.${nEn}`] };
   try {
     await appendInbox(env, "inbox/" + order.uid, { id: randomId(), title: T.ar[0], body: T.ar[1], title_tr: T.tr[0], body_tr: T.tr[1], title_en: T.en[0], body_en: T.en[1], createdAt: Date.now() });
   } catch (e) { console.warn({ message: "shop inbox failed", error: String(e.message || e) }); }
@@ -1733,7 +1770,7 @@ async function handleAdminShopOrders(request, env) {
       const status = ["pending", "done", "rejected"].includes(b.status) ? b.status : "all";
       const rows = status === "all" ? await fsRunQuery(env, "shopOrders", "createdAt", 100) : await fsRunQuery(env, "shopOrders", null, 200, 0, { field: "status", value: status });
       const orders = rows.map(r => ({
-        id: r.id, uid: String(r.data.uid || ""), displayName: String(r.data.displayName || ""), email: String(r.data.email || ""),
+        id: r.id, reqCode: reqCodeOf("S", r.id, r.data), uid: String(r.data.uid || ""), displayName: String(r.data.displayName || ""), email: String(r.data.email || ""),
         itemId: String(r.data.itemId || ""), itemName: String(r.data.itemName || ""), pricePoints: Number(r.data.pricePoints) || 0,
         fields: Array.isArray(r.data.fields) ? r.data.fields : [], status: String(r.data.status || "pending"), createdAt: Number(r.data.createdAt) || 0,
         resolvedAt: Number(r.data.resolvedAt) || 0, note: String(r.data.note || ""), snapshot: r.data.snapshot || {},
@@ -1769,7 +1806,7 @@ async function handleAdminShopOrders(request, env) {
         if (first.data.status !== "pending") return jsonResponse({ ok: false, error: "already_resolved", message: "هالطلب انحسم من قبل." }, 409);
         await fsCommit(env, [resolveWrite(first, Date.now()), statsWrite(env, todaySyria(), { shopDone: 1 })]);
       }
-      await notifyShopResult(env, order, decision, note);
+      await notifyShopResult(env, { ...order, reqCode: reqCodeOf("S", id, order) }, decision, note);
       return jsonResponse({ ok: true, status: decision }, 200);
     }
     return jsonResponse({ ok: false, error: "bad_action" }, 400);
@@ -1792,7 +1829,7 @@ async function handleAdminNotify(request, env, ctx) {
     if (!id || id.includes("/")) return jsonResponse({ ok: false, error: "bad_request" }, 400);
     const req = await fsGetDoc(env, "withdrawRequests/" + id);
     if (!req.exists) return jsonResponse({ ok: false, error: "not_found" }, 404);
-    ctx.waitUntil(sendPush(env, req.data.uid, type, { amount: Number(req.data.amount).toFixed(8).replace(/0+$/, "").replace(/\.$/, ""), coin: String(req.data.coin || "").toUpperCase() }));
+    ctx.waitUntil(sendPush(env, req.data.uid, type, { amount: Number(req.data.amount).toFixed(8).replace(/0+$/, "").replace(/\.$/, ""), coin: String(req.data.coin || "").toUpperCase(), code: reqCodeOf("W", id, req.data) }));
     return jsonResponse({ ok: true }, 200);
   }
   if (type === "topup" || type === "topup_rejected") {
@@ -1839,7 +1876,7 @@ async function handleAdminWithdraw(request, env, ctx) {
         updateMask: { fieldPaths: Object.keys(patch) },
         currentDocument: { updateTime: req.updateTime },
       }]);
-      ctx.waitUntil(sendPush(env, req.data.uid, "withdraw_ok", params));
+      ctx.waitUntil(notifyWithdrawResult(env, req.data.uid, "withdraw_ok", { ...params, code: reqCodeOf("W", id, req.data) }));
     } else {
       const cfg = await loadConfig(env);
       const refund = refundUsdOf(req.data, cfg);
@@ -1853,7 +1890,7 @@ async function handleAdminWithdraw(request, env, ctx) {
           currentDocument: { updateTime: req.updateTime },
         }] };
       });
-      ctx.waitUntil(sendPush(env, req.data.uid, "withdraw_rejected", {}));
+      ctx.waitUntil(notifyWithdrawResult(env, req.data.uid, "withdraw_rejected", { code: reqCodeOf("W", id, req.data) }));
     }
   } catch (e) {
     console.error({ message: "admin withdraw failed", error: String(e.message || e) });

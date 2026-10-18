@@ -177,6 +177,7 @@
     </div>
 
     <div id="viewRequests">
+      <input type="search" id="reqSearch" placeholder="🔎 بحث برقم الطلب أو الإيميل أو الاسم" style="margin-bottom:10px;">
       <div id="requestsList"></div>
     </div>
 
@@ -188,6 +189,7 @@
         </div>
         <div id="walletReindexOut" style="font-size:12px; line-height:1.8; margin-top:8px;"></div>
       </div>
+      <input type="search" id="wdSearch" placeholder="🔎 بحث برقم الطلب (مثلاً W-1001) أو الإيميل أو الاسم" style="margin-bottom:10px;">
       <div id="withdrawsList"></div>
     </div>
 
@@ -284,6 +286,7 @@
         <div class="field"><label>عرض</label>
           <select id="shopOrdersStatus"><option value="pending">قيد التنفيذ</option><option value="done">المنفّذة</option><option value="rejected">المرفوضة</option><option value="all">الكل (آخر 100)</option></select>
         </div>
+        <input type="search" id="shopSearch" placeholder="🔎 بحث برقم الطلب (مثلاً S-1001) أو الإيميل أو الاسم" style="margin-bottom:10px;">
         <div id="shopOrdersList"></div>
         <div class="msg" id="shopOrdersMsg"></div>
       </div>
@@ -725,6 +728,13 @@ const METHOD_LABEL = {
 };
 let requestsUnsub = null;
 
+// ===== رقم تعريف الطلب + البحث =====
+function reqCodeFor(prefix, id, d){ return (d && d.reqCode) || (prefix + '-' + String(id || '').slice(0, 5).toUpperCase()); }
+function filterList(listId, q){
+  q = String(q || '').trim().toLowerCase();
+  [...document.getElementById(listId).children].forEach(c => { c.style.display = (!q || c.textContent.toLowerCase().includes(q)) ? '' : 'none'; });
+}
+[['reqSearch', 'requestsList'], ['wdSearch', 'withdrawsList'], ['shopSearch', 'shopOrdersList']].forEach(([inp, list]) => document.getElementById(inp).addEventListener('input', e => filterList(list, e.target.value)));
 function watchPurchaseRequests(){
   const list = document.getElementById('requestsList');
   if(requestsUnsub) requestsUnsub();
@@ -744,6 +754,7 @@ function watchPurchaseRequests(){
             <span class="amt">${(d.points ?? 0).toLocaleString('en-US')} نقطة <span style="color:var(--dim); font-size:12px;">(${d.amountDisplay || ('$' + (d.usd ?? '-'))})</span></span>
             <span class="req-status ${d.status}">${statusLabel}</span>
           </div>
+          <div class="req-id" style="font-size:12px; color:var(--dim);">رقم الطلب: <b dir="ltr" style="color:var(--amber); user-select:all;">${escapeHtml(reqCodeFor('P', doc.id, d))}</b></div>
           <div class="req-top"><span class="method">${escapeHtml(METHOD_LABEL[d.method] || d.method || '-')}</span></div>
           <div class="req-who">${escapeHtml(d.displayName || '')} ${d.email ? '· ' + escapeHtml(d.email) : ''}</div>
           ${d.note ? `<div class="req-note">${escapeHtml(d.note)}</div>` : ''}
@@ -755,6 +766,7 @@ function watchPurchaseRequests(){
         `;
         list.appendChild(card);
       });
+      filterList('requestsList', document.getElementById('reqSearch').value);
       updateBadge(pendingCount);
     }, err => {
       list.innerHTML = '<div class="empty-note">تعذّر تحميل الطلبات</div>';
@@ -864,6 +876,7 @@ function watchWithdrawRequests(){
             <span class="amt">${wdAmountText(d)}</span>
             <span class="req-status ${d.status}">${statusLabel}</span>
           </div>
+          <div class="req-id" style="font-size:12px; color:var(--dim);">رقم الطلب: <b dir="ltr" style="color:var(--amber); user-select:all;">${escapeHtml(reqCodeFor('W', doc.id, d))}</b></div>
           <div class="req-who">${escapeHtml(d.displayName || '')} ${d.email ? '· ' + escapeHtml(d.email) : ''}</div>
           <div class="req-note" style="direction:ltr; text-align:right; word-break:break-all;">${d.coin === 'shamcash' ? 'شام كاش: ' : ''}${escapeHtml(d.walletAddress || '')}</div>
           ${d.walletShared ? `<div class="req-note wal-warn" style="color:var(--ember); font-weight:700;">⚠️ هالمحفظة مستخدمة بحساب تاني (${(d.walletOtherUids || []).length || 1}) <button class="copy-btn" data-walwho="${doc.id}" style="width:auto; padding:3px 10px; margin:0 6px;">مين؟</button><div data-walbox="${doc.id}" style="font-weight:400; color:var(--text); margin-top:6px; line-height:1.9;"></div></div>` : ''}
@@ -890,6 +903,7 @@ function watchWithdrawRequests(){
           };
         }
       });
+      filterList('withdrawsList', document.getElementById('wdSearch').value);
       updateWdBadge(pendingCount);
     }, err => {
       list.innerHTML = '<div class="empty-note">تعذّر تحميل طلبات السحب</div>';
@@ -1245,7 +1259,7 @@ function renderShopOrders(orders){
       ? `<div style="display:flex; gap:8px; margin-top:10px;"><button class="btn" data-order="${escapeHtml(o.id)}" data-decision="done" style="margin:0;">✅ تم الشحن</button><button class="btn" data-order="${escapeHtml(o.id)}" data-decision="rejected" style="margin:0; background:#7a2a20; color:#fff;">❌ رفض وإرجاع النقاط</button></div>`
       : `<div style="font-size:12px; color:var(--dim); margin-top:6px;">${SHOP_STATUS_LABEL[o.status] || escapeHtml(o.status)}${o.note ? ' — ' + escapeHtml(o.note) : ''}</div>`;
     return `<div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:10px;">
-      <div style="display:flex; justify-content:space-between; gap:8px;"><b>${escapeHtml(o.itemName)}</b><span dir="ltr">${o.pricePoints} نقطة</span></div>
+      <div style="display:flex; justify-content:space-between; gap:8px;"><b>${escapeHtml(o.itemName)} <span dir="ltr" style="color:var(--amber); font-weight:700; user-select:all;">${escapeHtml(o.reqCode || '')}</span></b><span dir="ltr">${o.pricePoints} نقطة</span></div>
       <div style="font-size:12px; color:var(--dim);" dir="ltr">${escapeHtml(new Date(o.createdAt).toLocaleString('en-GB'))}</div>
       <div style="margin-top:6px;">👤 ${escapeHtml(o.displayName || '—')} · <span dir="ltr">${escapeHtml(o.email || o.uid)}</span></div>
       <div style="font-size:12px; color:var(--dim);">أيام نشاط: ${Number(sn.activeDays) || 0} · إعلانات: ${Number(sn.adsWatched) || 0} · نقاط مكتسبة: ${Math.round(Number(sn.totalPointsEarned) || 0)} · سحوبات: ${Number(sn.withdrawCount) || 0}</div>
@@ -1260,7 +1274,7 @@ async function loadShopOrders(){
   msg.style.color = 'var(--dim)'; msg.textContent = 'عم يحمّل...';
   try{
     const j = await shopApi('/admin/shop-orders', { action: 'list', status });
-    renderShopOrders(j.orders || []);
+    renderShopOrders(j.orders || []); filterList('shopOrdersList', document.getElementById('shopSearch').value);
     if(status === 'pending') document.getElementById('shopBadge').textContent = (j.orders || []).length || '';
     msg.textContent = '';
   }catch(e){ msg.style.color = '#e5533d'; msg.textContent = 'تعذّر تحميل الطلبات: ' + e.message; }
