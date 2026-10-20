@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>متجر الشدات | Yardova</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0F3B33">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800&family=Reem+Kufi:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --teal:#17564A; --teal-d:#0F3B33; --tape:#F4C21F; --ink:#10211C; --paper:#F3F5EE; --line:#C9D4CC; --muted:#4A5E57; --panel:#FFFFFF;
+  --f-stencil:"Big Shoulders Stencil Display",Impact,"Arial Narrow",sans-serif;
+  --f-head:"Reem Kufi","Segoe UI",Tahoma,sans-serif;
+  --f-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root{ --paper:#0E1B17; --panel:#16302A; --ink:#EAF0EC; --line:#2A4A42; --muted:#A8BDB5; } }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.75}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--tape);outline-offset:3px;border-radius:4px}
+.wrap{width:min(960px,100% - 40px);margin-inline:auto}
+.top{background:var(--teal-d);color:#F3F5EE}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:12px}
+.brand{font-family:var(--f-stencil);font-weight:800;font-size:1.55rem;letter-spacing:.12em;text-decoration:none;direction:ltr}
+.top .back{font-size:.95rem;text-decoration:none;border:1.5px solid #5E8A7E;border-radius:999px;padding:4px 14px}
+.door{background:var(--teal);color:#F3F5EE;background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 3px,rgba(0,0,0,0) 3px 26px)}
+.door::before,.door::after{content:"";display:block;height:14px;background:repeating-linear-gradient(-45deg,var(--tape) 0 16px,#10211C 16px 32px)}
+.door .in{padding-block:clamp(36px,8vw,72px)}
+.tag{background:var(--paper);color:var(--ink);max-width:640px;padding:clamp(20px,4vw,34px);border:2px solid #10211C;box-shadow:8px 8px 0 #10211C}
+.tag h1{font-family:var(--f-head);font-weight:700;font-size:clamp(1.55rem,4.6vw,2.35rem);line-height:1.25;margin:0 0 12px}
+.tag p{margin:0}
+main{padding-block:32px}
+.empty{background:var(--panel);border:2px dashed var(--line);border-radius:10px;padding:28px;color:var(--muted);text-align:center}
+footer{padding-block:24px;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">YARDOVA</a>
+    <a class="back" href="/">← رجوع للموقع</a>
+  </div>
+</header>
+<section class="door" aria-label="عنوان الصفحة">
+  <div class="wrap in">
+    <div class="tag">
+      <h1>متجر شحن الألعاب</h1>
+      <p>الصفحة قيد الإنشاء. رجعلنا قريباً.</p>
+    </div>
+  </div>
+</section>
+<main class="wrap" id="app">
+  <div class="empty" id="catalog">ما في منتجات هلق.</div>
+</main>
+<footer class="wrap">© Yardova</footer>
+</body>
+</html>

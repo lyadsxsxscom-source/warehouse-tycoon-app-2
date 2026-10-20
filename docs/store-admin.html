@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>لوحة متجر الشدات | Yardova</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0F3B33">
+<style>
+:root{ --teal:#17564A; --teal-d:#0F3B33; --tape:#F4C21F; --bg:#0E1B17; --panel:#16302A; --ink:#EAF0EC; --dim:#A8BDB5; --line:#2A4A42; --err:#e5533d; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Tahoma,Arial,sans-serif;font-size:16px;line-height:1.7}
+.wrap{width:min(900px,100% - 32px);margin-inline:auto}
+header{background:var(--teal-d);border-bottom:3px solid var(--tape)}
+header .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:12px}
+header h1{margin:0;font-size:1.15rem}
+button{font:inherit;cursor:pointer;border:0;border-radius:8px;padding:9px 16px;background:var(--tape);color:#10211C;font-weight:700}
+button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-block:16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:16px}
+.tab{padding:8px 16px;border-radius:999px;border:1.5px solid var(--line);color:var(--dim);background:transparent}
+.tab.active{background:var(--tape);color:#10211C;border-color:var(--tape);font-weight:700}
+.empty{border:2px dashed var(--line);border-radius:10px;padding:28px;text-align:center;color:var(--dim)}
+#gate{text-align:center;padding-block:56px}
+#gate h2{margin:0 0 8px}
+#gateMsg{min-height:1.6em;margin-top:14px;color:var(--err);font-size:.95rem}
+#who{color:var(--dim);font-size:.9rem}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="wrap">
+    <h2>لوحة متجر الشدات</h2>
+    <div style="color:var(--dim); margin-bottom:18px;">دخول المشرف فقط</div>
+    <button id="btnLogin">دخول بحساب Google</button>
+    <div id="gateMsg" role="alert"></div>
+  </div>
+</div>
+<div id="panel" style="display:none;">
+  <header>
+    <div class="wrap">
+      <h1>🛒 لوحة متجر الشدات</h1>
+      <div style="display:flex; align-items:center; gap:10px;"><span id="who"></span><button class="ghost" id="btnLogout">تسجيل خروج</button></div>
+    </div>
+  </header>
+  <div class="wrap">
+    <div class="tabs" id="tabs">
+      <button class="tab active" id="tabOverview">نظرة عامة</button>
+    </div>
+    <div class="card" id="viewOverview">
+      <div class="empty" id="emptyNote">اللوحة فاضية هلق. الخطوات الجاية بتنضاف هون خطوة خطوة.</div>
+    </div>
+  </div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAP7sXXQeNCmdgwqUo6meC2Uv6_zM7jxwA",
+  authDomain: "warehouse-tycoon-a3f83.firebaseapp.com",
+  projectId: "warehouse-tycoon-a3f83",
+  storageBucket: "warehouse-tycoon-a3f83.firebasestorage.app",
+  messagingSenderId: "1054454384493",
+  appId: "1:1054454384493:web:3003d8c766739e75e33c64",
+};
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const ADMIN_UID = "09DZoXtB6afGTGHtFghiUx5t71N2";   // نفس المشرف تبع لوحة اللعبة
+
+const gate = document.getElementById('gate'), panel = document.getElementById('panel'), gateMsg = document.getElementById('gateMsg');
+document.getElementById('btnLogin').onclick = () => {
+  gateMsg.textContent = '';
+  fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(err => { gateMsg.textContent = 'تعذّر الدخول: ' + err.message; });
+};
+document.getElementById('btnLogout').onclick = () => fbAuth.signOut();
+fbAuth.onAuthStateChanged(user => {
+  if(user && user.uid === ADMIN_UID){
+    gate.style.display = 'none'; panel.style.display = 'block';
+    document.getElementById('who').textContent = user.email || '';
+  } else if(user){
+    gate.style.display = 'block'; panel.style.display = 'none';
+    gateMsg.textContent = 'هالحساب مو مشرف.';
+    fbAuth.signOut();
+  } else {
+    gate.style.display = 'block'; panel.style.display = 'none';
+  }
+});
+</script>
+</body>
+</html>
