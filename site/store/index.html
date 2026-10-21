@@ -66,13 +66,36 @@ button.card:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--shado
 .state button{margin-top:12px;font:inherit;font-weight:700;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:8px 20px;cursor:pointer}
 .skel{height:170px;border-radius:14px;background:linear-gradient(90deg,var(--line),transparent,var(--line));opacity:.5}
 footer{padding-block:24px;color:var(--muted);font-size:1rem}
+.tools{display:flex;align-items:center;gap:10px}
+.menu{font:inherit;font-size:1.35rem;line-height:1;border:2px solid #8FC2B3;background:transparent;color:#F4F8F5;border-radius:10px;padding:6px 13px;cursor:pointer}
+body.lock{overflow:hidden}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:40}
+.drawer{position:fixed;top:0;bottom:0;inset-inline-start:0;width:min(340px,88vw);background:var(--panel);color:var(--ink);border-inline-end:3px solid var(--edge);z-index:50;display:flex;flex-direction:column;overflow:auto}
+.dr-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:3px solid var(--edge)}
+.dr-head h2{margin:0;font-size:1.3rem}
+.dr-close{font:inherit;font-size:1.1rem;border:2px solid var(--edge);background:transparent;color:var(--ink);border-radius:10px;padding:4px 12px;cursor:pointer}
+#drBody{padding:16px}
+#drBody p{margin:0 0 14px}
+.hint{color:var(--muted);font-size:.95rem}
+.btn-main{display:block;width:100%;font:inherit;font-weight:700;font-size:1.05rem;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:11px 16px;cursor:pointer;margin-bottom:12px}
+.btn-ghost{display:block;width:100%;font:inherit;font-weight:700;border:2px solid var(--edge);background:transparent;color:var(--ink);border-radius:10px;padding:9px 16px;cursor:pointer;margin-top:16px}
+.who{margin-bottom:14px}
+.who .n2{font-weight:700;font-size:1.2rem;word-break:break-word}
+.who .em{color:var(--muted);font-size:.95rem;word-break:break-all}
+.acc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:2px solid var(--line)}
+.vipbadge{background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:2px 14px}
+.msg{min-height:1.4em;margin-top:6px;font-size:.98rem;color:var(--ink)}
+.msg.err{color:var(--ink);border:2px solid var(--edge);border-radius:8px;padding:8px 10px;background:var(--pic)}
 </style>
 </head>
 <body>
 <header class="top">
   <div class="wrap">
     <a class="brand" href="/">YARDOVA</a>
-    <a class="back" href="/">← رجوع للموقع</a>
+    <div class="tools">
+      <a class="back" href="/">← رجوع للموقع</a>
+      <button class="menu" id="btnMenu" type="button" aria-label="حسابي" aria-expanded="false" aria-controls="drawer"><span aria-hidden="true">☰</span></button>
+    </div>
   </div>
 </header>
 <section class="door" aria-label="عنوان الصفحة">
@@ -89,6 +112,13 @@ footer{padding-block:24px;color:var(--muted);font-size:1rem}
   <div id="catalog" aria-live="polite"></div>
 </main>
 <footer class="wrap">© Yardova</footer>
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drTitle" hidden>
+  <div class="dr-head"><h2 id="drTitle">حسابي</h2><button class="dr-close" id="btnCloseDrawer" type="button" aria-label="إغلاق">✕</button></div>
+  <div id="drBody"></div>
+</aside>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
 // متجر الشدات (الخطوة 2): بيعرض الشجرة اللي بنيتها بالأدمن (أقسام بصور ← منتجات بأسعارها). بدون طلبات بعد.
 const API = 'https://postback.ly-ad.de';
@@ -179,6 +209,84 @@ $('methods').addEventListener('click', e => {
 $('catalog').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if(b){ location.hash = '#/' + encodeURIComponent(b.dataset.go); window.scrollTo(0, 0); } });
 window.addEventListener('hashchange', render);
 load();
+// ===== الحساب: لوحة جانبية (دخول Google). الحساب بيتعمل أول مرة بيدخل فيها =====
+let auth = null, USER = null, CUSTOMER = null, ACC = 'idle', ACC_MSG = '';       // ACC: idle | loading | ok | error
+try{
+  if(typeof firebase !== 'undefined'){
+    firebase.initializeApp({ apiKey: 'AIzaSyAP7sXXQeNCmdgwqUo6meC2Uv6_zM7jxwA', authDomain: 'warehouse-tycoon-a3f83.firebaseapp.com', projectId: 'warehouse-tycoon-a3f83', appId: '1:1054454384493:web:3003d8c766739e75e33c64' });
+    auth = firebase.auth();
+  }
+}catch(e){ auth = null; }
+function authMsg(err){
+  const c = err && err.code;
+  if(c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return 'سكّرت نافذة الدخول قبل ما تكمّل. جرّب كمان مرة.';
+  if(c === 'auth/popup-blocked') return 'المتصفح منع نافذة الدخول. اسمح بالنوافذ المنبثقة وجرّب كمان مرة.';
+  if(c === 'auth/network-request-failed') return 'ما في اتصال بالإنترنت.';
+  return 'تعذّر الدخول. جرّب كمان مرة.';
+}
+function renderDrawer(){
+  const b = $('drBody'); b.textContent = '';
+  if(!auth){ b.append(el('div', { class: 'msg err', id: 'accMsg', text: 'تعذّر تحميل تسجيل الدخول. حدّث الصفحة وجرّب كمان مرة.' })); return; }
+  if(!USER){
+    b.append(el('p', { text: 'سجّل دخول عشان تتابع حسابك ومستوى VIP تبعك.' }), el('button', { class: 'btn-main', id: 'btnGoogle', type: 'button', text: 'الدخول بحساب Google' }), el('p', { class: 'hint', text: 'إذا ما عندك حساب، بيتعمل لك أول ما تدخل.' }), el('div', { class: 'msg' + (ACC_MSG ? ' err' : ''), id: 'accMsg', role: 'alert', text: ACC_MSG }));
+    return;
+  }
+  if(ACC === 'loading' || ACC === 'idle'){ b.append(el('p', { id: 'accLoading', text: 'عم نحمّل حسابك...' })); return; }
+  if(ACC === 'error'){
+    b.append(el('div', { class: 'msg err', id: 'accMsg', role: 'alert', text: 'تعذّر تحميل حسابك. جرّب كمان مرة.' }), el('button', { class: 'btn-main', id: 'btnRetryAcc', type: 'button', text: 'إعادة المحاولة' }), el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' }));
+    return;
+  }
+  const c = CUSTOMER;
+  b.append(
+    el('div', { class: 'who' }, el('div', { class: 'n2', id: 'accName', text: c.name }), el('div', { class: 'em', id: 'accEmail', dir: 'ltr', text: c.email })),
+    el('div', { class: 'acc-row' }, el('span', { text: 'مستوى VIP' }), el('span', { class: 'vipbadge', id: 'accVip', text: 'VIP ' + c.vip })),
+    el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
+    el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
+  );
+}
+async function loadCustomer(){
+  ACC = 'loading'; renderDrawer();
+  try{
+    const token = await USER.getIdToken();
+    const res = await fetch(API + '/store/me', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: '{}' });
+    const j = await res.json(); if(!res.ok || !j.ok || !j.customer) throw new Error('bad');
+    CUSTOMER = j.customer; ACC = 'ok';
+  }catch(e){ ACC = 'error'; }
+  renderDrawer();
+}
+function openDrawer(){
+  renderDrawer();
+  $('drawer').hidden = false; $('scrim').hidden = false; document.body.classList.add('lock'); $('btnMenu').setAttribute('aria-expanded', 'true');
+  $('btnCloseDrawer').focus();
+}
+function closeDrawer(){
+  $('drawer').hidden = true; $('scrim').hidden = true; document.body.classList.remove('lock'); $('btnMenu').setAttribute('aria-expanded', 'false');
+  $('btnMenu').focus();      // دايماً لزر القائمة (بعض الجوالات ما بتعطي الزر تركيز عند اللمس)
+}
+$('btnMenu').addEventListener('click', openDrawer);
+$('btnCloseDrawer').addEventListener('click', closeDrawer);
+$('scrim').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => {
+  if($('drawer').hidden) return;
+  if(e.key === 'Escape'){ closeDrawer(); return; }
+  if(e.key === 'Tab'){                                   // بنبقي التنقل بالـTab جوّا اللوحة
+    const f = [...$('drawer').querySelectorAll('button')].filter(x => !x.disabled); if(!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+});
+$('drBody').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if(!b) return;
+  if(b.id === 'btnGoogle'){
+    ACC_MSG = ''; b.disabled = true;
+    try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+    catch(err){ ACC_MSG = authMsg(err); renderDrawer(); }
+  } else if(b.id === 'btnLogout'){ try{ await auth.signOut(); }catch(err){} }
+  else if(b.id === 'btnRetryAcc'){ loadCustomer(); }
+});
+if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; if(u) loadCustomer(); else renderDrawer(); });
+
 </script>
 </body>
 </html>

@@ -1332,6 +1332,40 @@ async function handleAdminStore(request, env) {
   }
 }
 
+// ===== حسابات زباين المتجر (الخطوة 4أ) =====
+// storeCustomers/{uid}: نفس معرّف حساب Firebase تبع اللعبة (يعني لاعب ياردوفا بيدخل بحسابه لاحقاً ويدفع بنقاطه).
+// الدخول بيعمل الحساب أول مرة. vip وspentUsd هلق ثابتين (1 و0)؛ منظام VIP بيجي بالخطوة 4ب.
+function storeCustomerOut(uid, c) {
+  return { id: uid, name: String(c.name || ""), email: String(c.email || ""), vip: Math.min(10, Math.max(1, Number(c.vip) || 1)), spentUsd: Math.round((Number(c.spentUsd) || 0) * 100) / 100, createdAt: Number(c.createdAt) || 0 };
+}
+async function handleStoreMe(request, env) {
+  try {
+    const user = await requireUser(request);
+    const uid = validId(String(user.sub || ""));
+    if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
+    const now = Date.now(), path = "storeCustomers/" + uid;
+    const name = cleanText(user.name || (user.email ? String(user.email).split("@")[0] : ""), 60) || "زبون";
+    const email = cleanText(user.email || "", 120);
+    let cur = await fsGetDoc(env, path);
+    if (!cur.exists) {
+      const c = { name, email, vip: 1, spentUsd: 0, createdAt: now, lastSeenAt: now };
+      try {
+        await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(c) }, currentDocument: { exists: false } }]);
+        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c) }, 200);
+      } catch (e) { if (!e.conflict) throw e; cur = await fsGetDoc(env, path); }          // طلبين بنفس اللحظة: التاني بيقرأ اللي انعمل
+    }
+    const upd = { lastSeenAt: now };
+    if (!cur.data.name && name) upd.name = name;
+    if (!cur.data.email && email) upd.email = email;
+    await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { exists: true } }]);
+    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }) }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "store me error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+
 // ===== رقم تعريف الطلب =====
 // كل طلب جديد بياخد رقم تسلسلي: W-1001 للسحب، S-1001 لطلبات المتجر (والشراء P-xxxxx مشتق من معرّف المستند). الطلبات القديمة بدون رقم بتاخد رمز مشتق من معرّفها.
 const REQ_WORD = { ar: "رقم الطلب", tr: "Talep no", en: "Request no" };
@@ -2396,6 +2430,7 @@ export default {
     if (url.pathname === "/admin/message" && request.method === "POST") return handleAdminMessage(request, env);
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
+    if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);

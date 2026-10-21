@@ -20,6 +20,8 @@ const fixed = (fg, bg, min, what) => { const r = ratio(fg, bg); ok(r >= min, `${
 fixed("#10211C", light.tape || "#F4C21F", 7, "price badge and selected button (dark text on yellow)");
 fixed("#F4F8F5", light["teal-d"], 7, "header text on the dark green bar");
 fixed("#8FC2B3", light["teal-d"], 3, "'back to the site' button border");
+fixed("#8FC2B3", light["teal-d"], 3, "menu button border");
+fixed("#10211C", light.tape || "#F4C21F", 7, "VIP badge and the sign-in button (dark text on yellow)");
 ok(!/Reem|Kufi/.test(html), "the decorative display font is not used any more");
 ok(/--f-text:"IBM Plex Sans Arabic"/.test(css) && /\.card \.nm\{font-family:var\(--f-text\)/.test(css) && /\.tag h1\{font-family:var\(--f-text\)/.test(css), "names and the title use the readable Arabic font");
 ok(/IBM\+Plex\+Sans\+Arabic:wght@400;600;700/.test(html), "the bold weight of the readable font is loaded");
