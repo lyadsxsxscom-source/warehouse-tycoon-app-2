@@ -10,7 +10,7 @@ const read = p => fs.readFileSync(path.join(ROOT, p), "utf8");
 const pubHtml = read("site/store/index.html");
 const pub = new JSDOM(pubHtml).window.document;
 ok(pub.documentElement.lang === "ar" && pub.documentElement.dir === "rtl", "public page: Arabic, right-to-left");
-ok(/Yardova/.test(pub.title) && /متجر/.test(pub.title), "public page: has a proper title");
+ok(pub.title === "Yardova Card" && pub.querySelector("h1").textContent === "Yardova Card" && !/متجر شحن الألعاب|متجر الشدات/.test(pub.querySelector(".tag").textContent), "public page: is called Yardova Card (heading and browser tab)");
 ok(/noindex/.test(pub.querySelector('meta[name="robots"]').content), "public page: kept out of search engines until it is ready");
 ok(!!pub.getElementById("catalog") && !!pub.getElementById("crumbs"), "public page: has the catalog area and the path bar");
 ok([...pub.querySelectorAll("a")].some(a => a.getAttribute("href") === "/"), "public page: has a way back to the site");

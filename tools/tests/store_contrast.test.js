@@ -23,7 +23,7 @@ fixed("#8FC2B3", light["teal-d"], 3, "'back to the site' button border");
 fixed("#8FC2B3", light["teal-d"], 3, "menu button border");
 fixed("#10211C", light.tape || "#F4C21F", 7, "VIP badge and the sign-in button (dark text on yellow)");
 ok(!/Reem|Kufi/.test(html), "the decorative display font is not used any more");
-ok(/--f-text:"IBM Plex Sans Arabic"/.test(css) && /\.card \.nm\{font-family:var\(--f-text\)/.test(css) && /\.tag h1\{font-family:var\(--f-text\)/.test(css), "names and the title use the readable Arabic font");
+ok(/--f-text:"IBM Plex Sans Arabic"/.test(css) && /\.card \.nm\{font-family:var\(--f-text\)/.test(css) && /\.tag h1\{font-family:var\(--f-stencil\)/.test(css) && /<h1 dir="ltr">Yardova Card<\/h1>/.test(html), "product names use the readable Arabic font; the title is the Latin brand name 'Yardova Card' in the brand font");
 ok(/IBM\+Plex\+Sans\+Arabic:wght@400;600;700/.test(html), "the bold weight of the readable font is loaded");
 const px = (re, unit = "rem") => parseFloat((css.match(re) || [])[1]);
 ok(parseFloat(css.match(/body\{[^}]*font-size:(\d+)px/)[1]) >= 18, "body text is at least 18px");

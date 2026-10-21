@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>متجر الشدات | Yardova</title>
+<title>Yardova Card</title>
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0F3B33">
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -37,7 +37,7 @@ a{color:inherit}
 .door::before,.door::after{content:"";display:block;height:14px;background:repeating-linear-gradient(-45deg,var(--tape) 0 16px,#10211C 16px 32px)}
 .door .in{padding-block:clamp(32px,7vw,64px)}
 .tag{background:var(--panel);color:var(--ink);max-width:640px;padding:clamp(20px,4vw,32px);border:3px solid var(--edge);box-shadow:8px 8px 0 var(--shadow)}
-.tag h1{font-family:var(--f-text);font-weight:700;font-size:clamp(1.7rem,6vw,2.4rem);line-height:1.35;margin:0 0 10px;word-spacing:.18em}
+.tag h1{font-family:var(--f-stencil);font-weight:800;letter-spacing:.06em;font-size:clamp(1.9rem,7vw,2.7rem);line-height:1.2;margin:0 0 10px;text-align:start}
 .tag p{margin:0;font-size:1.1rem;color:var(--ink)}
 main{padding-block:26px 36px}
 [hidden]{display:none!important}
@@ -88,13 +88,15 @@ body.lock{overflow:hidden}
 .fill{height:100%;background:var(--tape)}
 .prog{color:var(--ink);font-size:.98rem;line-height:1.6}
 .mnote{border:2px dashed var(--edge);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.98rem;line-height:1.7}
-.wallet{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:0 0 16px;padding:10px 12px;border:3px solid var(--edge);border-radius:12px;background:var(--panel)}
-.wallet .bal{flex:1;min-width:150px}
-.wallet .bal .lb{color:var(--muted);font-size:.95rem}
-.wallet .bal b{font-size:1.3rem;direction:ltr;display:inline-block;margin-inline-start:8px}
-.wallet .bal small{display:block;color:var(--muted);font-size:.85rem;direction:ltr;text-align:start}
-.wallet .cta-btn{min-width:0;padding:6px 14px;font-size:.95rem}
-.seg{display:flex;gap:6px;margin-inline-start:auto}
+.wallet{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;padding:0 0 8px;border-bottom:2px solid var(--line);font-size:.9rem;line-height:1.5}
+.wallet .bal{display:flex;align-items:baseline;gap:6px;flex:1 1 auto;min-width:0;white-space:nowrap}
+.wallet .bal .lb{color:var(--muted)}
+.wallet .bal b{font-size:1.05rem;direction:ltr;display:inline-block}
+.wallet .bal small{color:var(--muted);font-size:.85rem;direction:ltr}
+.wallet .bal small::before{content:"· "}
+.wallet .cta-btn{min-width:0;padding:2px 10px;font-size:.85rem;border-width:2px;border-radius:8px}
+.seg{display:flex;gap:4px;margin-inline-start:auto}
+.seg .chip{padding:1px 10px;font-size:.85rem;border-width:2px}
 .order-btn{display:block;width:100%;margin-top:10px;font:inherit;font-weight:700;font-size:1rem;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:8px 10px;cursor:pointer}
 .vipnote{display:block;font-size:.78rem;font-weight:700;color:#10211C}
 .scrim2{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:55}
@@ -135,14 +137,14 @@ body.lock{overflow:hidden}
 <section class="door" aria-label="عنوان الصفحة">
   <div class="wrap in">
     <div class="tag">
-      <h1>متجر شحن الألعاب</h1>
+      <div class="wallet" id="walletBar" aria-label="الرصيد وعرض الأسعار"></div>
+      <h1 dir="ltr">Yardova Card</h1>
       <p>اختار القسم وشوف الأسعار.</p>
     </div>
   </div>
 </section>
 <main class="wrap" id="app">
   <nav class="crumbs" id="crumbs" aria-label="المسار"></nav>
-  <div class="wallet" id="walletBar"></div>
   <div id="catalog" aria-live="polite"></div>
 </main>
 <section class="wrap" id="merchantCta" aria-labelledby="mcTitle">
@@ -224,7 +226,7 @@ function render(){
   const nodes = cur && cur.type === 'folder' ? cur.children : (trail.length ? trail[trail.length - 1].children : TREE);
   cr.append(trail.length ? el('a', { href: '#', text: 'الرئيسية' }) : el('b', { text: 'الرئيسية' }));
   trail.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === trail.length - 1 ? el('b', { text: n.name }) : el('a', { href: '#/' + encodeURIComponent(n.id), text: n.name })); });
-  document.title = (trail.length ? trail[trail.length - 1].name + ' | ' : '') + 'متجر الشدات | Yardova';
+  document.title = (trail.length ? trail[trail.length - 1].name + ' | ' : '') + 'Yardova Card';
   if(note) box.append(el('div', { class: 'state', id: 'noteMsg', text: note }));
   if(!nodes || !nodes.length){ box.append(el('div', { class: 'empty', id: 'emptyNote', text: 'ما في منتجات هلق.' })); return; }
   const grid = el('div', { class: 'grid' });
@@ -393,11 +395,11 @@ function setUnit(u){
 function renderWallet(){
   const bar = $('walletBar'); if(!bar) return; bar.textContent = '';
   if(USER && auth && ACC === 'ok' && CUSTOMER){
-    bar.append(el('div', { class: 'bal', id: 'walBalance' }, el('span', { class: 'lb', text: 'رصيدك' }), el('b', { id: 'walAmount', text: money(CUSTOMER.balanceUsd || 0) }), el('small', { id: 'walAlt', text: moneyAlt(CUSTOMER.balanceUsd || 0) })), el('button', { class: 'cta-btn', id: 'btnTopup', type: 'button', text: '➕ شحن الرصيد' }));
+    bar.append(el('div', { class: 'bal', id: 'walBalance' }, el('span', { class: 'lb', text: 'رصيدك' }), el('b', { id: 'walAmount', text: money(CUSTOMER.balanceUsd || 0) }), el('small', { id: 'walAlt', text: moneyAlt(CUSTOMER.balanceUsd || 0) })), el('button', { class: 'cta-btn', id: 'btnTopup', type: 'button', 'aria-label': 'شحن الرصيد', text: '➕ شحن' }));
   }
   bar.append(el('div', { class: 'seg', role: 'group', 'aria-label': 'عرض الأسعار' },
-    el('button', { class: 'chip', type: 'button', 'data-unit': 'usd', 'aria-pressed': UNIT === 'usd' ? 'true' : 'false', text: '$ دولار' }),
-    el('button', { class: 'chip', type: 'button', 'data-unit': 'pts', 'aria-pressed': UNIT === 'pts' ? 'true' : 'false', text: 'نقاط' })));
+    el('button', { class: 'chip', type: 'button', 'data-unit': 'usd', 'aria-label': 'عرض بالدولار', 'aria-pressed': UNIT === 'usd' ? 'true' : 'false', text: '$' }),
+    el('button', { class: 'chip', type: 'button', 'data-unit': 'pts', 'aria-label': 'عرض بالنقاط', 'aria-pressed': UNIT === 'pts' ? 'true' : 'false', text: 'نقاط' })));
 }
 $('walletBar').addEventListener('click', e => {
   const u = e.target.closest('[data-unit]'); if(u){ setUnit(u.dataset.unit); return; }

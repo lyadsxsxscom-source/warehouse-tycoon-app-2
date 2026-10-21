@@ -51,6 +51,11 @@ function open(opts = {}) {
 }
 const lock = (h) => h.d.body.classList.contains("lock");
 (async () => {
+  /* ---- where the balance sits ---- */
+  { const h = open(); await sleep(60); await h.signIn(); const bar = h.$("walletBar"), tag = h.d.querySelector(".tag");
+    ok(tag.contains(bar) && bar.nextElementSibling.tagName === "H1" && bar.nextElementSibling.textContent === "Yardova Card" && !h.d.querySelector("main #walletBar"), "the balance is a slim line inside the title box, directly above the title 'Yardova Card' (not a big box in the page)");
+    ok(/ستايل|/.test("") && h.$("walAlt").textContent === "12,500 نقطة" && h.d.querySelectorAll("#walletBar button").length === 3 && ![...h.d.querySelectorAll("#walletBar button")].some(b => b.textContent.length > 6), "one line: the balance, a short '➕ شحن' button and the '$ | نقاط' switch (no long labels)");
+    ok(/\.wallet\{[^}]*font-size:\.9rem/.test(html0) && !/\.wallet\{[^}]*border:3px/.test(html0), "styled small and without a box of its own"); }
   /* ---- signed out ---- */
   { const h = open(); await sleep(100); const $ = h.$;
     ok(h.d.querySelectorAll("button.order-btn").length === 2 && !/الطلب قريباً/.test(h.d.querySelector("main").textContent), "every product card has an 'اطلب' button");
@@ -60,7 +65,7 @@ const lock = (h) => h.d.body.classList.contains("lock");
 
     /* ---- signed in: the wallet bar and personal prices ---- */
     h.vip = 4; h.prices = { n1: 0.86, n2: 9.26 }; await h.signIn();
-    ok(h.last("/store/prices").auth === "Bearer TOKEN" && h.$("walAmount").textContent === "$12.50" && h.$("walAlt").textContent === "12,500 نقطة" && !!h.$("btnTopup") && /شحن الرصيد/.test(h.$("btnTopup").textContent), "signed in: the top bar shows his balance ($12.50, and 12,500 points underneath) and a 'top up' button");
+    ok(h.last("/store/prices").auth === "Bearer TOKEN" && h.$("walAmount").textContent === "$12.50" && h.$("walAlt").textContent === "12,500 نقطة" && !!h.$("btnTopup") && /➕ شحن/.test(h.$("btnTopup").textContent) && h.$("btnTopup").getAttribute("aria-label") === "شحن الرصيد", "signed in: a slim top line shows his balance ($12.50, and 12,500 points next to it) and a small 'top up' button (read aloud as 'شحن الرصيد')");
     const c1 = h.d.querySelector('[data-item="n1"]'), c2 = h.d.querySelector('[data-item="n2"]');
     ok(/\$0\.86/.test(c1.querySelector(".pr").textContent) && /860 نقطة/.test(c1.querySelector(".pr small").textContent) && /سعرك VIP 4/.test(c1.textContent) && !/سعرك VIP/.test(c2.textContent), "a card shows HIS price (VIP 4: $0.86 = 860 points) with a note; an item with the same price has no note");
     h.unit("pts").click(); await sleep(30);
