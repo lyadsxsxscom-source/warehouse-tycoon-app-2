@@ -523,6 +523,11 @@ PUSH_TEXT.store_done = {
   tr: (p) => ["Siparişin tamamlandı ✅", `${p.code} (${p.item}) siparişin tamamlandı. Oyun hesabını kontrol et.`],
   en: (p) => ["Your order is done ✅", `Your order ${p.code} (${p.item}) is complete. Check your game account.`],
 };
+PUSH_TEXT.store_topup_done = {
+  ar: (p) => ["تم شحن رصيدك ✅", `${p.code}: انضاف $${p.amount} لرصيدك.`],
+  tr: (p) => ["Bakiyen yüklendi ✅", `${p.code}: bakiyene $${p.amount} eklendi.`],
+  en: (p) => ["Your balance was topped up ✅", `${p.code}: $${p.amount} was added to your balance.`],
+};
 PUSH_TEXT.store_rejected = {
   ar: (p) => ["طلبك انرفض", `${p.code} (${p.item}): ${p.reason}`],
   tr: (p) => ["Siparişin reddedildi", `${p.code} (${p.item}): ${p.reason}`],
@@ -559,7 +564,7 @@ PUSH_TEXT.shop_rejected = {
   en: (p) => ["Your order was declined", `${p.points} points were refunded. Check your in-game mail.`],
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_topup_done: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -1313,12 +1318,14 @@ async function handleAdminStore(request, env) {
       }
     }
     if (b.action === "orders_list") {
-      const now2 = Date.now(), q = cleanText(b.q, 60).toLowerCase(), st = String(b.status || "all");
+      const now2 = Date.now(), q = cleanText(b.q, 60).toLowerCase(), st = String(b.status || "all"), kd = String(b.kind || "all");
       const all = (await fsRunQuery(env, "storeOrders", null, 500, 0)).map(r => storeOrderOut(r.id, r.data, now2, true)).sort((a, c2) => c2.createdAt - a.createdAt);
       const counts = {}; for (const o of all) counts[o.status] = (counts[o.status] || 0) + 1;
-      let rows = all.filter(o => st === "all" || (st === "open" ? (o.status === "payment_submitted" || (o.status === "awaiting_payment")) : o.status === st));
+      const kinds = {}; for (const o of all) if (["payment_submitted", "awaiting_payment", "processing"].includes(o.status)) kinds[o.kind] = (kinds[o.kind] || 0) + 1;
+      const waiting = all.filter(o => o.status === "payment_submitted").length + all.filter(o => o.status === "processing").length;
+      let rows = all.filter(o => (kd === "all" || o.kind === kd) && (st === "all" || (st === "open" ? ["payment_submitted", "awaiting_payment", "processing"].includes(o.status) : st === "waiting" ? (o.status === "payment_submitted" || o.status === "processing") : o.status === st)));
       if (q) rows = rows.filter(o => (o.code + " " + o.name + " " + o.email + " " + o.playerId + " " + o.itemName + " " + o.uid).toLowerCase().includes(q));
-      return jsonResponse({ ok: true, counts, total: all.length, orders: rows.slice(0, 200) }, 200);
+      return jsonResponse({ ok: true, counts, kinds, waiting, total: all.length, orders: rows.slice(0, 200) }, 200);
     }
     if (b.action === "order_proof") {
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
@@ -1329,31 +1336,44 @@ async function handleAdminStore(request, env) {
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
       const note = cleanText(b.action === "order_reject" ? b.reason : b.note, 200);
       if (b.action === "order_reject" && !note) throw new ApiError("reason_required", "اكتب سبب الرفض (بيوصل للزبون).");
-      const { sizes } = await storeLoadVipSizes(env);
       for (let attempt = 0; attempt < 3; attempt++) {
         const od = await fsGetDoc(env, "storeOrders/" + id);
         if (!od.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
-        const o = od.data, now2 = Date.now(), open = o.status === "awaiting_payment" || o.status === "payment_submitted";
-        let upd, delta = 0;
-        if (b.action === "order_done") { if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ")."); upd = { status: "done", doneAt: now2, adminNote: note, updatedAt: now2, events: storeEvent(o, "done", "admin", note, now2) }; delta = Number(o.priceUsd) || 0; }
-        else if (b.action === "order_reject") { if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ")."); upd = { status: "rejected", rejectReason: note, updatedAt: now2, events: storeEvent(o, "rejected", "admin", note, now2) }; }
-        else { if (o.status !== "done") throw new ApiError("bad_status", "بتقدر ترجّع طلب منفّذ بس."); upd = { status: "refunded", adminNote: note, updatedAt: now2, events: storeEvent(o, "refunded", "admin", note, now2) }; delta = -(Number(o.priceUsd) || 0); }
-        const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
-        if (delta !== 0) {
-          const cd = await fsGetDoc(env, "storeCustomers/" + o.uid);
+        const o = od.data, now2 = Date.now(), kind = o.kind === "order" || o.kind === "topup" ? o.kind : "legacy", price = Number(o.priceUsd) || 0;
+        const open = o.status === "awaiting_payment" || o.status === "payment_submitted" || o.status === "processing";
+        const cd = await fsGetDoc(env, "storeCustomers/" + o.uid), bal = cd.exists ? r4(Number(cd.data.balanceUsd) || 0) : 0, led = [];
+        let upd, custUpd = null, plan = null;
+        const ledger = (type, amt, newBal) => led.push({ update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid: o.uid, type, amountUsd: r4(amt), balanceAfter: newBal, ref: String(o.code || ""), note, at: now2, by: "admin" }) }, currentDocument: { exists: false } });
+        if (b.action === "order_done") {
+          if (!open || (kind === "order" && o.status !== "processing")) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
+          upd = { status: "done", doneAt: now2, adminNote: note, updatedAt: now2, events: storeEvent(o, "done", "admin", note, now2) };
           if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
-          const plan = storeSpendPlan(env, o.uid, cd.data, delta, (delta > 0 ? "طلب " : "مرتجع ") + o.code, "order", now2);
-          writes.push({ update: { name: docName(env, "storeCustomers/" + o.uid), fields: objToFields(plan.upd) }, updateMask: { fieldPaths: Object.keys(plan.upd) }, currentDocument: { updateTime: cd.updateTime } }, ...plan.writes);
+          if (kind === "topup") { const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("topup", price, nb); }
+          else { plan = storeSpendPlan(env, o.uid, cd.data, price, "طلب " + o.code, "order", now2); custUpd = { ...plan.upd }; }
+        } else if (b.action === "order_reject") {
+          if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
+          upd = { status: "rejected", rejectReason: note, updatedAt: now2, events: storeEvent(o, "rejected", "admin", note, now2) };
+          if (kind === "order") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("order_refund", price, nb); }       // الرفض بيرجّع المبلغ لرصيده
+        } else {
+          if (o.status !== "done") throw new ApiError("bad_status", "بتقدر ترجّع طلب منفّذ بس.");
+          upd = { status: "refunded", adminNote: note, updatedAt: now2, events: storeEvent(o, "refunded", "admin", note, now2) };
+          if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
+          if (kind === "topup") { if (bal + 1e-9 < price) throw new ApiError("insufficient_balance", "الزبون صرف جزء من هالإيداع (رصيده " + bal + "$)، ما بتقدر ترجّعه كامل. عدّل رصيده يدوياً إذا بدك."); const nb = r4(bal - price); custUpd = { balanceUsd: nb }; ledger("topup_refund", -price, nb); }
+          else if (kind === "order") { plan = storeSpendPlan(env, o.uid, cd.data, -price, "مرتجع " + o.code, "order", now2); const nb = r4(bal + price); custUpd = { ...plan.upd, balanceUsd: nb }; ledger("refund", price, nb); }
+          else { plan = storeSpendPlan(env, o.uid, cd.data, -price, "مرتجع " + o.code, "order", now2); custUpd = { ...plan.upd }; }
         }
+        const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
+        if (custUpd) writes.push({ update: { name: docName(env, "storeCustomers/" + o.uid), fields: objToFields(custUpd) }, updateMask: { fieldPaths: Object.keys(custUpd) }, currentDocument: { updateTime: cd.updateTime } });
+        if (plan) writes.push(...plan.writes);
+        writes.push(...led);
         try {
           await fsCommit(env, writes);
           const np = { code: String(o.code || ""), item: String(o.itemName || "") };
-          if (b.action === "order_done") await storeNotify(env, o.uid, "store_done", np);
+          if (b.action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : np);
           else if (b.action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
           else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
           return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200);
-        }
-        catch (e) { if (!e.conflict || attempt === 2) throw e; }
+        } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
     if (b.action === "wallet_get") { const w = await storeLoadWallet(env); return jsonResponse({ ok: true, ...w }, 200); }
@@ -1370,12 +1390,12 @@ async function handleAdminStore(request, env) {
       for (let attempt = 0; attempt < 3; attempt++) {
         const cur = await fsGetDoc(env, "storeCustomers/" + uid);
         if (!cur.exists) throw new ApiError("not_found", "هالزبون مو موجود.", 404);
-        const after = r2((Number(cur.data.balanceUsd) || 0) + delta), at = Date.now();
+        const after = r4((Number(cur.data.balanceUsd) || 0) + delta), at = Date.now();
         if (after < 0) throw new ApiError("insufficient_balance", "رصيد الزبون ما بيكفي لهالخصم.");
         try {
           await fsCommit(env, [
             { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: after }) }, updateMask: { fieldPaths: ["balanceUsd"] }, currentDocument: { updateTime: cur.updateTime } },
-            { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "adjust", amountUsd: r2(delta), points: 0, balanceAfter: after, ref: "", note, at, by: "admin" }) }, currentDocument: { exists: false } },
+            { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "adjust", amountUsd: r4(delta), balanceAfter: after, ref: "", note, at, by: "admin" }) }, currentDocument: { exists: false } },
           ]);
           return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, balanceUsd: after }, sizes, { admin: true }) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
@@ -1383,7 +1403,7 @@ async function handleAdminStore(request, env) {
     }
     if (b.action === "customer_ledger") {
       const uid = validId(String(b.uid || "")); if (!uid) throw new ApiError("bad_request", "طلب غلط.");
-      const rows = (await fsRunQuery(env, "storeLedger", null, 200, 0, { field: "uid", value: uid })).map(r => ({ type: String(r.data.type || ""), amountUsd: Number(r.data.amountUsd) || 0, points: Number(r.data.points) || 0, balanceAfter: Number(r.data.balanceAfter) || 0, ref: String(r.data.ref || ""), note: String(r.data.note || ""), at: Number(r.data.at) || 0, by: String(r.data.by || "") })).sort((a, c2) => c2.at - a.at);
+      const rows = (await fsRunQuery(env, "storeLedger", null, 200, 0, { field: "uid", value: uid })).map(r => ({ type: String(r.data.type || ""), amountUsd: Number(r.data.amountUsd) || 0, balanceAfter: Number(r.data.balanceAfter) || 0, ref: String(r.data.ref || ""), note: String(r.data.note || ""), at: Number(r.data.at) || 0, by: String(r.data.by || "") })).sort((a, c2) => c2.at - a.at);
       return jsonResponse({ ok: true, ledger: rows }, 200);
     }
     if (b.action === "customer_log") {
@@ -1553,7 +1573,7 @@ function storeVipWithFloor(sizes, spentUsd, floor) {
 }
 function storeCustomerOut(uid, c, sizes, opts = {}) {
   const now = opts.now || Date.now(), sz = sizes || STORE_VIP_DEFAULT_SIZES, ms = storeMerchantState(c.merchant, c.spentUsd, now);
-  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, balanceUsd: r2(Number(c.balanceUsd) || 0), ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
+  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, balanceUsd: r4(Number(c.balanceUsd) || 0), ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
   if (opts.admin) out.autoVip = storeVipInfo(sz, c.spentUsd).vip;      // للأدمن بس: مستواه لو ما في نقل يدوي
   const m = c.merchant;
   if (ms.status !== "none" && (opts.admin || ms.status === "trial" || ms.status === "locked")) {
@@ -1572,24 +1592,19 @@ function storeSpendPlan(env, uid, cur, delta, note, by, at) {
   writes.push({ update: { name: docName(env, "storeSpendLog/" + randomId()), fields: objToFields({ uid, deltaUsd: r2(delta), spentAfter: after, note, at, by }) }, currentDocument: { exists: false } });
   return { after, upd, writes };
 }
-// ===== محفظة المتجر (الخطوة 6أ): رصيد دولار منفصل عن رصيد اللعبة القابل للسحب + تحويل نقاط ↔ دولار =====
-// storeCustomers/{uid}.balanceUsd. كل حركة بتنسجّل بـstoreLedger. الإعدادات من الأدمن (config/storeWallet).
-// شرط أمان: سعر شراء النقاط (دولار←نقاط) لازم يعطي نقاط أقل أو يساوي سعر بيعها (نقاط←دولار)، وإلا في ربح مضمون بدورة تحويل.
-const STORE_WALLET_DEFAULTS = { pointsPerUsdSell: 925, pointsPerUsdBuy: 700, minConvertUsd: 1, weeklyCapUsd: 5, minActiveDays: 3, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 };
+// ===== محفظة المتجر (الخطوة 6): رصيد دولار منفصل عن رصيد اللعبة =====
+// storeCustomers/{uid}.balanceUsd (4 خانات عشرية). "النقاط" وحدة عرض بس: pointsPerUsd نقطة = 1$ (المخزّن والمخصوم دولار). كل حركة بتنسجّل بـstoreLedger.
+const STORE_WALLET_DEFAULTS = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 };
+const r4 = (x) => Math.round(x * 10000) / 10000;
 function storeParseWallet(o) {
   o = o || {}; const num = (v, d) => (v === undefined || v === "" || v === null ? d : Number(v));
-  const w = { pointsPerUsdSell: num(o.pointsPerUsdSell, STORE_WALLET_DEFAULTS.pointsPerUsdSell), pointsPerUsdBuy: num(o.pointsPerUsdBuy, STORE_WALLET_DEFAULTS.pointsPerUsdBuy), minConvertUsd: num(o.minConvertUsd, STORE_WALLET_DEFAULTS.minConvertUsd), weeklyCapUsd: num(o.weeklyCapUsd, STORE_WALLET_DEFAULTS.weeklyCapUsd), minActiveDays: num(o.minActiveDays, STORE_WALLET_DEFAULTS.minActiveDays), minTopupUsd: num(o.minTopupUsd, STORE_WALLET_DEFAULTS.minTopupUsd), maxTopupUsd: num(o.maxTopupUsd, STORE_WALLET_DEFAULTS.maxTopupUsd), maxProcessing: num(o.maxProcessing, STORE_WALLET_DEFAULTS.maxProcessing) };
+  const w = { pointsPerUsd: num(o.pointsPerUsd, STORE_WALLET_DEFAULTS.pointsPerUsd), minTopupUsd: num(o.minTopupUsd, STORE_WALLET_DEFAULTS.minTopupUsd), maxTopupUsd: num(o.maxTopupUsd, STORE_WALLET_DEFAULTS.maxTopupUsd), maxProcessing: num(o.maxProcessing, STORE_WALLET_DEFAULTS.maxProcessing) };
   const bad = (m) => { throw new ApiError("bad_wallet", m); };
-  if (!Number.isFinite(w.pointsPerUsdSell) || w.pointsPerUsdSell < 1 || w.pointsPerUsdSell > 1000000) bad("سعر بيع النقاط (نقطة لكل 1$) لازم يكون رقم بين 1 ومليون.");
-  if (!Number.isFinite(w.pointsPerUsdBuy) || w.pointsPerUsdBuy < 1 || w.pointsPerUsdBuy > 1000000) bad("سعر شراء النقاط (نقطة لكل 1$) لازم يكون رقم بين 1 ومليون.");
-  if (w.pointsPerUsdBuy > w.pointsPerUsdSell) bad("سعر شراء النقاط لازم يعطي نقاط أقل أو يساوي سعر بيعها (وإلا في ربح مضمون بدورة تحويل).");
-  if (!Number.isFinite(w.minConvertUsd) || w.minConvertUsd < 0.01 || w.minConvertUsd > 1000) bad("أقل مبلغ تحويل من 0.01$ لـ1000$.");
-  if (!Number.isFinite(w.weeklyCapUsd) || w.weeklyCapUsd < 0 || w.weeklyCapUsd > 100000) bad("الحد الأسبوعي من 0 (بدون حد) لـ100,000$.");
-  if (!Number.isInteger(w.minActiveDays) || w.minActiveDays < 0 || w.minActiveDays > 365) bad("أيام النشاط من 0 لـ365.");
+  if (!Number.isInteger(w.pointsPerUsd) || w.pointsPerUsd < 1 || w.pointsPerUsd > 1000000) bad("عدد النقاط لكل 1$ لازم يكون رقم صحيح بين 1 ومليون.");
   if (!Number.isFinite(w.minTopupUsd) || w.minTopupUsd < 1 || w.minTopupUsd > 10000) bad("أقل إيداع من 1$ لـ10,000$.");
   if (!Number.isFinite(w.maxTopupUsd) || w.maxTopupUsd < w.minTopupUsd || w.maxTopupUsd > 100000) bad("أعلى إيداع لازم يكون أكبر من أقل إيداع (وأقل من 100,000$).");
   if (!Number.isInteger(w.maxProcessing) || w.maxProcessing < 1 || w.maxProcessing > 100) bad("عدد الطلبات المفتوحة من 1 لـ100.");
-  for (const k of ["minConvertUsd", "weeklyCapUsd", "minTopupUsd", "maxTopupUsd"]) w[k] = r2(w[k]);
+  w.minTopupUsd = r2(w.minTopupUsd); w.maxTopupUsd = r2(w.maxTopupUsd);
   return w;
 }
 async function storeLoadWallet(env) {
@@ -1597,17 +1612,13 @@ async function storeLoadWallet(env) {
   if (d.exists && d.data) { try { return { cfg: storeParseWallet(d.data), configured: true, updatedAt: Number(d.data.updatedAt) || 0 }; } catch (e) {} }
   return { cfg: { ...STORE_WALLET_DEFAULTS }, configured: false, updatedAt: 0 };
 }
-const STORE_WEEK_MS = 7 * 86400000;
-function storeWalletView(c, game, cfg, now) {
-  const start = Number(c.p2uWindowStart) || 0, inWin = start && now - start < STORE_WEEK_MS, used = inWin ? Number(c.p2uWindowUsd) || 0 : 0;
-  return { pointsPerUsdSell: cfg.pointsPerUsdSell, pointsPerUsdBuy: cfg.pointsPerUsdBuy, minConvertUsd: cfg.minConvertUsd, weeklyCapUsd: cfg.weeklyCapUsd, minActiveDays: cfg.minActiveDays, minTopupUsd: cfg.minTopupUsd, maxTopupUsd: cfg.maxTopupUsd, weeklyUsedUsd: r2(used), weeklyLeftUsd: cfg.weeklyCapUsd > 0 ? r2(Math.max(0, cfg.weeklyCapUsd - used)) : null, windowEndsAt: inWin ? start + STORE_WEEK_MS : 0, game: { has: !!game.exists, points: game.exists ? Math.floor(Number(game.data.points) || 0) : 0, activeDays: game.exists ? Number(game.data.activeDays) || 0 : 0 } };
-}
+const storeWalletView = (cfg) => ({ pointsPerUsd: cfg.pointsPerUsd, minTopupUsd: cfg.minTopupUsd, maxTopupUsd: cfg.maxTopupUsd });
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);
     const uid = validId(String(user.sub || ""));
     if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
-    const now = Date.now(), path = "storeCustomers/" + uid, { sizes } = await storeLoadVipSizes(env), { cfg: wcfg } = await storeLoadWallet(env), gdoc = await fsGetDoc(env, "players/" + uid);
+    const now = Date.now(), path = "storeCustomers/" + uid, { sizes } = await storeLoadVipSizes(env), { cfg: wcfg } = await storeLoadWallet(env);
     const name = cleanText(user.name || (user.email ? String(user.email).split("@")[0] : ""), 60) || "زبون";
     const email = cleanText(user.email || "", 120);
     let cur = await fsGetDoc(env, path);
@@ -1615,14 +1626,14 @@ async function handleStoreMe(request, env) {
       const c = { name, email, spentUsd: 0, balanceUsd: 0, createdAt: now, lastSeenAt: now };
       try {
         await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(c) }, currentDocument: { exists: false } }]);
-        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c, sizes), wallet: storeWalletView(c, gdoc, wcfg, now) }, 200);
+        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c, sizes), wallet: storeWalletView(wcfg) }, 200);
       } catch (e) { if (!e.conflict) throw e; cur = await fsGetDoc(env, path); }          // طلبين بنفس اللحظة: التاني بيقرأ اللي انعمل
     }
     const upd = { lastSeenAt: now };
     if (!cur.data.name && name) upd.name = name;
     if (!cur.data.email && email) upd.email = email;
     await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { exists: true } }]);
-    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes), wallet: storeWalletView({ ...cur.data, ...upd }, gdoc, wcfg, now) }, 200);
+    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes), wallet: storeWalletView(wcfg) }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "store me error", error: String(e.message || e) });
@@ -1633,7 +1644,7 @@ async function handleStoreMe(request, env) {
 // ===== طلبات المتجر (الخطوة 5أ): دفع يدوي (رقم عملية و/أو صورة إيصال) والأدمن بيأكّد وبينفّذ =====
 // حالات: awaiting_payment ← payment_submitted ← done (أو rejected / cancelled / refunded). وبعد 24 ساعة بدون دفع بتصير "expired" (محسوبة بس).
 // السعر بيتحسب بالسيرفر حسب مستوى الزبون وطريقة الدفع، وبينحفظ بالطلب. الصرف وVIP بيتحسبوا لما الأدمن يضغط "تم التنفيذ".
-const STORE_QUOTE_MIN = 30, STORE_ORDER_TTL_MS = 24 * 3600 * 1000, STORE_MAX_OPEN = 5;
+const STORE_QUOTE_MIN = 30, STORE_ORDER_TTL_MS = 24 * 3600 * 1000, STORE_MAX_OPEN_TOPUPS = 3;
 const storeRound = (x, d) => Math.round(Number((x * Math.pow(10, d)).toPrecision(12))) / Math.pow(10, d);
 function storeVisibleItem(nodes, id) {
   const by = new Map(nodes.map(n => [n.id, n])), n = by.get(id);
@@ -1654,8 +1665,9 @@ async function storeCustomerCtx(env, uid) {
   return { cur, vip: storeCustomerOut(uid, cur.data, sizes).vip };
 }
 function storeOrderOut(id, o, now, admin) {
+  const kind = o.kind === "order" || o.kind === "topup" ? o.kind : "legacy";
   const expired = o.status === "awaiting_payment" && now > Number(o.createdAt) + STORE_ORDER_TTL_MS, status = expired ? "expired" : o.status, pr = o.proof;
-  const out = { id, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
+  const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
     method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || "") },
     amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
     proof: pr && pr.submittedAt ? { ref: String(pr.ref || ""), hasImage: !!pr.hasImage, submittedAt: Number(pr.submittedAt) || 0, late: !!pr.late } : null, rejectReason: String(o.rejectReason || ""), doneAt: Number(o.doneAt) || 0 };
@@ -1671,31 +1683,64 @@ async function handleStoreOrderApi(request, env, action) {
     const uid = validId(String(user.sub || "")); if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
     let b = {}; try { b = await request.json(); } catch (e) {}
     const now = Date.now();
-    if (action === "quote" || action === "order") {
+    if (action === "quote") {                      // سعر منتج بمستوى الزبون + رصيده
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
-      const { vip } = await storeCustomerCtx(env, uid), methods = await storeLoadMethods(env), q = storeQuoteFor(item, vip, methods);
-      if (action === "quote") return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), vip, priceUsd: q.priceUsd, validMinutes: STORE_QUOTE_MIN, methods: q.methods } }, 200);
-      const method = methods.find(m => m.id === String(b.methodId || "") && m.enabled !== false), qm = method && q.methods.find(m => m.id === method.id);
-      if (!method) throw new ApiError("no_method", "اختار طريقة دفع.");
-      const playerId = String(b.playerId == null ? "" : b.playerId).trim();       // بدون تنظيف: لازم يكون نظيف أصلاً (حروف وأرقام ورموز بسيطة، 3 لـ40)
+      const { cur, vip } = await storeCustomerCtx(env, uid), pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cur.data.balanceUsd) || 0);
+      return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), vip, priceUsd, balanceUsd: bal, enough: bal + 1e-9 >= priceUsd, shortUsd: r4(Math.max(0, priceUsd - bal)) } }, 200);
+    }
+    if (action === "order") {                      // شراء من الرصيد: بيخصم فوراً، والأدمن بينفّذ
+      const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
+      if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
+      const playerId = String(b.playerId == null ? "" : b.playerId).trim();
       if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
       const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
       const id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
       if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, dup.data, now, false) }, 200); }
-      const mine = await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid });
-      if (mine.filter(r => storeOrderOut(r.id, r.data, now, false).status === "awaiting_payment" || r.data.status === "payment_submitted").length >= STORE_MAX_OPEN) throw new ApiError("too_many_open", `عندك ${STORE_MAX_OPEN} طلبات مفتوحة. خلّصهم أو ألغي واحد قبل ما تطلب غيرهم.`);
-      const u = storeUserName(user);
-      for (let attempt = 0; attempt < 3; attempt++) {                       // طلبين بنفس اللحظة: التاني بياخد الرقم اللي بعده
-      const ctr = await nextRequestNo(env, "store"), code = "T-" + ctr.no;
-      const order = { code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, vip, priceUsd: q.priceUsd, methodId: method.id, methodName: method.name, currency: method.currency, decimals: method.decimals, rate: method.rate, feePct: Number(method.feePct) || 0, amount: qm.amount, methodAccount: String(method.account || ""), methodInstructions: String(method.instructions || ""), status: "awaiting_payment", createdAt: now, expiresAt: now + STORE_QUOTE_MIN * 60000, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
-      try {
-        await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } }]);
-        return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false) }, 200);
-      } catch (e) {
-        if (!e.conflict || attempt === 2) throw e;
-        const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, again.data, now, false) }, 200);
+      const { cfg } = await storeLoadWallet(env), mine = await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid });
+      if (mine.filter(r => r.data.kind === "order" && r.data.status === "processing").length >= cfg.maxProcessing) throw new ApiError("too_many_open", `عندك ${cfg.maxProcessing} طلبات قيد التنفيذ. استنى لحد ما ننفّذهم قبل ما تطلب غيرهم.`);
+      const u = storeUserName(user), { sizes } = await storeLoadVipSizes(env);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cd = await fsGetDoc(env, "storeCustomers/" + uid);
+        if (!cd.exists) throw new ApiError("no_account", "افتح حسابك أول (من ☰) وجرّب كمان مرة.");
+        const vip = storeCustomerOut(uid, cd.data, sizes).vip, pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cd.data.balanceUsd) || 0);
+        if (bal + 1e-9 < priceUsd) return jsonResponse({ ok: false, error: "insufficient_balance", message: `رصيدك ${bal}$ وسعر الطلب ${priceUsd}$. اشحن رصيدك أول.`, balanceUsd: bal, priceUsd, shortUsd: r4(priceUsd - bal) }, 400);
+        const ctr = await nextRequestNo(env, "store"), code = "T-" + ctr.no, newBal = r4(bal - priceUsd);
+        const order = { kind: "order", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, vip, priceUsd, status: "processing", createdAt: now, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+        try {
+          await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } },
+            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: newBal }) }, updateMask: { fieldPaths: ["balanceUsd"] }, currentDocument: { updateTime: cd.updateTime } },
+            { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "order", amountUsd: -priceUsd, balanceAfter: newBal, ref: code, note: String(item.name), at: now, by: "customer" }) }, currentDocument: { exists: false } }]);
+          return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false), balanceUsd: newBal }, 200);
+        } catch (e) {
+          if (!e.conflict || attempt === 2) throw e;
+          const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, again.data, now, false) }, 200);
+        }
       }
+    }
+    if (action === "topup_quote" || action === "topup") {          // إيداع رصيد: نفس نظام الإيصال، المبلغ بالدولار
+      const { cfg } = await storeLoadWallet(env), amountUsd = r2(Number(b.amountUsd));
+      if (!Number.isFinite(amountUsd) || amountUsd < cfg.minTopupUsd || amountUsd > cfg.maxTopupUsd) throw new ApiError("bad_amount", `مبلغ الإيداع من ${cfg.minTopupUsd}$ لـ${cfg.maxTopupUsd}$.`);
+      const methods = await storeLoadMethods(env), qm = storeQuoteFor({ prices: [amountUsd] }, 1, methods);
+      if (action === "topup_quote") return jsonResponse({ ok: true, quote: { amountUsd, validMinutes: STORE_QUOTE_MIN, minUsd: cfg.minTopupUsd, maxUsd: cfg.maxTopupUsd, methods: qm.methods } }, 200);
+      const method = methods.find(m => m.id === String(b.methodId || "") && m.enabled !== false), am = method && qm.methods.find(m => m.id === method.id);
+      if (!method) throw new ApiError("no_method", "اختار طريقة دفع.");
+      const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
+      const { cur, vip } = await storeCustomerCtx(env, uid), id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
+      if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, dup.data, now, false) }, 200); }
+      const mine = await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid });
+      if (mine.filter(r => r.data.kind === "topup" && (r.data.status === "payment_submitted" || storeOrderOut(r.id, r.data, now, false).status === "awaiting_payment")).length >= STORE_MAX_OPEN_TOPUPS) throw new ApiError("too_many_open", `عندك ${STORE_MAX_OPEN_TOPUPS} إيداعات مفتوحة. خلّصهم أو ألغي واحد قبل ما تعمل غيرهم.`);
+      const u = storeUserName(user);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const ctr = await nextRequestNo(env, "deposit"), code = "D-" + ctr.no;
+        const order = { kind: "topup", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: "", itemName: "إيداع رصيد", itemPath: "إيداع رصيد", playerId: "", vip, priceUsd: amountUsd, methodId: method.id, methodName: method.name, currency: method.currency, decimals: method.decimals, rate: method.rate, feePct: Number(method.feePct) || 0, amount: am.amount, methodAccount: String(method.account || ""), methodInstructions: String(method.instructions || ""), status: "awaiting_payment", createdAt: now, expiresAt: now + STORE_QUOTE_MIN * 60000, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+        try {
+          await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } }]);
+          return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false) }, 200);
+        } catch (e) {
+          if (!e.conflict || attempt === 2) throw e;
+          const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, again.data, now, false) }, 200);
+        }
       }
     }
     if (action === "prices") {            // أسعار كل المنتجات الظاهرة بمستوى VIP تبع الزبون (بتتحسب بالسيرفر)
@@ -1713,7 +1758,8 @@ async function handleStoreOrderApi(request, env, action) {
       if (!od.exists || od.data.uid !== uid) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
       const o = od.data, view = storeOrderOut(id, o, now, false);
       if (action === "cancel") {
-        if (view.status !== "awaiting_payment") throw new ApiError("bad_status", "بتقدر تلغي الطلب قبل ما ترسل الدفع بس.");
+        if (view.kind === "order") throw new ApiError("bad_status", "طلبك قيد التنفيذ. تواصل معنا إذا في مشكلة.");
+        if (view.status !== "awaiting_payment") throw new ApiError("bad_status", "بتقدر تلغي قبل ما ترسل الدفع بس.");
         const upd = { status: "cancelled", updatedAt: now, events: storeEvent(o, "cancelled", "customer", "", now) };
         await fsCommit(env, [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }]);
         return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now, false) }, 200);
@@ -2805,7 +2851,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/topup/quote", "/store/topup", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);

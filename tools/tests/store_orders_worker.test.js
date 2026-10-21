@@ -1,4 +1,4 @@
-// اختبارات السيرفر: طلبات المتجر (5أ): عرض السعر، إنشاء الطلب، إيصال الدفع، إلغاء، إجراءات الأدمن (تنفيذ، رفض، استرجاع)، الصرف وVIP
+// اختبارات السيرفر: طلبات المتجر من الرصيد (6ب): سعر بمستوى VIP، شراء بيخصم فوراً، رفض بيرجّع، تنفيذ بيحسب الصرف وVIP، استرجاع، إشعارات
 // التشغيل: node tools/tests/store_orders_worker.test.js
 const vm = require("vm"), fs = require("fs"), path = require("path");
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m); } else console.log("ok:", m); };
@@ -32,7 +32,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   const get = (p) => { const d = store.get(p); return d ? c.fieldsToObj(d.fields) : null; };
   let injectConflictOn = null;
   c.fsCommit = async (e, ws) => {
-    if (injectConflictOn && ws.some(w => w.update && w.update.name.endsWith(injectConflictOn))) { const mark = injectConflictOn; injectConflictOn = null; if (mark.endsWith("counters/store")) { const cur = store.get("counters/store"); const n = cur ? Number(c.fieldsToObj(cur.fields).n) + 1 : 1001; store.set("counters/store", { fields: c.objToFields({ n }), t: String(++tick) }); } else { const cur = store.get(mark.replace(/^.*\/databases\/\(default\)\/documents\//, "")); if (cur) store.set(mark, { ...cur, t: String(++tick) }); } throw Object.assign(new Error("ABORTED"), { conflict: true }); }
+    if (injectConflictOn && ws.some(w => w.update && w.update.name.endsWith(injectConflictOn))) { const mark = injectConflictOn; injectConflictOn = null; if (mark.endsWith("counters/store") || mark.endsWith("counters/deposit")) { const key = mark.replace(/^.*\//, "counters/"); const cur = store.get(key); const n = cur ? Number(c.fieldsToObj(cur.fields).n) + 1 : 1001; store.set(key, { fields: c.objToFields({ n }), t: String(++tick) }); } else { const key = mark; const cur = store.get(key); if (cur) store.set(key, { ...cur, t: String(++tick) }); } throw Object.assign(new Error("ABORTED"), { conflict: true }); }
     for (const w of ws) { if (w.delete) continue; const cur = store.get(nameToPath(w.update.name)), pre = w.currentDocument;
       if (pre && pre.exists === false && cur) throw Object.assign(new Error("ALREADY_EXISTS"), { conflict: true });
       if (pre && pre.exists === true && !cur) throw new Error("NOT_FOUND");
@@ -50,188 +50,141 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   const adm = (body, token = "admin") => callApi("/admin/store", body, token);
   const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const NOW = Date.now(), DAY = 86400000;
+  const mkC = (uid, o) => put("storeCustomers/" + uid, { name: uid, email: uid + "@x.com", spentUsd: 0, balanceUsd: 0, createdAt: 1, lastSeenAt: 1, ...o });
+  const bal = (uid) => get("storeCustomers/" + uid).balanceUsd, spent = (uid) => get("storeCustomers/" + uid).spentUsd;
+  const ledger = (uid) => [...store.keys()].filter(k => k.startsWith("storeLedger/")).map(k => get(k)).filter(x => x.uid === uid).sort((a, b) => a.at - b.at);
   const pushes = []; let pushFails = false; c.sendPush = async (e, uid, type, params) => { if (pushFails) throw new Error("fcm down"); pushes.push({ uid, type, params }); };
   const PUSH_TEXT = vm.runInContext("PUSH_TEXT", c);
-  const mkC = (uid, o) => put("storeCustomers/" + uid, { name: uid, email: uid + "@x.com", spentUsd: 0, createdAt: 1, lastSeenAt: 1, ...o });
+  let seqRid = 0; const rid = () => "req-" + String(++seqRid).padStart(8, "0");
   const P10 = (a) => Array.from({ length: 10 }, (_, i) => a[Math.min(i, a.length - 1)]);
   put("storeNodes/nP", { parentId: "", type: "folder", name: "PUBG", enabled: true, sort: 1 });
   put("storeNodes/nF", { parentId: "nP", type: "folder", name: "فوري", enabled: true, sort: 1 });
   put("storeNodes/i60", { parentId: "nF", type: "item", name: "60 UC", enabled: true, sort: 1, prices: P10([0.92, 0.9, 0.88, 0.86, 0.84, 0.82, 0.8, 0.78, 0.76, 0.74]) });
   put("storeNodes/i660", { parentId: "nF", type: "item", name: "660 UC", enabled: true, sort: 2, prices: P10([9.26]) });
-  put("storeNodes/iHid", { parentId: "nF", type: "item", name: "hidden", enabled: false, sort: 3, prices: P10([1]) });
-  put("storeNodes/iNo", { parentId: "nF", type: "item", name: "no usd price", enabled: true, sort: 4, price: 150 });
+  put("storeNodes/iPrec", { parentId: "nF", type: "item", name: "precise", enabled: true, sort: 3, prices: P10([0.8663]) });
+  put("storeNodes/iHid", { parentId: "nF", type: "item", name: "hidden", enabled: false, sort: 4, prices: P10([1]) });
+  put("storeNodes/iNo", { parentId: "nF", type: "item", name: "no usd price", enabled: true, sort: 5, price: 150 });
   put("storeNodes/nOff", { parentId: "", type: "folder", name: "off", enabled: false, sort: 2 });
   put("storeNodes/iUnder", { parentId: "nOff", type: "item", name: "under off", enabled: true, sort: 1, prices: P10([1]) });
   put("storeNodes/iOne", { parentId: "", type: "item", name: "edge", enabled: true, sort: 9, prices: P10([1]) });
-  const METHODS = [{ id: "sham", name: "شام كاش", currency: "ل.س", rate: 142.5, decimals: 0, feePct: 0, enabled: true, instructions: "حوّل وانسخ رقم العملية", account: "0932000000" }, { id: "usdt", name: "USDT", currency: "USDT", rate: 1, decimals: 2, feePct: 1.5, enabled: true, instructions: "BEP20 فقط", account: "0xabc" }, { id: "off", name: "off", currency: "x", rate: 2, decimals: 0, feePct: 0, enabled: false }];
-  put("config/storePayments", { methods: METHODS, updatedAt: 1 });
-  mkC("u1", {}); mkC("u2", {});
+  mkC("u1", { balanceUsd: 10 }); mkC("u2", { balanceUsd: 0 });
+  TOKS.u3 = { sub: "u3", email: "noacct@x.com" };
   const quote = (itemId, token = "u1") => callApi("/store/quote", { itemId }, token);
-  let seqRid = 0; const rid = () => "req-" + String(++seqRid).padStart(8, "0");
-  const order = (itemId, methodId, playerId, token = "u1", reqId) => callApi("/store/order", { itemId, methodId, playerId, reqId: reqId || rid() }, token);
+  const order = (itemId, playerId, token = "u1", reqId) => callApi("/store/order", { itemId, playerId, reqId: reqId || rid() }, token);
+  const myOrders = async (t) => (await callApi("/store/orders", {}, t)).json.orders;
   let r;
 
-  /* ---- A) sign-in is required ---- */
+  /* ---- A) sign-in ---- */
   for (const path of ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/order/proof", "/store/order/cancel"]) { r = await callApi(path, {}, null); ok(r.status === 401, path + " needs sign-in"); }
-  ok((await callApi("/store/orders", {}, "garbage")).status === 401, "a bad token is refused");
-  ok((await adm({ action: "orders_list" }, "u1")).status === 401 && (await adm({ action: "order_done", id: "x" }, "u1")).status === 401 && (await adm({ action: "order_proof", id: "x" }, null)).status === 401, "customers cannot use the admin actions");
+  ok((await adm({ action: "orders_list" }, "u1")).status === 401 && (await adm({ action: "order_done", id: "x" }, "u1")).status === 401 && (await adm({ action: "order_reject", id: "x", reason: "r" }, null)).status === 401, "customers cannot use the admin actions");
   r = await callApi("/store/quote", { itemId: "i60" }, "u3"); ok(r.status === 400 && r.json.error === "no_account", "someone who never opened a store account is told to open it first");
 
   /* ---- B) the quote ---- */
   r = await quote("i60"); const q = r.json.quote;
-  ok(r.status === 200 && q.itemId === "i60" && q.name === "60 UC" && q.vip === 1 && q.priceUsd === 0.92 && q.validMinutes === 30, "a quote: the item, his VIP level, the dollar price and how long it is valid");
-  ok(q.methods.length === 2 && q.methods[0].id === "sham" && q.methods[0].amount === 131 && q.methods[1].amount === 0.93 && !q.methods.some(m => m.id === "off") && !("instructions" in q.methods[0]), "the price in every ENABLED method (0.92 x 142.5 = 131; 0.92 x 1.015 = 0.93); a disabled method is not offered; no payment details yet");
-  r = await quote("iOne"); ok(r.json.quote.methods[1].amount === 1.02 && r.json.quote.methods[0].amount === 143, "rounding is the same as the store page (1 x 1.015 = 1.02, 142.5 = 143)");
-  mkC("u2", { spentUsd: 1000 }); r = await quote("i60", "u2"); ok(r.json.quote.vip === 4 && r.json.quote.priceUsd === 0.86, "the price follows his VIP level (1000 spent = VIP 4 = 0.86)");
-  mkC("u2", { spentUsd: 0, merchant: { status: "trial", level: 7, targetUsd: 500, baseSpent: 0, startedAt: NOW, endsAt: NOW + 30 * DAY, prevLevel: 1 } }); r = await quote("i60", "u2"); ok(r.json.quote.vip === 7 && r.json.quote.priceUsd === 0.8, "a merchant on a trial gets his merchant level price (VIP 7 = 0.8)");
-  mkC("u2", { spentUsd: 0 });
+  ok(r.status === 200 && q.itemId === "i60" && q.name === "60 UC" && q.vip === 1 && q.priceUsd === 0.92 && q.balanceUsd === 10 && q.enough === true && q.shortUsd === 0 && !("methods" in q), "a quote: his level price, his balance, and whether it is enough (no payment methods: he pays from the balance)");
+  r = await quote("i660", "u2"); ok(r.json.quote.enough === false && r.json.quote.shortUsd === 9.26 && r.json.quote.balanceUsd === 0, "with no balance it says how much is missing ($9.26)");
+  mkC("u2", { balanceUsd: 0, spentUsd: 1000 }); r = await quote("i60", "u2"); ok(r.json.quote.vip === 4 && r.json.quote.priceUsd === 0.86, "the price follows his VIP level (1000 spent = VIP 4 = 0.86)");
+  mkC("u2", { balanceUsd: 0, merchant: { status: "trial", level: 7, targetUsd: 500, baseSpent: 0, startedAt: NOW, endsAt: NOW + 30 * DAY, prevLevel: 1 } }); r = await quote("i60", "u2"); ok(r.json.quote.vip === 7 && r.json.quote.priceUsd === 0.8, "a merchant on a trial gets his merchant level price (VIP 7 = 0.8)"); mkC("u2", { balanceUsd: 0 });
   for (const [id, label] of [["iHid", "a hidden item"], ["iNo", "an item with no dollar price"], ["iUnder", "an item under a hidden folder"], ["nF", "a folder"], ["ghost", "an unknown id"], ["", "no id"]]) { r = await quote(id); ok(r.status === 404 && r.json.error === "no_item", "no quote for " + label); }
+  r = await callApi("/store/prices", {}, "u1"); ok(r.json.vip === 1 && r.json.prices.i60 === 0.92 && r.json.prices.iPrec === 0.8663 && !("iHid" in r.json.prices) && !("iNo" in r.json.prices) && !("iUnder" in r.json.prices) && !("nF" in r.json.prices), "the price list at his level: visible priced items only");
+  mkC("u2", { balanceUsd: 0, spentUsd: 1000 }); r = await callApi("/store/prices", {}, "u2"); ok(r.json.vip === 4 && r.json.prices.i60 === 0.86 && r.json.prices.i660 === 9.26, "at VIP 4 the same items have the VIP 4 price"); mkC("u2", { balanceUsd: 0 });
+  ok((await callApi("/store/prices", {}, "u3")).json.error === "no_account", "(prices need an account)");
 
-  /* ---- B2) all prices at his level ---- */
-  r = await callApi("/store/prices", {}, "u1"); ok(r.status === 200 && r.json.vip === 1 && r.json.prices.i60 === 0.92 && r.json.prices.i660 === 9.26 && r.json.prices.iOne === 1, "the price list at his level (VIP 1)");
-  ok(!("iHid" in r.json.prices) && !("iNo" in r.json.prices) && !("iUnder" in r.json.prices) && !("nF" in r.json.prices), "hidden, unpriced and under-a-hidden-folder items and folders are never in it");
-  mkC("u2", { spentUsd: 1000 }); r = await callApi("/store/prices", {}, "u2"); ok(r.json.vip === 4 && r.json.prices.i60 === 0.86 && r.json.prices.i660 === 9.26, "at VIP 4 the same items have the VIP 4 price (0.86; an item with one price stays the same)"); mkC("u2", { spentUsd: 0 });
-  ok((await callApi("/store/prices", {}, null)).status === 401 && (await callApi("/store/prices", {}, "u3")).json.error === "no_account", "it needs a signed-in customer with an account");
-  /* ---- C) placing an order ---- */
-  r = await order("i60", "sham", "123456789"); const o1 = r.json.order;
-  ok(r.status === 200 && /^o[0-9a-f]{20}$/.test(o1.id) && o1.code === "T-1001" && o1.status === "awaiting_payment" && o1.itemName === "60 UC" && o1.itemPath === "PUBG › فوري › 60 UC" && o1.playerId === "123456789" && o1.vip === 1 && o1.priceUsd === 0.92 && o1.amount === 131, "an order: code T-1001, awaiting payment, the item and its path, the Player ID, his level, the dollar price and the amount to pay");
-  ok(o1.method.id === "sham" && o1.method.currency === "ل.س" && o1.method.account === "0932000000" && o1.method.instructions === "حوّل وانسخ رقم العملية" && o1.proof === null && o1.quoteEndsAt > NOW + 29 * 60000 && o1.quoteEndsAt < NOW + 31 * 60000 && o1.quoteExpired === false, "it carries the payment account and instructions, no proof yet, and a 30-minute price window");
-  ok(!("uid" in o1) && !("adminNote" in o1) && !("events" in o1), "the customer's view has no admin fields");
-  const raw1 = get("storeOrders/" + o1.id); ok(raw1.uid === "u1" && raw1.name === "Ali" && raw1.email === "ali@x.com" && raw1.rate === 142.5 && raw1.methodName === "شام كاش" && raw1.events[0].action === "created" && get("counters/store").n === 1001, "the stored order keeps the exchange rate and a history; the counter moved");
-  r = await order("i60", "usdt", "ID-77 #a"); ok(r.json.order.code === "T-1002" && r.json.order.amount === 0.93 && r.json.order.playerId === "ID-77 #a", "the next order is T-1002 (letters, digits, spaces and # are fine in an ID)");
-  put("config/storePayments", { methods: METHODS.map(m => m.id === "sham" ? { ...m, rate: 200 } : m), updatedAt: 2 });
-  r = await callApi("/store/orders", {}, "u1"); ok(r.json.orders.find(x => x.code === "T-1001").amount === 131, "changing the exchange rate later does not change an existing order");
-  r = await order("i60", "sham", "55555"); ok(r.json.order.amount === 184, "a new order uses the new rate (0.92 x 200 = 184)");
-  put("config/storePayments", { methods: METHODS, updatedAt: 3 });
-  for (const [pid, label] of [["12", "too short"], ["", "empty"], ["<script>alert(1)</script>", "HTML"], ["a".repeat(41), "too long"], ["id!!", "symbols"], ["12\n34", "a line break"]]) { r = await order("i60", "sham", pid); ok(r.status === 400 && r.json.error === "bad_player", "refused Player ID: " + label); }
-  r = await order("i60", "sham", "١٢٣٤٥٦"); ok(r.status === 200, "digits in other scripts are accepted (a player may type Arabic digits)");
-  for (const [m, label] of [["", "none"], ["ghost", "unknown"], ["off", "disabled"]]) { r = await order("i60", m, "12345"); ok(r.status === 400 && r.json.error === "no_method", "refused payment method: " + label); }
-  r = await order("iHid", "sham", "12345"); ok(r.status === 404, "an order for a hidden item is refused");
-  for (const bad of ["", "short", "has space in it!", "x".repeat(65)]) { r = await callApi("/store/order", { itemId: "i60", methodId: "sham", playerId: "12345", reqId: bad }, "u1"); ok(r.status === 400 && r.json.error === "bad_request", "refused request id: " + JSON.stringify(bad.slice(0, 12))); }
-  const nBefore = get("counters/store").n, same = rid(); const a1 = await order("iOne", "sham", "99999", "u1", same), a2 = await order("iOne", "sham", "99999", "u1", same);
-  ok(a1.json.order.id === a2.json.order.id && a2.json.duplicate === true && a1.json.order.code === a2.json.order.code && get("counters/store").n === nBefore + 1, "sending the same request twice (a double tap, a retry) gives the same order and uses one number");
-  const b1 = await order("iOne", "sham", "99999", "u2", same); ok(b1.status === 200 && b1.json.order.id !== a1.json.order.id && !b1.json.duplicate, "another customer with the same request id gets his own order");
-  r = await callApi("/store/orders", {}, "u2"); ok(r.json.orders.length === 1 && r.json.orders[0].code === b1.json.order.code, "and each sees only his own orders");
-  /* open-order limit */
-  mkC("u4", {}); TOKS.u4 = { sub: "u4", name: "Lim", email: "l@x.com" };
-  const lim = []; for (let i = 0; i < 5; i++) lim.push((await order("iOne", "sham", "1000" + i, "u4")).json.order);
-  r = await order("iOne", "sham", "10009", "u4"); ok(r.status === 400 && r.json.error === "too_many_open" && /5/.test(r.json.message), "at most 5 open orders per customer");
-  await callApi("/store/order/cancel", { orderId: lim[0].id }, "u4"); r = await order("iOne", "sham", "10009", "u4"); ok(r.status === 200, "cancelling one frees a place");
-  put("storeOrders/" + lim[1].id, { ...get("storeOrders/" + lim[1].id), createdAt: NOW - 25 * 3600 * 1000 }); r = await order("iOne", "sham", "10010", "u4"); ok(r.status === 200, "an order that expired (24h without payment) does not count either");
-  /* two orders at the same moment */
-  injectConflictOn = "counters/store"; const nb = get("counters/store").n; r = await order("iOne", "sham", "77777", "u2");
-  ok(r.status === 200 && r.json.order.code === "T-" + (nb + 2) && [...store.keys()].filter(k => k.startsWith("storeOrders/") && get(k).code === r.json.order.code).length === 1, "if another order takes the number first, ours retries and gets the next one (one order, no duplicates)");
+  /* ---- C) buying from the balance ---- */
+  const nBefore = ledger("u1").length; r = await order("i60", "123456789"); const o1 = r.json.order;
+  ok(r.status === 200 && /^o[0-9a-f]{20}$/.test(o1.id) && o1.kind === "order" && o1.code === "T-1001" && o1.status === "processing" && o1.itemName === "60 UC" && o1.itemPath === "PUBG › فوري › 60 UC" && o1.playerId === "123456789" && o1.vip === 1 && o1.priceUsd === 0.92 && r.json.balanceUsd === 9.08, "an order: code T-1001, 'processing' at once, the product path, his ID, the price at his level, and the new balance");
+  ok(bal("u1") === 9.08 && !("uid" in o1) && !("adminNote" in o1) && o1.proof === null && o1.method.id === "" && o1.amount === 0, "the price left his balance at the same moment; the customer's view has no admin fields and no payment details");
+  const l1 = ledger("u1"); ok(l1.length === nBefore + 1 && l1[l1.length - 1].type === "order" && l1[l1.length - 1].amountUsd === -0.92 && l1[l1.length - 1].balanceAfter === 9.08 && l1[l1.length - 1].ref === "T-1001" && l1[l1.length - 1].note === "60 UC", "the ledger records it (amount, balance after, the order code)");
+  ok(get("storeOrders/" + o1.id).uid === "u1" && get("storeOrders/" + o1.id).events[0].action === "created" && get("counters/store").n === 1001 && get("storeCustomers/u1").spentUsd === 0, "the stored order has a history; the counter moved; spending (for VIP) is NOT counted until you deliver");
+  r = await order("iPrec", "ID-77 #a"); ok(r.json.order.code === "T-1002" && bal("u1") === 8.2137 && r.json.balanceUsd === 8.2137, "4-decimal prices are kept exactly ($9.08 - $0.8663 = $8.2137) (letters, digits, spaces and # are fine in an ID)");
+  r = await order("iOne", "99999", "u1"); r = await order("iOne", "99998", "u1"); ok(bal("u1") === 6.2137, "(two more orders)");
+  for (const [pid, label] of [["12", "too short"], ["", "empty"], ["<script>alert(1)</script>", "HTML"], ["a".repeat(41), "too long"], ["id!!", "symbols"], ["12\n34", "a line break"]]) { const bb = bal("u1"); r = await order("iOne", pid); ok(r.status === 400 && r.json.error === "bad_player" && bal("u1") === bb, "refused Player ID: " + label + " (balance untouched)"); }
+  r = await order("iOne", "١٢٣٤٥٦"); ok(r.status === 200, "digits in other scripts are accepted"); mkC("u1", { balanceUsd: 10 });
+  r = await order("iHid", "12345"); ok(r.status === 404 && bal("u1") === 10, "an order for a hidden item is refused");
+  for (const bad of ["", "short", "has space in it!", "x".repeat(65)]) { r = await callApi("/store/order", { itemId: "iOne", playerId: "12345", reqId: bad }, "u1"); ok(r.status === 400 && r.json.error === "bad_request", "refused request id: " + JSON.stringify(bad.slice(0, 10))); }
+  /* not enough balance */
+  mkC("u2", { balanceUsd: 3.5 }); const lenU2 = ledger("u2").length; r = await order("i660", "55555", "u2");
+  ok(r.status === 400 && r.json.error === "insufficient_balance" && r.json.balanceUsd === 3.5 && r.json.priceUsd === 9.26 && r.json.shortUsd === 5.76 && /اشحن رصيدك/.test(r.json.message) && bal("u2") === 3.5 && ledger("u2").length === lenU2, "not enough balance: a clear answer with the balance, the price and how much is missing ($5.76); nothing is created or deducted");
+  mkC("u2", { balanceUsd: 0.92 }); r = await order("i60", "55555", "u2"); ok(r.status === 200 && bal("u2") === 0 && r.json.balanceUsd === 0, "a balance exactly equal to the price is enough (and goes to 0)");
+  mkC("u2", { balanceUsd: 0.1 + 0.2 + 0.62 }); r = await order("i60", "55556", "u2"); ok(r.status === 200, "decimal dust in the balance (0.1 + 0.2 + 0.62) does not make an exact balance fail");
+  /* double tap */
+  mkC("u1", { balanceUsd: 10 }); const nb = get("counters/store").n, same = rid(); const a1 = await order("iOne", "99999", "u1", same), a2 = await order("iOne", "99999", "u1", same);
+  ok(a1.json.order.id === a2.json.order.id && a2.json.duplicate === true && a1.json.order.code === a2.json.order.code && get("counters/store").n === nb + 1 && bal("u1") === 9, "sending the same request twice (a double tap, a retry) gives the same order, one number, and charges ONCE");
+  const b1 = await order("iOne", "99999", "u2", same); ok(b1.status === 400 || b1.json.order.id !== a1.json.order.id, "another customer with the same request id gets his own order (or his own error), never the same order");
+  /* limit of open orders */
+  r = await adm({ action: "wallet_save", cfg: { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 3 } });
+  mkC("u4", { balanceUsd: 100 }); TOKS.u4 = { sub: "u4", name: "Lim", email: "l@x.com" }; const lim = []; for (let i = 0; i < 3; i++) lim.push((await order("iOne", "1000" + i, "u4")).json.order);
+  r = await order("iOne", "10009", "u4"); ok(r.status === 400 && r.json.error === "too_many_open" && /3/.test(r.json.message) && bal("u4") === 97, "at most the configured number of orders in progress (3 here), and the refused one costs nothing");
+  await adm({ action: "order_done", id: lim[0].id }); r = await order("iOne", "10010", "u4"); ok(r.status === 200, "when you deliver one, a place frees up"); await adm({ action: "wallet_save", cfg: { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 } });
+  /* same moment */
+  mkC("u1", { balanceUsd: 10 }); injectConflictOn = "counters/store"; const nb2 = get("counters/store").n; r = await order("iOne", "77777", "u1");
+  ok(r.status === 200 && r.json.order.code === "T-" + (nb2 + 2) && [...store.keys()].filter(k => k.startsWith("storeOrders/") && get(k).code === r.json.order.code).length === 1 && bal("u1") === 9, "if another order takes the number first, ours retries and gets the next one (one order, charged once)");
+  injectConflictOn = "storeCustomers/u1"; r = await order("iOne", "77778", "u1"); ok(r.status === 200 && bal("u1") === 8, "if his balance changes at the same moment it retries and charges once");
 
-  /* ---- D) my orders ---- */
-  r = await callApi("/store/orders", {}, "u1"); ok(r.json.orders.length >= 3 && r.json.orders.every((x, i, a) => i === 0 || a[i - 1].createdAt >= x.createdAt) && r.json.orders[0].method.account, "my orders: newest first, with the payment details");
+  /* ---- D) my orders, cancel, proof ---- */
+  const mine = await myOrders("u1"); ok(mine.length >= 4 && mine.every((x, i, a) => i === 0 || a[i - 1].createdAt >= x.createdAt) && mine.every(x => x.kind === "order") && !(await myOrders("u2")).some(x => x.id === o1.id), "my orders: newest first, only my own");
+  r = await callApi("/store/order/cancel", { orderId: o1.id }, "u1"); ok(r.status === 400 && r.json.error === "bad_status" && /قيد التنفيذ/.test(r.json.message) && get("storeOrders/" + o1.id).status === "processing" && bal("u1") === 8, "a paid order cannot be cancelled by the customer (the admin decides)");
+  r = await callApi("/store/order/proof", { orderId: o1.id, ref: "x" }, "u1"); ok(r.status === 400 && r.json.error === "bad_status", "and there is no payment proof for it (already paid from the balance)");
+  r = await callApi("/store/order/cancel", { orderId: o1.id }, "u2"); ok(r.status === 404, "nobody else can touch it");
 
-  /* ---- E) payment proof ---- */
-  const pf = (orderId, body, token = "u1") => callApi("/store/order/proof", { orderId, ...body }, token);
-  r = await pf(o1.id, {}); ok(r.status === 400 && r.json.error === "bad_proof", "a proof needs a reference or a picture");
-  r = await pf(o1.id, { ref: "   " }); ok(r.status === 400 && r.json.error === "bad_proof", "blank text is not a reference");
-  for (const [img, label] of [["data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", "SVG"], ["http://x/y.png", "a web link"], ["data:image/png;base64," + "A".repeat(290000), "too big"], ["data:image/png;base64,@@@", "not base64"], [123, "not text"]]) { r = await pf(o1.id, { ref: "TX1", image: img }); ok(r.status === 400 && r.json.error === "bad_image", "refused picture: " + label); }
-  ok(get("storeOrders/" + o1.id).status === "awaiting_payment" && !store.has("storeProofs/" + o1.id), "a refused proof changes nothing");
-  r = await pf(o1.id, { ref: "<b>TX-123</b> 456", image: PNG }); const o1p = r.json.order;
-  ok(r.status === 200 && o1p.status === "payment_submitted" && o1p.proof.ref === "TX-123 456" && o1p.proof.hasImage === true && o1p.proof.late === false && o1p.proof.submittedAt >= NOW, "a proof with a reference (cleaned) and a picture: now 'payment submitted', on time");
-  ok(get("storeProofs/" + o1.id).data === PNG && !JSON.stringify((await callApi("/store/orders", {}, "u1")).json).includes("base64"), "the picture is stored privately and never appears in the customer's lists");
-  r = await pf(o1.id, { ref: "TX-NEW" }); ok(r.status === 200 && r.json.order.proof.ref === "TX-NEW" && r.json.order.proof.hasImage === true && get("storeProofs/" + o1.id).data === PNG, "sending the reference again replaces it and keeps the earlier picture");
-  r = await callApi("/store/order/cancel", { orderId: o1.id }, "u1"); ok(r.status === 400 && r.json.error === "bad_status", "after sending the payment he cannot cancel (the admin decides)");
-  r = await pf(o1.id, { ref: "x" }, "u2"); ok(r.status === 404, "nobody can send a proof for someone else's order");
-  const late = (await order("iOne", "usdt", "31313", "u2")).json.order; put("storeOrders/" + late.id, { ...get("storeOrders/" + late.id), expiresAt: NOW - 60000 });
-  r = await pf(late.id, { ref: "TX-late" }, "u2"); ok(r.status === 200 && r.json.order.proof.late === true, "a proof after the 30-minute price window is accepted but flagged 'late'");
-  const old = (await order("iOne", "usdt", "41414", "u2")).json.order; put("storeOrders/" + old.id, { ...get("storeOrders/" + old.id), createdAt: NOW - 25 * 3600 * 1000, expiresAt: NOW - 24 * 3600 * 1000 });
-  r = await pf(old.id, { ref: "TX-old" }, "u2"); ok(r.status === 400 && /انتهت صلاحية/.test(r.json.message), "after 24 hours an unpaid order has expired and takes no proof");
-  r = await callApi("/store/orders", {}, "u2"); ok(r.json.orders.find(x => x.id === old.id).status === "expired", "it is listed as expired");
-
-  /* ---- E2) notifications to you when a payment arrives ---- */
-  { const lastP = () => pushes[pushes.length - 1];
-    ok(pushes.length >= 1 && pushes.some(x => x.uid === ADMIN && x.type === "store_proof" && x.params.code === "T-1001" && x.params.item === "60 UC" && x.params.amount === "131 ل.س" && x.params.late === false && x.params.player === "123456789"), "when a customer sends a payment, YOU get a push: the order code, the product, the amount in his currency, and the Player ID");
-    const lt = pushes.find(x => x.params && x.params.code === late.code && x.type === "store_proof"); ok(lt && lt.params.late === true && lt.uid === ADMIN, "a payment that arrived after the price window is marked late in the push");
-    mkC("u6", {}); TOKS.u6 = { sub: "u6", name: "Six", email: "six@x.com" };
-    pushFails = true; const pn = (await order("iOne", "sham", "24242", "u6")).json.order; r = await pf(pn.id, { ref: "TX-push-fail" }, "u6"); pushFails = false;
-    ok(r.status === 200 && r.json.order.status === "payment_submitted", "if the notification service is down the customer's payment is still accepted");
-    const refused = pushes.length; r = await pf(pn.id, {}, "u6"); r = await pf("ghost", { ref: "x" }, "u6"); r = await pf(pn.id, { ref: "x", image: "http://x/y.png" }, "u6");
-    ok(pushes.length === refused, "a refused payment (nothing sent, unknown order, bad picture) sends you no notification"); }
-
-  /* ---- F) cancelling ---- */
-  const cn = (await order("iOne", "sham", "51515", "u2")).json.order;
-  r = await callApi("/store/order/cancel", { orderId: cn.id }, "u1"); ok(r.status === 404, "nobody can cancel someone else's order");
-  r = await callApi("/store/order/cancel", { orderId: cn.id }, "u2"); ok(r.status === 200 && r.json.order.status === "cancelled" && get("storeOrders/" + cn.id).events.slice(-1)[0].action === "cancelled", "a customer can cancel an order he has not paid");
-  r = await callApi("/store/order/cancel", { orderId: cn.id }, "u2"); ok(r.status === 400 && r.json.error === "bad_status", "cancelling twice is refused");
-  r = await pf(cn.id, { ref: "x" }, "u2"); ok(r.status === 400 && r.json.error === "bad_status", "a cancelled order takes no proof");
-  ok((await callApi("/store/order/cancel", { orderId: "a/b" }, "u2")).status === 400 && (await callApi("/store/order/cancel", {}, "u2")).status === 400 && (await callApi("/store/order/cancel", { orderId: "ghost" }, "u2")).status === 404, "bad or unknown order ids are refused");
-
-  /* ---- G) the admin list ---- */
+  /* ---- E) the admin list ---- */
   r = await adm({ action: "orders_list" }); const L = r.json;
-  ok(r.status === 200 && L.total > 5 && L.counts.payment_submitted >= 2 && L.counts.awaiting_payment >= 1 && L.counts.cancelled >= 1 && L.counts.expired >= 1 && L.orders.every((x, i, a) => i === 0 || a[i - 1].createdAt >= x.createdAt), "the admin list: every order newest first, with a count for each status");
-  const ad = L.orders.find(x => x.id === o1.id); ok(ad.uid === "u1" && ad.name === "Ali" && ad.email === "ali@x.com" && ad.proof.ref === "TX-NEW" && Array.isArray(ad.events) && ad.events.length >= 2 && ad.adminNote === "", "the admin sees who, the proof and the history");
-  r = await adm({ action: "orders_list", status: "payment_submitted" }); ok(r.json.orders.length === L.counts.payment_submitted && r.json.orders.every(x => x.status === "payment_submitted"), "filter by status");
-  r = await adm({ action: "orders_list", status: "open" }); ok(r.json.orders.every(x => x.status === "payment_submitted" || x.status === "awaiting_payment") && r.json.orders.length === (L.counts.payment_submitted + L.counts.awaiting_payment), "'open' means waiting for payment or waiting for you");
+  ok(r.status === 200 && L.total >= 8 && L.counts.processing >= 8 && L.waiting === L.counts.processing && L.kinds.order >= 8 && L.orders.every((x, i, a) => i === 0 || a[i - 1].createdAt >= x.createdAt), "the admin list: every order newest first, a count per status, and how many are waiting for you");
+  const ad = L.orders.find(x => x.id === o1.id); ok(ad.uid === "u1" && ad.name === "Ali" && ad.email === "ali@x.com" && Array.isArray(ad.events) && ad.adminNote === "" && ad.kind === "order", "the admin sees who, the history and the kind");
+  r = await adm({ action: "orders_list", status: "waiting" }); ok(r.json.orders.every(x => x.status === "processing" || x.status === "payment_submitted") && r.json.orders.length === L.waiting, "'waiting' = paid orders to deliver and payments to confirm");
+  r = await adm({ action: "orders_list", status: "processing" }); ok(r.json.orders.length === L.counts.processing, "filter by status");
+  r = await adm({ action: "orders_list", status: "open" }); ok(r.json.orders.length >= L.counts.processing, "'open' includes orders in progress");
+  r = await adm({ action: "orders_list", kind: "topup" }); ok(r.json.orders.length === 0, "filter by kind (no deposits yet)");
   r = await adm({ action: "orders_list", q: "T-1002" }); ok(r.json.orders.length === 1 && r.json.orders[0].code === "T-1002", "search by order code");
-  r = await adm({ action: "orders_list", q: "OMAR@x" }); ok(r.json.orders.length >= 1 && r.json.orders.every(x => x.email === "omar@x.com"), "by email (not case sensitive)");
-  r = await adm({ action: "orders_list", q: "ID-77" }); ok(r.json.orders.length === 1, "by Player ID"); r = await adm({ action: "orders_list", q: "60 uc" }); ok(r.json.orders.length >= 3, "by product name");
-  r = await adm({ action: "orders_list", q: "u2" }); ok(r.json.orders.length >= 3, "by account id");
-  r = await adm({ action: "order_proof", id: o1.id }); ok(r.json.image === PNG, "the admin can fetch the receipt picture"); r = await adm({ action: "order_proof", id: late.id }); ok(r.json.image === "", "an order with no picture gives an empty answer"); ok((await adm({ action: "order_proof", id: "a/b" })).status === 400, "(bad id)");
+  r = await adm({ action: "orders_list", q: "ID-77" }); ok(r.json.orders.length === 1, "by Player ID"); r = await adm({ action: "orders_list", q: "60 UC" }); ok(r.json.orders.length >= 1, "by product"); r = await adm({ action: "orders_list", q: "ALI@x" }); ok(r.json.orders.length >= 3, "by email, any case");
 
-  /* ---- H) done ---- */
+  /* ---- F) delivering ---- */
   const done = (id, note, token = "admin") => adm({ action: "order_done", id, note }, token);
-  mkC("u1", { spentUsd: 100 }); r = await done(o1.id, "sent to the player");
-  ok(r.status === 200 && r.json.order.status === "done" && r.json.order.adminNote === "sent to the player" && r.json.order.doneAt >= NOW && r.json.order.events.slice(-1)[0].action === "done", "marking done: status, time, your note, history");
-  ok(get("storeCustomers/u1").spentUsd === 100.92, "and the dollar price (0.92) is added to his spending");
-  const sl = [...store.keys()].filter(k => k.startsWith("storeSpendLog/")).map(k => get(k)).filter(x => x.uid === "u1"); ok(sl.length === 1 && sl[0].deltaUsd === 0.92 && sl[0].note === "طلب T-1001" && sl[0].by === "order", "the spending is logged with the order code");
-  r = await done(o1.id); ok(r.status === 400 && r.json.error === "bad_status" && get("storeCustomers/u1").spentUsd === 100.92, "marking done twice is refused and never counts twice");
-  const aw = (await order("i660", "usdt", "88888", "u1")).json.order; r = await done(aw.id, "paid outside the site"); ok(r.status === 200 && get("storeCustomers/u1").spentUsd === 110.18, "an order still 'awaiting payment' can be marked done (e.g. he paid you by phone): 100.92 + 9.26");
-  const ex2 = (await order("iOne", "sham", "60606", "u2")).json.order; put("storeOrders/" + ex2.id, { ...get("storeOrders/" + ex2.id), createdAt: NOW - 30 * 3600 * 1000 }); r = await done(ex2.id, "late but paid"); ok(r.status === 200 && r.json.order.status === "done", "an expired order can still be marked done by the admin");
-  r = await done("ghost"); ok(r.status === 404, "(unknown order)"); r = await done("a/b"); ok(r.status === 400, "(bad id)");
-  /* done by a trial merchant reaching the promise */
-  mkC("m1", { spentUsd: 0, merchant: { status: "trial", level: 5, targetUsd: 2, baseSpent: 0, startedAt: NOW, endsAt: NOW + 30 * DAY, prevLevel: 1 } }); TOKS.m1 = { sub: "m1", name: "Trader", email: "t@x.com" };
-  const mo = (await order("i660", "sham", "70707", "m1")).json.order; ok(mo.vip === 5 && mo.priceUsd === 9.26, "(a merchant orders at his merchant price, VIP 5)");
-  r = await done(mo.id); ok(get("storeCustomers/m1").merchant.status === "locked" && get("storeCustomers/m1").spentUsd === 9.26 && [...store.keys()].some(k => k.startsWith("storeVipLog/") && get(k).uid === "m1" && get(k).action === "auto_lock"), "a delivered order that reaches a merchant's promise locks him automatically");
-  /* a customer record changing at the same moment */
-  const cc = (await order("iOne", "sham", "80808", "u2")).json.order; const cc0 = get("storeCustomers/u2").spentUsd; injectConflictOn = "storeCustomers/u2";
-  r = await done(cc.id); ok(r.status === 200 && get("storeCustomers/u2").spentUsd === r2(cc0 + 1) && get("storeOrders/" + cc.id).status === "done", "if the customer record changes at the same moment, it retries and counts once");
-  const gone = (await order("iOne", "sham", "90909", "u2")).json.order; store.delete("storeCustomers/u2"); r = await done(gone.id);
-  ok(r.status === 404 && r.json.error === "no_customer" && get("storeOrders/" + gone.id).status === "awaiting_payment", "if his account no longer exists the order is not marked done (nothing half-done)"); mkC("u2", { spentUsd: 0 });
-
-  /* ---- I) reject ---- */
-  const rj = (await order("iOne", "sham", "11122", "u2")).json.order; await pf(rj.id, { ref: "bad ref" }, "u2");
-  r = await adm({ action: "order_reject", id: rj.id }); ok(r.status === 400 && r.json.error === "reason_required", "a reason is required");
-  r = await adm({ action: "order_reject", id: rj.id, reason: "<b>no payment</b> received" }); ok(r.status === 200 && r.json.order.status === "rejected" && r.json.order.rejectReason === "no payment received", "rejecting stores the (cleaned) reason");
-  ok(get("storeCustomers/u2").spentUsd === 0, "and changes no spending"); r = await callApi("/store/orders", {}, "u2"); ok(r.json.orders.find(x => x.id === rj.id).rejectReason === "no payment received" && r.json.orders.find(x => x.id === rj.id).status === "rejected", "the customer sees the reason");
-  r = await adm({ action: "order_reject", id: rj.id, reason: "again" }); ok(r.status === 400 && r.json.error === "bad_status", "rejecting twice is refused");
-  r = await adm({ action: "order_done", id: rj.id }); ok(r.status === 400, "a rejected order cannot be marked done");
-  r = await adm({ action: "order_reject", id: o1.id, reason: "x" }); ok(r.status === 400, "a done order cannot be rejected (use refund)");
-
-  /* ---- J) refund ---- */
-  const before = get("storeCustomers/u1").spentUsd; r = await adm({ action: "order_refund", id: o1.id, note: "wrong ID, refunded by hand" });
-  ok(r.status === 200 && r.json.order.status === "refunded" && get("storeCustomers/u1").spentUsd === r2(before - 0.92), "a refund marks it refunded and takes the price back off his spending");
-  ok([...store.keys()].map(k => k.startsWith("storeSpendLog/") ? get(k) : null).filter(Boolean).some(x => x.uid === "u1" && x.deltaUsd === -0.92 && x.note === "مرتجع T-1001"), "the refund is logged with the order code");
-  r = await adm({ action: "order_refund", id: o1.id }); ok(r.status === 400, "refunding twice is refused"); r = await adm({ action: "order_refund", id: rj.id }); ok(r.status === 400, "only a done order can be refunded");
-  mkC("u5", { spentUsd: 0.5 }); TOKS.u5 = { sub: "u5", email: "u5@x.com" }; const lo = (await order("iOne", "sham", "13131", "u5")).json.order; await done(lo.id); put("storeCustomers/u5", { ...get("storeCustomers/u5"), spentUsd: 0.4 }); await adm({ action: "order_refund", id: lo.id });
-  ok(get("storeCustomers/u5").spentUsd === 0, "spending never goes below zero");
+  const bUser = bal("u1"); const spentBefore = spent("u1"); r = await done(o1.id, "sent to the player");
+  ok(r.status === 200 && r.json.order.status === "done" && r.json.order.adminNote === "sent to the player" && r.json.order.doneAt >= NOW && r.json.order.events.slice(-1)[0].action === "done", "marking delivered: status, time, your note, history");
+  ok(spent("u1") === r2(spentBefore + 0.92) && bal("u1") === bUser, "now the price counts as his SPENDING (for VIP), and his balance is not touched again");
   function r2(x) { return Math.round(x * 100) / 100; }
+  const sl = [...store.keys()].filter(k => k.startsWith("storeSpendLog/")).map(k => get(k)).filter(x => x.uid === "u1"); ok(sl.length === 1 && sl[0].deltaUsd === 0.92 && sl[0].note === "طلب T-1001" && sl[0].by === "order", "the spending is logged with the order code");
+  r = await done(o1.id); ok(r.status === 400 && r.json.error === "bad_status" && spent("u1") === r2(spentBefore + 0.92), "delivering twice is refused and never counts twice");
+  r = await done("ghost"); ok(r.status === 404, "(unknown order)"); r = await done("a/b"); ok(r.status === 400, "(bad id)"); ok((await done(o1.id, "", "u1")).status === 401, "(customers cannot)");
+  mkC("m1", { balanceUsd: 20, spentUsd: 0, merchant: { status: "trial", level: 5, targetUsd: 2, baseSpent: 0, startedAt: NOW, endsAt: NOW + 30 * DAY, prevLevel: 1 } }); TOKS.m1 = { sub: "m1", name: "Trader", email: "t@x.com" };
+  const mo = (await order("i660", "70707", "m1")).json.order; ok(mo.vip === 5 && mo.priceUsd === 9.26 && bal("m1") === 10.74 && get("storeCustomers/m1").merchant.status === "trial", "a merchant buys at his merchant price (VIP 5); still a trial until delivery");
+  await done(mo.id); ok(get("storeCustomers/m1").merchant.status === "locked" && spent("m1") === 9.26 && [...store.keys()].some(k => k.startsWith("storeVipLog/") && get(k).uid === "m1" && get(k).action === "auto_lock"), "a delivered order that reaches a merchant's promise locks him automatically");
+  const cc = (await order("iOne", "80808", "u1")).json.order; const cc0 = spent("u1"); injectConflictOn = "storeCustomers/u1"; r = await done(cc.id); ok(r.status === 200 && spent("u1") === r2(cc0 + 1) && get("storeOrders/" + cc.id).status === "done", "if the customer record changes at the same moment, it retries and counts once");
+  const gone = (await order("iOne", "90909", "u1")).json.order; const savedC = get("storeCustomers/u1"); store.delete("storeCustomers/u1"); r = await done(gone.id);
+  ok(r.status === 404 && r.json.error === "no_customer" && get("storeOrders/" + gone.id).status === "processing", "if his account no longer exists the order is not marked done (nothing half-done)"); put("storeCustomers/u1", savedC);
 
-  /* ---- J2) notifications to the customer ---- */
-  { const p0 = pushes.length;
-    mkC("u7", {}); TOKS.u7 = { sub: "u7", name: "Seven", email: "seven@x.com" }; const n1 = (await order("iOne", "sham", "35353", "u7")).json.order; await adm({ action: "order_done", id: n1.id });
-    const d1 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_done"); ok(d1 && d1.params.code === n1.code && d1.params.item === "edge", "marking done sends the customer a push with the code and the product");
-    const n2 = (await order("iOne", "sham", "36363", "u7")).json.order; await adm({ action: "order_reject", id: n2.id, reason: "no payment received" });
-    const d2 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_rejected"); ok(d2 && d2.params.reason === "no payment received" && d2.params.code === n2.code, "rejecting sends it with the reason");
-    await adm({ action: "order_refund", id: n1.id, note: "wrong ID" });
-    const d3 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_refunded"); ok(d3 && d3.params.note === "wrong ID", "a refund sends one too");
-    const before2 = pushes.length; await adm({ action: "order_done", id: n2.id }); await adm({ action: "order_refund", id: n2.id }); await adm({ action: "order_reject", id: n1.id, reason: "x" }); ok(pushes.length === before2, "refused admin actions send nothing");
-    pushFails = true; const n3 = (await order("iOne", "sham", "37373", "u7")).json.order; r = await adm({ action: "order_done", id: n3.id }); pushFails = false; ok(r.status === 200 && get("storeOrders/" + n3.id).status === "done", "if the notification service is down the order is still marked done");
-    const T = (t, l, p) => PUSH_TEXT[t][l](p);
-    ok(T("store_proof", "ar", { code: "T-1", item: "60 UC", amount: "131 ل.س", late: false })[1] === "T-1 · 60 UC · 131 ل.س" && /متأخر/.test(T("store_proof", "ar", { code: "T-1", item: "x", amount: "1", late: true })[1]) && /late/.test(T("store_proof", "en", { code: "T-1", item: "x", amount: "1", late: true })[1]) && /geç/.test(T("store_proof", "tr", { code: "T-1", item: "x", amount: "1", late: true })[1]), "the texts exist in Arabic, Turkish and English, with the 'late' warning");
-    ok(["ar", "tr", "en"].every(l => ["store_done", "store_rejected", "store_refunded", "store_proof"].every(t => { const x = T(t, l, { code: "T-1", item: "60 UC", reason: "r", note: "n", amount: "1", late: false }); return typeof x[0] === "string" && x[0] && typeof x[1] === "string" && x[1].includes("T-1"); })), "every notification has a title and a body with the order code in every language");
-    ok(vm.runInContext("PUSH_PREF.store_done", c) === "orders" && vm.runInContext("PUSH_PREF.store_proof", c) === "orders", "they follow the 'orders' notification setting of the user"); }
+  /* ---- G) rejecting: the money goes back ---- */
+  mkC("u5", { balanceUsd: 5 }); TOKS.u5 = { sub: "u5", name: "Five", email: "f@x.com" }; const rj = (await order("i60", "11122", "u5")).json.order; ok(bal("u5") === 4.08, "(he bought: $5 - $0.92)");
+  r = await adm({ action: "order_reject", id: rj.id }); ok(r.status === 400 && r.json.error === "reason_required" && bal("u5") === 4.08, "a reason is required (and nothing moves without it)");
+  r = await adm({ action: "order_reject", id: rj.id, reason: "<b>wrong ID</b> sorry" }); ok(r.status === 200 && r.json.order.status === "rejected" && r.json.order.rejectReason === "wrong ID sorry", "rejecting stores the (cleaned) reason");
+  ok(bal("u5") === 5 && spent("u5") === 0, "and his $0.92 is back on his balance at once; no spending counted");
+  const lr = ledger("u5"); ok(lr.map(x => x.type).join() === "order,order_refund" && lr[1].amountUsd === 0.92 && lr[1].balanceAfter === 5 && lr[1].ref === rj.code && lr[1].note === "wrong ID sorry", "the ledger shows the purchase and the refund, with the reason");
+  r = await myOrders("u5"); ok(r[0].status === "rejected" && r[0].rejectReason === "wrong ID sorry", "the customer sees the reason");
+  r = await adm({ action: "order_reject", id: rj.id, reason: "again" }); ok(r.status === 400 && bal("u5") === 5, "rejecting twice is refused and never refunds twice");
+  r = await done(rj.id); ok(r.status === 400, "a rejected order cannot be delivered");
+  r = await adm({ action: "order_reject", id: o1.id, reason: "x" }); ok(r.status === 400 && bal("u1") === bUser - 0 || r.status === 400, "a delivered order cannot be rejected (use refund)");
+  const rj2 = (await order("i60", "11123", "u5")).json.order; injectConflictOn = "storeCustomers/u5"; r = await adm({ action: "order_reject", id: rj2.id, reason: "x" }); ok(r.status === 200 && bal("u5") === 5, "a same-moment change on his record: it retries and refunds once");
 
-  /* ---- K) the payment details ---- */
-  r = await adm({ action: "payments_save", methods: [{ ...METHODS[0], instructions: "<b>حوّل</b> " + "x".repeat(400), account: "A".repeat(200) }] });
-  ok(r.status === 200 && r.json.methods[0].instructions.length === 300 && !/[<>]/.test(r.json.methods[0].instructions) && r.json.methods[0].account.length === 120, "instructions (up to 300) and the account (up to 120) are cleaned and limited");
-  r = await adm({ action: "payments_get" }); ok(r.json.methods[0].instructions.startsWith("حوّل") && r.json.methods[0].account.startsWith("AAA"), "the admin can read them back");
-  r = await W.fetch(new Request("https://x/store/catalog"), env, { waitUntil: p => p }); const cj = await r.json(); ok(cj.methods.length === 1 && !("instructions" in cj.methods[0]) && !("account" in cj.methods[0]), "the public catalog never shows them (only the order does)");
-  put("config/storePayments", { methods: METHODS, updatedAt: 9 });
-  const noinfo = await adm({ action: "payments_save", methods: [{ name: "x", currency: "y", rate: 3 }] }); ok(noinfo.json.methods[0].instructions === "" && noinfo.json.methods[0].account === "", "a method saved without them has empty ones");
+  /* ---- H) refund after delivery ---- */
+  mkC("u6", { balanceUsd: 5, spentUsd: 195 }); TOKS.u6 = { sub: "u6", name: "Six", email: "s@x.com" }; const rf = (await order("iOne", "13131", "u6")).json.order; await done(rf.id);
+  ok(spent("u6") === 196 && bal("u6") === 4, "(he bought and you delivered: spent 196, balance 4)");
+  r = await adm({ action: "order_refund", id: rf.id, note: "wrong ID, refunded to balance" }); ok(r.status === 200 && r.json.order.status === "refunded" && spent("u6") === 195 && bal("u6") === 5, "a refund returns the price to his balance and takes it off his spending");
+  ok(ledger("u6").map(x => x.type).join() === "order,refund" && ledger("u6")[1].amountUsd === 1 && ledger("u6")[1].ref === rf.code, "and is logged");
+  r = await adm({ action: "order_refund", id: rf.id }); ok(r.status === 400 && bal("u6") === 5, "refunding twice is refused"); r = await adm({ action: "order_refund", id: rj.id }); ok(r.status === 400, "only a delivered order can be refunded");
+  /* legacy orders (first version, paid per order) keep working */
+  put("storeOrders/oLegacy", { code: "T-0900", uid: "u6", name: "Six", email: "s@x.com", itemName: "old", priceUsd: 2, status: "payment_submitted", createdAt: NOW, events: [], proof: { ref: "x", submittedAt: NOW } }); const sp = spent("u6"), bl = bal("u6");
+  r = await done("oLegacy"); ok(r.status === 200 && spent("u6") === sp + 2 && bal("u6") === bl, "an order from the first version (paid per order) can still be delivered: it counts as spending, the balance is untouched");
+  put("storeOrders/oLegacy2", { code: "T-0901", uid: "u6", name: "Six", email: "s@x.com", itemName: "old", priceUsd: 2, status: "awaiting_payment", createdAt: NOW, events: [] }); r = await adm({ action: "order_reject", id: "oLegacy2", reason: "never paid" }); ok(r.status === 200 && bal("u6") === bl, "and a rejected one refunds nothing (it was never paid from the balance)");
+
+  /* ---- I) notifications ---- */
+  { const p0 = pushes.length; mkC("u7", { balanceUsd: 5 }); TOKS.u7 = { sub: "u7", name: "Seven", email: "se@x.com" };
+    const n1 = (await order("iOne", "35353", "u7")).json.order; await done(n1.id);
+    const d1 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_done"); ok(d1 && d1.params.code === n1.code && d1.params.item === "edge", "delivering sends the customer a push with the code and the product");
+    const n2 = (await order("iOne", "36363", "u7")).json.order; await adm({ action: "order_reject", id: n2.id, reason: "no stock" });
+    const d2 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_rejected"); ok(d2 && d2.params.reason === "no stock", "rejecting sends it with the reason");
+    await adm({ action: "order_refund", id: n1.id, note: "wrong ID" }); ok(pushes.slice(p0).some(x => x.uid === "u7" && x.type === "store_refunded" && x.params.note === "wrong ID"), "a refund sends one too");
+    const before2 = pushes.length; await done(n2.id); await adm({ action: "order_refund", id: n2.id }); ok(pushes.length === before2, "refused admin actions send nothing");
+    pushFails = true; const n3 = (await order("iOne", "37373", "u7")).json.order; r = await done(n3.id); pushFails = false; ok(r.status === 200 && get("storeOrders/" + n3.id).status === "done", "if the notification service is down the order is still delivered"); }
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });
