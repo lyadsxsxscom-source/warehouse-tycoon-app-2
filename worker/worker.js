@@ -1270,7 +1270,7 @@ async function handleAdminStore(request, env) {
     }
     if (b.action === "customers_list") {
       const { sizes } = await storeLoadVipSizes(env), q = cleanText(b.q, 60).toLowerCase();
-      let rows = (await fsRunQuery(env, "storeCustomers", null, 500, 0)).map(r => ({ ...storeCustomerOut(r.id, r.data, sizes), lastSeenAt: Number(r.data.lastSeenAt) || 0 }));
+      let rows = (await fsRunQuery(env, "storeCustomers", null, 500, 0)).map(r => ({ ...storeCustomerOut(r.id, r.data, sizes, { admin: true }), lastSeenAt: Number(r.data.lastSeenAt) || 0 }));
       const total = rows.length;
       if (q) rows = rows.filter(x => (x.name + " " + x.email).toLowerCase().includes(q));
       rows.sort((a, c2) => c2.lastSeenAt - a.lastSeenAt || a.id.localeCompare(c2.id));
@@ -1285,19 +1285,75 @@ async function handleAdminStore(request, env) {
         const cur = await fsGetDoc(env, "storeCustomers/" + uid);
         if (!cur.exists) throw new ApiError("not_found", "هالزبون مو موجود.", 404);
         const after = Math.max(0, r2((Number(cur.data.spentUsd) || 0) + delta)), at = Date.now();
+        const upd = { spentUsd: after }, m = cur.data.merchant, writes = [];
+        if (m && m.status === "trial" && at <= Number(m.endsAt) && after - (Number(m.baseSpent) || 0) + 1e-9 >= Number(m.targetUsd)) {       // وصل الرقم خلال الفترة: بيثبت
+          upd.merchant = { ...m, status: "locked", lockedAt: at };
+          writes.push({ update: { name: docName(env, "storeVipLog/" + randomId()), fields: objToFields({ uid, action: "auto_lock", level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, at, by: "auto" }) }, currentDocument: { exists: false } });
+        }
         try {
           await fsCommit(env, [
-            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ spentUsd: after }) }, updateMask: { fieldPaths: ["spentUsd"] }, currentDocument: { updateTime: cur.updateTime } },
+            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: cur.updateTime } },
             { update: { name: docName(env, "storeSpendLog/" + randomId()), fields: objToFields({ uid, deltaUsd: r2(delta), spentAfter: after, note, at, by: "admin" }) }, currentDocument: { exists: false } },
+            ...writes,
           ]);
-          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, spentUsd: after }, sizes) }, 200);
+          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes, { admin: true }) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
     if (b.action === "customer_log") {
       const uid = validId(String(b.uid || "")); if (!uid) throw new ApiError("bad_request", "طلب غلط.");
       const rows = (await fsRunQuery(env, "storeSpendLog", null, 200, 0, { field: "uid", value: uid })).map(r => ({ deltaUsd: Number(r.data.deltaUsd) || 0, spentAfter: Number(r.data.spentAfter) || 0, note: String(r.data.note || ""), at: Number(r.data.at) || 0 })).sort((a, c2) => c2.at - a.at);
-      return jsonResponse({ ok: true, log: rows }, 200);
+      const vrows = (await fsRunQuery(env, "storeVipLog", null, 200, 0, { field: "uid", value: uid })).map(r => ({ action: String(r.data.action || ""), level: Number(r.data.level) || 0, targetUsd: Number(r.data.targetUsd) || 0, days: Number(r.data.days) || 0, prevLevel: Number(r.data.prevLevel) || 0, note: String(r.data.note || ""), at: Number(r.data.at) || 0, by: String(r.data.by || "") })).sort((a, c2) => c2.at - a.at);
+      return jsonResponse({ ok: true, log: rows, vipLog: vrows }, 200);
+    }
+    if (["merchant_set", "merchant_extend", "merchant_lock", "merchant_cancel"].includes(b.action)) {
+      const uid = validId(String(b.uid || "")); if (!uid) throw new ApiError("bad_request", "طلب غلط.");
+      const { sizes } = await storeLoadVipSizes(env), note = cleanText(b.note, 120);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cur = await fsGetDoc(env, "storeCustomers/" + uid);
+        if (!cur.exists) throw new ApiError("not_found", "هالزبون مو موجود.", 404);
+        const d = cur.data, m = d.merchant, now = Date.now(), spent = Number(d.spentUsd) || 0, ms = storeMerchantState(m, spent, now);
+        let merchant, log;
+        if (b.action === "merchant_set") {
+          const level = Number(b.level), target = Number(b.targetUsd), days = b.trialDays === undefined || b.trialDays === "" || b.trialDays === null ? 60 : Number(b.trialDays);
+          if (!Number.isInteger(level) || level < 2 || level > 10) throw new ApiError("bad_level", "المستوى من 2 لـ10.");
+          if (!Number.isFinite(target) || target <= 0 || target > 10000000) throw new ApiError("bad_target", "اكتب رقم الوعد (مجموع الصرف بالدولار) أكبر من 0.");
+          if (!Number.isInteger(days) || days < 1 || days > 365) throw new ApiError("bad_days", "مدة الاختبار من 1 لـ365 يوم.");
+          const effective = Math.max(storeVipInfo(sizes, spent).vip, ms.floor);
+          if (level <= effective) throw new ApiError("bad_level", `الزبون أصلاً بمستوى VIP ${effective}. اختار مستوى أعلى.`);
+          const prevLevel = ms.status === "trial" ? (Number(m.prevLevel) || 1) : ms.status === "locked" ? Number(m.level) : effective;
+          merchant = { status: "trial", level, targetUsd: r2(target), baseSpent: spent, startedAt: now, endsAt: now + days * 86400000, prevLevel, note };
+          log = { action: "set", level, targetUsd: r2(target), days, prevLevel, note };
+        } else {
+          if (!m || !m.status) throw new ApiError("no_merchant", "ما في نقل تاجر لهالزبون.");
+          if (b.action === "merchant_extend") {
+            const days = Number(b.days);
+            if (!Number.isInteger(days) || days < 1 || days > 365) throw new ApiError("bad_days", "التمديد من 1 لـ365 يوم.");
+            if (ms.status === "locked") throw new ApiError("already_locked", "الزبون مثبّت أصلاً.");
+            if (ms.status === "cancelled") throw new ApiError("cancelled", "النقل ملغى. اعمل نقل جديد.");
+            const endsAt = Math.max(now, Number(m.endsAt) || 0) + days * 86400000;
+            merchant = { ...m, status: "trial", endsAt };
+            if (storeMerchantState(merchant, spent, now).status === "locked") merchant = { ...merchant, status: "locked", lockedAt: now };     // وصل الرقم أصلاً
+            log = { action: "extend", level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, days, note };
+          } else if (b.action === "merchant_lock") {
+            if (ms.status === "locked") throw new ApiError("already_locked", "الزبون مثبّت أصلاً.");
+            if (ms.status === "cancelled") throw new ApiError("cancelled", "النقل ملغى. اعمل نقل جديد.");
+            merchant = { ...m, status: "locked", lockedAt: now };
+            log = { action: "lock", level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, note };
+          } else {
+            if (ms.status === "cancelled") throw new ApiError("cancelled", "النقل ملغى أصلاً.");
+            merchant = { ...m, status: "cancelled", cancelledAt: now };
+            log = { action: "cancel", level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, prevLevel: Number(m.prevLevel) || 1, note };
+          }
+        }
+        try {
+          await fsCommit(env, [
+            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ merchant }) }, updateMask: { fieldPaths: ["merchant"] }, currentDocument: { updateTime: cur.updateTime } },
+            { update: { name: docName(env, "storeVipLog/" + randomId()), fields: objToFields({ uid, ...log, at: now, by: "admin" }) }, currentDocument: { exists: false } },
+          ]);
+          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...d, merchant }, sizes, { admin: true }) }, 200);
+        } catch (e) { if (!e.conflict || attempt === 2) throw e; }
+      }
     }
     if (b.action === "payments_get") { const d = await fsGetDoc(env, "config/storePayments"); return jsonResponse({ ok: true, methods: await storeLoadMethods(env), updatedAt: d.exists && d.data ? Number(d.data.updatedAt) || 0 : 0 }, 200); }
     if (b.action === "payments_save") {
@@ -1390,8 +1446,35 @@ function storeParseVipSizes(raw) {
     return r2(n);
   });
 }
-function storeCustomerOut(uid, c, sizes) {
-  return { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, ...storeVipInfo(sizes || STORE_VIP_DEFAULT_SIZES, c.spentUsd) };
+// ===== قاعدة التاجر: نقل يدوي لمستوى أعلى مع رقم وعد (مجموع) وفترة اختبار (60 يوم افتراضياً) =====
+// وصل الرقم خلال الفترة ← بيثبت. خلصت الفترة بدون ما يوصل ← بيرجع للأعلى بين مستواه قبل النقل ومستواه حسب صرفه (ما بيخسر اللي كسبه).
+// merchant: { status: trial|locked|cancelled, level, targetUsd, baseSpent, startedAt, endsAt, prevLevel, lockedAt?, note }
+function storeMerchantState(m, spent, now) {
+  if (!m || !m.status) return { status: "none", floor: 0 };
+  const level = Number(m.level) || 0, prev = Number(m.prevLevel) || 1, target = Number(m.targetUsd) || 0, endsAt = Number(m.endsAt) || 0;
+  const win = Math.max(0, r2((Number(spent) || 0) - (Number(m.baseSpent) || 0))), left = Math.max(0, r2(target - win));
+  if (m.status === "locked") return { status: "locked", floor: level, windowSpent: win, remaining: 0, daysLeft: 0 };
+  if (m.status === "cancelled") return { status: "cancelled", floor: prev, windowSpent: win, remaining: left, daysLeft: 0 };
+  if (now <= endsAt) return win + 1e-9 >= target ? { status: "locked", floor: level, windowSpent: win, remaining: 0, daysLeft: 0 } : { status: "trial", floor: level, windowSpent: win, remaining: left, daysLeft: Math.max(1, Math.ceil((endsAt - now) / 86400000)) };
+  return { status: "expired", floor: prev, windowSpent: win, remaining: left, daysLeft: 0 };
+}
+function storeVipWithFloor(sizes, spentUsd, floor) {
+  const base = storeVipInfo(sizes, spentUsd);
+  if (!(floor > base.vip)) return base;
+  // مستوى ممسوك بنقل يدوي (أعلى من اللي بيعطيه صرفه): التقدّم للمستوى الجاي بيتحسب من إجمالي الصرف مقابل المبلغ التراكمي اللي بيوصّل للمستوى الجاي
+  const spent = Math.max(0, Number(spentUsd) || 0), max = floor > sizes.length, thr = max ? 0 : sizes.slice(0, floor).reduce((a, b) => a + b, 0);
+  return { vip: floor, spentUsd: r2(spent), progressUsd: max ? 0 : r2(Math.min(spent, thr)), sizeUsd: max ? null : r2(thr), remainingUsd: max ? 0 : r2(Math.max(0, thr - spent)), nextVip: max ? null : floor + 1 };
+}
+function storeCustomerOut(uid, c, sizes, opts = {}) {
+  const now = opts.now || Date.now(), sz = sizes || STORE_VIP_DEFAULT_SIZES, ms = storeMerchantState(c.merchant, c.spentUsd, now);
+  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
+  if (opts.admin) out.autoVip = storeVipInfo(sz, c.spentUsd).vip;      // للأدمن بس: مستواه لو ما في نقل يدوي
+  const m = c.merchant;
+  if (ms.status !== "none" && (opts.admin || ms.status === "trial" || ms.status === "locked")) {
+    out.merchant = { status: ms.status, level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, windowSpentUsd: ms.windowSpent, remainingUsd: ms.remaining, endsAt: Number(m.endsAt) || 0, daysLeft: ms.daysLeft };
+    if (opts.admin) Object.assign(out.merchant, { prevLevel: Number(m.prevLevel) || 1, startedAt: Number(m.startedAt) || 0, note: String(m.note || "") });
+  }
+  return out;
 }
 async function handleStoreMe(request, env) {
   try {

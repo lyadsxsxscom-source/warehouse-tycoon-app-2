@@ -78,6 +78,14 @@ function open(opts = {}) {
     ok(/أعلى مستوى/.test(h.$("accProg").textContent) && h.$("accFill").style.width === "100%" && h.$("accVip").textContent === "VIP 10", "at the top level it says so, with a full bar"); }
   { const h = open(); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
     ok(/تقدّمك \$0\.00 من \$200\.00 · باقي \$200\.00 للوصول لـVIP 2/.test(h.$("accProg").textContent) && /^0(\.0)?%$/.test(h.$("accFill").style.width), "a new customer: 0 of 200"); }
+  /* ---- merchant note ---- */
+  { const dayMs = 86400000, ends = Date.now() + 40 * dayMs;
+    const h = open({ customer: { id: "m", name: "Trader", email: "t@x.com", vip: 5, spentUsd: 350, progressUsd: 350, sizeUsd: 3000, remainingUsd: 2650, nextVip: 6, createdAt: 1, merchant: { status: "trial", level: 5, targetUsd: 1000, windowSpentUsd: 350, remainingUsd: 650, endsAt: ends, daysLeft: 40 } } }); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
+    ok(h.$("accVip").textContent === "VIP 5" && /فترة اختبار للتاجر \(VIP 5\): صرفك \$350\.00 من \$1,000\.00 · باقي \$650\.00 قبل \d\d\/\d\d\/\d{4} \(باقي 40 يوم\)/.test(h.$("accMerchant").textContent), "a trial merchant sees his level, what he has spent of his promise, what is left, the date and the days left");
+    ok(/تقدّمك \$350\.00 من \$3,000\.00 · باقي \$2,650\.00 للوصول لـVIP 6/.test(h.$("accProg").textContent), "and the progress bar counts toward the next level above his current one"); }
+  { const h = open({ customer: { id: "m2", name: "Trader", email: "t@x.com", vip: 5, spentUsd: 1100, progressUsd: 1100, sizeUsd: 3000, remainingUsd: 1900, nextVip: 6, createdAt: 1, merchant: { status: "locked", level: 5, targetUsd: 1000, windowSpentUsd: 1000, remainingUsd: 0, endsAt: 1, daysLeft: 0 } } }); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
+    ok(/حسابك تاجر مثبّت على VIP 5/.test(h.$("accMerchant").textContent) && !/فترة اختبار/.test(h.$("accMerchant").textContent), "a locked merchant is told his account is a locked merchant on VIP 5"); }
+  { const h = open(); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click(); ok(!h.$("accMerchant"), "an ordinary customer sees nothing about merchants"); }
   /* ---- Firebase missing ---- */
   { const h = open({ noFirebase: true }); await sleep(100); h.$("btnMenu").click();
     ok(/تعذّر تحميل تسجيل الدخول/.test(h.$("accMsg").textContent) && !h.$("btnGoogle"), "if the sign-in library cannot load the panel says so");
