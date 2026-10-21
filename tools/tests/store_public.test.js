@@ -34,7 +34,7 @@ const crumbs = (d) => d.getElementById("crumbs").textContent.replace(/\s+/g, "")
     ok(h.calls[0] === "https://postback.ly-ad.de/store/catalog", "it reads the public catalog from the server");
     ok(crumbs(d) === "الرئيسية" && d.querySelector("#crumbs b") && cards(d).length === 3, "home: the path shows 'الرئيسية' and every top-level entry is a card");
     ok(nm(cards(d)[0]) === "PUBG" && cards(d)[0].tagName === "BUTTON" && cards(d)[0].querySelector("img").getAttribute("src") === "https://postback.ly-ad.de/store/img/nA?v=1", "a folder is a tappable card with its picture");
-    ok(nm(cards(d)[2]) === "منتج بالرئيسية" && /الطلب قريباً/.test(cards(d)[2].textContent) && cards(d)[2].tagName === "DIV", "a product at the top says ordering is coming");
+    ok(nm(cards(d)[2]) === "منتج بالرئيسية" && cards(d)[2].tagName === "DIV" && cards(d)[2].querySelector("button.order-btn") && cards(d)[2].querySelector("button.order-btn").textContent === "اطلب" && cards(d)[2].querySelector("button.order-btn").dataset.order === "nE", "a product at the top has an 'اطلب' (order) button");
     const chips = [...d.querySelectorAll("#methods .chip")];
     ok(!d.getElementById("methods").hidden && chips.map(c => c.textContent).join("|") === "شام كاش|USDT" && chips[0].getAttribute("aria-pressed") === "true" && chips[1].getAttribute("aria-pressed") === "false", "the payment methods are shown as buttons, the first one selected");
     ok(/143 ل\.س/.test(cards(d)[2].querySelector(".pr").textContent) && /\$1\.00/.test(cards(d)[2].querySelector(".pr small").textContent), "prices are shown in the selected method's currency (dollar price x rate), with the dollar price underneath");

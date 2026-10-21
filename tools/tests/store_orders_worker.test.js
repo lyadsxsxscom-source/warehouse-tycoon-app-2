@@ -70,7 +70,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   let r;
 
   /* ---- A) sign-in is required ---- */
-  for (const path of ["/store/quote", "/store/order", "/store/orders", "/store/order/proof", "/store/order/cancel"]) { r = await callApi(path, {}, null); ok(r.status === 401, path + " needs sign-in"); }
+  for (const path of ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/order/proof", "/store/order/cancel"]) { r = await callApi(path, {}, null); ok(r.status === 401, path + " needs sign-in"); }
   ok((await callApi("/store/orders", {}, "garbage")).status === 401, "a bad token is refused");
   ok((await adm({ action: "orders_list" }, "u1")).status === 401 && (await adm({ action: "order_done", id: "x" }, "u1")).status === 401 && (await adm({ action: "order_proof", id: "x" }, null)).status === 401, "customers cannot use the admin actions");
   r = await callApi("/store/quote", { itemId: "i60" }, "u3"); ok(r.status === 400 && r.json.error === "no_account", "someone who never opened a store account is told to open it first");
@@ -85,6 +85,11 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   mkC("u2", { spentUsd: 0 });
   for (const [id, label] of [["iHid", "a hidden item"], ["iNo", "an item with no dollar price"], ["iUnder", "an item under a hidden folder"], ["nF", "a folder"], ["ghost", "an unknown id"], ["", "no id"]]) { r = await quote(id); ok(r.status === 404 && r.json.error === "no_item", "no quote for " + label); }
 
+  /* ---- B2) all prices at his level ---- */
+  r = await callApi("/store/prices", {}, "u1"); ok(r.status === 200 && r.json.vip === 1 && r.json.prices.i60 === 0.92 && r.json.prices.i660 === 9.26 && r.json.prices.iOne === 1, "the price list at his level (VIP 1)");
+  ok(!("iHid" in r.json.prices) && !("iNo" in r.json.prices) && !("iUnder" in r.json.prices) && !("nF" in r.json.prices), "hidden, unpriced and under-a-hidden-folder items and folders are never in it");
+  mkC("u2", { spentUsd: 1000 }); r = await callApi("/store/prices", {}, "u2"); ok(r.json.vip === 4 && r.json.prices.i60 === 0.86 && r.json.prices.i660 === 9.26, "at VIP 4 the same items have the VIP 4 price (0.86; an item with one price stays the same)"); mkC("u2", { spentUsd: 0 });
+  ok((await callApi("/store/prices", {}, null)).status === 401 && (await callApi("/store/prices", {}, "u3")).json.error === "no_account", "it needs a signed-in customer with an account");
   /* ---- C) placing an order ---- */
   r = await order("i60", "sham", "123456789"); const o1 = r.json.order;
   ok(r.status === 200 && /^o[0-9a-f]{20}$/.test(o1.id) && o1.code === "T-1001" && o1.status === "awaiting_payment" && o1.itemName === "60 UC" && o1.itemPath === "PUBG › فوري › 60 UC" && o1.playerId === "123456789" && o1.vip === 1 && o1.priceUsd === 0.92 && o1.amount === 131, "an order: code T-1001, awaiting payment, the item and its path, the Player ID, his level, the dollar price and the amount to pay");

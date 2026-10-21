@@ -1609,6 +1609,11 @@ async function handleStoreOrderApi(request, env, action) {
       }
       }
     }
+    if (action === "prices") {            // أسعار كل المنتجات الظاهرة بمستوى VIP تبع الزبون (بتتحسب بالسيرفر)
+      const nodes = await storeAllNodes(env), { vip } = await storeCustomerCtx(env, uid), prices = {};
+      for (const n of nodes) { const it = storeVisibleItem(nodes, n.id); if (it) { const pr = storePricesOf(it); prices[it.id] = pr[Math.min(vip, pr.length) - 1]; } }
+      return jsonResponse({ ok: true, vip, prices }, 200);
+    }
     if (action === "orders") {
       const rows = (await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid })).sort((a, c2) => (Number(c2.data.createdAt) || 0) - (Number(a.data.createdAt) || 0)).slice(0, 30);
       return jsonResponse({ ok: true, orders: rows.map(r => storeOrderOut(r.id, r.data, now, false)) }, 200);
@@ -2710,7 +2715,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);

@@ -88,6 +88,24 @@ body.lock{overflow:hidden}
 .fill{height:100%;background:var(--tape)}
 .prog{color:var(--ink);font-size:.98rem;line-height:1.6}
 .mnote{border:2px dashed var(--edge);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.98rem;line-height:1.7}
+.order-btn{display:block;width:100%;margin-top:10px;font:inherit;font-weight:700;font-size:1rem;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:8px 10px;cursor:pointer}
+.vipnote{display:block;font-size:.78rem;font-weight:700;color:#10211C}
+.scrim2{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:55}
+.osheet{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
+.os-in{pointer-events:auto;background:var(--panel);color:var(--ink);border:3px solid var(--edge);border-radius:16px 16px 0 0;width:min(560px,100%);max-height:92vh;overflow:auto}
+#osBody{padding:14px 16px 22px}
+#osBody label.f{display:block;margin:14px 0 4px;font-weight:700}
+#osBody input.tx{width:100%;font:inherit;padding:10px 12px;border:2px solid var(--edge);border-radius:10px;background:var(--paper);color:var(--ink)}
+#osBody .opts{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+#osBody .sum{border:2px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;line-height:1.8}
+#osBody .big{font-size:1.5rem;font-weight:700;direction:ltr;text-align:center;margin:8px 0}
+#osBody .accbox{direction:ltr;text-align:start;background:var(--paper);border:2px solid var(--edge);border-radius:10px;padding:8px 10px;margin:6px 0;word-break:break-all;font-weight:700}
+#osBody .warn{border:2px solid var(--edge);border-radius:10px;padding:8px 10px;margin:10px 0;background:var(--pic);font-size:.95rem;line-height:1.7}
+#osBody .stat{display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:1px 14px}
+#osBody img.pv{max-width:100%;max-height:200px;border:2px solid var(--edge);border-radius:8px;margin-top:6px;display:block}
+.myrow{display:block;width:100%;text-align:start;font:inherit;color:var(--ink);background:transparent;border:2px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px;cursor:pointer}
+.myrow .a{display:flex;justify-content:space-between;gap:8px;font-weight:700}
+.myrow .b{color:var(--muted);font-size:.9rem}
 .cta{border:3px dashed var(--edge);border-radius:14px;padding:18px 16px;background:var(--panel);text-align:center;margin-block:10px 4px}
 .cta h2{margin:0 0 6px;font-size:1.25rem}
 .cta p{margin:0 0 12px}
@@ -133,6 +151,13 @@ body.lock{overflow:hidden}
 </section>
 <footer class="wrap">© Yardova</footer>
 <div class="scrim" id="scrim" hidden></div>
+<div class="scrim2" id="scrim2" hidden></div>
+<div class="osheet" id="osheet" role="dialog" aria-modal="true" aria-labelledby="osTitle" hidden>
+  <div class="os-in">
+    <div class="dr-head"><h2 id="osTitle"></h2><button class="dr-close" id="osClose" type="button" aria-label="إغلاق">✕</button></div>
+    <div id="osBody"></div>
+  </div>
+</div>
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drTitle" hidden>
   <div class="dr-head"><h2 id="drTitle">حسابي</h2><button class="dr-close" id="btnCloseDrawer" type="button" aria-label="إغلاق">✕</button></div>
   <div id="drBody"></div>
@@ -153,6 +178,7 @@ const roundTo = (x, d) => Math.round(Number((x * Math.pow(10, d)).toPrecision(12
 const fmtUsd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 // السعر بعملة طريقة الدفع: بالدولار × سعر الصرف × (1 + النسبة الإضافية)
 function priceIn(m, usd){ const d = Number(m.decimals); return roundTo(Number(usd) * Number(m.rate) * (1 + (Number(m.feePct) || 0) / 100), d).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + m.currency; }
+let PRICES = null, PRICE_VIP = 1;                                  // أسعار المنتجات بمستوى الزبون المسجّل (من السيرفر)
 function priceBox(usd){
   const box = el('span', { class: 'pr' });
   if(METHOD){ box.append(document.createTextNode(priceIn(METHOD, usd)), el('small', { text: fmtUsd(usd) })); } else box.textContent = fmtUsd(usd);
@@ -177,7 +203,9 @@ function folderCard(n){
   return b;
 }
 function itemCard(n){
-  return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), priceBox(n.priceUsd), el('span', { class: 'soon', text: 'الطلب قريباً' })));
+  const mine = PRICES && PRICES[n.id] !== undefined ? PRICES[n.id] : n.priceUsd, pb = priceBox(mine);
+  if(PRICES && mine !== n.priceUsd) pb.append(el('span', { class: 'vipnote', text: 'سعرك VIP ' + PRICE_VIP }));
+  return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), pb, el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: 'اطلب' })));
 }
 function savedMethod(){ try{ return localStorage.getItem('store_method') || ''; }catch(e){ return ''; } }
 function renderMethods(){
@@ -226,7 +254,8 @@ $('methods').addEventListener('click', e => {
   try{ localStorage.setItem('store_method', METHOD.id); }catch(err){}
   render();
 });
-$('catalog').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if(b){ location.hash = '#/' + encodeURIComponent(b.dataset.go); window.scrollTo(0, 0); } });
+$('catalog').addEventListener('click', e => {
+  const ob = e.target.closest('[data-order]'); if(ob){ openOrder(ob.dataset.order); return; } const b = e.target.closest('[data-go]'); if(b){ location.hash = '#/' + encodeURIComponent(b.dataset.go); window.scrollTo(0, 0); } });
 window.addEventListener('hashchange', render);
 load();
 // ===== الحساب: لوحة جانبية (دخول Google). الحساب بيتعمل أول مرة بيدخل فيها =====
@@ -264,6 +293,7 @@ function renderDrawer(){
     progBox(c),
     merchantNote(c),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
+    ordersSection(),
     el('button', { class: 'btn-ghost', id: 'btnMerchant', type: 'button', text: '🏪 هل أنت تاجر؟ تواصل معنا' }),
     el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
   );
@@ -280,7 +310,9 @@ function progBox(c){
   return el('div', { class: 'accprog', style: 'padding:6px 0 12px;' }, el('div', { class: 'track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct)), 'aria-label': 'تقدّمك للمستوى الجاي' }, fill),
     el('div', { class: 'prog', id: 'accProg', text: max ? 'وصلت لأعلى مستوى 🎉' : ('تقدّمك ' + fmtUsd(c.progressUsd) + ' من ' + fmtUsd(c.sizeUsd) + ' · باقي ' + fmtUsd(c.remainingUsd) + ' للوصول لـVIP ' + c.nextVip) }));
 }
-async function loadCustomer(){
+let ACC_P = null;
+function loadCustomer(){ ACC_P = _loadCustomer(); return ACC_P; }
+async function _loadCustomer(){
   ACC = 'loading'; renderDrawer();
   try{
     const token = await USER.getIdToken();
@@ -289,6 +321,7 @@ async function loadCustomer(){
     CUSTOMER = j.customer; ACC = 'ok';
   }catch(e){ ACC = 'error'; }
   renderDrawer();
+  if(ACC === 'ok'){ loadPrices(); loadMyOrders(); }
 }
 function openDrawer(){
   renderDrawer();
@@ -303,6 +336,16 @@ $('btnMenu').addEventListener('click', openDrawer);
 $('btnCloseDrawer').addEventListener('click', closeDrawer);
 $('scrim').addEventListener('click', closeDrawer);
 document.addEventListener('keydown', e => {
+  if(!$('osheet').hidden){
+    if(e.key === 'Escape'){ closeSheet(); return; }
+    if(e.key === 'Tab'){
+      const f = [...$('osheet').querySelectorAll('button, input, textarea, select, a[href]')].filter(x => !x.disabled && !x.hidden); if(!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+    return;
+  }
   if($('drawer').hidden) return;
   if(e.key === 'Escape'){ closeDrawer(); return; }
   if(e.key === 'Tab'){                                   // بنبقي التنقل بالـTab جوّا اللوحة
@@ -339,7 +382,179 @@ function renderCta(){
   $('ctaHint').hidden = !!(USER && ACC === 'ok' && CUSTOMER);
 }
 renderCta();
-if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; if(u) loadCustomer(); else renderDrawer(); });
+// ===== الطلب: نافذة (Player ID وطريقة الدفع) ثم تعليمات الدفع ورفع الإيصال، وقائمة "طلباتي" =====
+const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', payment_submitted: 'دفعك قيد المراجعة', done: 'تم التنفيذ ✅', rejected: 'مرفوض', cancelled: 'ملغى', expired: 'انتهت صلاحيته', refunded: 'مسترجع' };
+let MY = [], MY_STATE = 'idle', QUOTE = null, ORD = null, SH = { step: 'closed', item: null, methodId: '', pid: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null };
+async function apiAuth(path, body){
+  if(!USER) throw Object.assign(new Error('سجّل دخول أول.'), { code: 'no_user' });
+  const token = await USER.getIdToken();
+  const res = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(body || {}) });
+  let j = {}; try{ j = await res.json(); }catch(e){}
+  if(!res.ok || !j.ok){ const err = new Error(j.message || 'صار خطأ، جرّب كمان مرة.'); err.code = j.error; throw err; }
+  return j;
+}
+function newRid(){ const a = new Uint8Array(12); try{ crypto.getRandomValues(a); }catch(e){ for(let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); } return 'r' + [...a].map(x => x.toString(16).padStart(2, '0')).join(''); }
+const amountStr = m => Number(m.amount).toLocaleString('en-US', { minimumFractionDigits: Number(m.decimals) || 0, maximumFractionDigits: Number(m.decimals) || 0 }) + ' ' + m.currency;
+const orderAmount = o => amountStr({ amount: o.amount, decimals: o.method.decimals, currency: o.method.currency });
+function findItem(nodes, id){ for(const n of nodes){ if(n.id === id) return n; if(n.children){ const r = findItem(n.children, id); if(r) return r; } } return null; }
+async function loadPrices(){
+  try{ const j = await apiAuth('/store/prices'); PRICES = j.prices && typeof j.prices === 'object' ? j.prices : null; PRICE_VIP = Number(j.vip) || 1; render(); }catch(e){ PRICES = null; }
+}
+async function loadMyOrders(){
+  MY_STATE = 'loading'; if(!$('drawer').hidden) renderDrawer();
+  try{ const j = await apiAuth('/store/orders'); MY = Array.isArray(j.orders) ? j.orders : []; MY_STATE = 'ok'; }catch(e){ MY_STATE = 'error'; }
+  if(!$('drawer').hidden) renderDrawer();
+}
+function ordersSection(){
+  const box = el('div', { class: 'myorders', id: 'myOrders', style: 'padding:8px 0 4px;' });
+  box.append(el('div', { class: 'acc-row', style: 'border-top:2px solid var(--line);' }, el('b', { text: 'طلباتي' }), el('button', { class: 'dr-close', id: 'btnRefreshOrders', type: 'button', 'aria-label': 'تحديث', text: '🔄' })));
+  if(MY_STATE === 'loading' || MY_STATE === 'idle') box.append(el('p', { class: 'hint', id: 'myLoading', text: 'عم نحمّل طلباتك...' }));
+  else if(MY_STATE === 'error') box.append(el('p', { class: 'hint', id: 'myError', text: 'تعذّر تحميل طلباتك. اضغط 🔄.' }));
+  else if(!MY.length) box.append(el('p', { class: 'hint', id: 'myEmpty', text: 'ما عندك طلبات بعد.' }));
+  else MY.slice(0, 10).forEach(o => box.append(el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: ORDER_ST[o.status] || o.status })), el('div', { class: 'b', text: o.itemName + ' · ' + orderAmount(o) }))));
+  return box;
+}
+// ---- النافذة
+function showSheet(){ $('osheet').hidden = false; $('scrim2').hidden = false; document.body.classList.add('lock'); }
+function stopTimer(){ if(SH.timer){ clearInterval(SH.timer); SH.timer = null; } }
+function closeSheet(){
+  stopTimer(); $('osheet').hidden = true; $('scrim2').hidden = true; SH.step = 'closed';
+  if($('drawer').hidden) document.body.classList.remove('lock');
+  const t = ordTrigger && document.body.contains(ordTrigger) ? ordTrigger : $('btnMenu'); t.focus();
+}
+let ordTrigger = null;
+async function openOrder(itemId){
+  const item = findItem(TREE || [], itemId); if(!item) return;
+  ordTrigger = document.activeElement;
+  if(!USER || !auth){ ACC_MSG = 'سجّل دخول عشان تطلب.'; openDrawer(); return; }
+  if(ACC !== 'ok'){ if(!ACC_P || ACC === 'error' || ACC === 'idle') loadCustomer(); await ACC_P; if(ACC !== 'ok'){ openDrawer(); return; } }
+  SH = { step: 'loading', item, methodId: '', pid: '', msg: '', ok: '', busy: false, rid: newRid(), img: undefined, ref: '', timer: null };
+  showSheet(); renderSheet(); $('osClose').focus();
+  try{ QUOTE = (await apiAuth('/store/quote', { itemId })).quote; SH.step = 'form'; SH.methodId = QUOTE.methods[0] ? QUOTE.methods[0].id : ''; }
+  catch(e){ SH.step = 'error'; SH.msg = e.message; }
+  renderSheet();
+}
+function openExisting(id){
+  const o = MY.find(x => x.id === id); if(!o) return;
+  ordTrigger = $('btnMenu'); closeDrawerQuiet();
+  ORD = o; SH = { step: 'pay', item: null, methodId: '', pid: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null };
+  showSheet(); renderSheet(); startTimer(); $('osClose').focus();
+}
+function closeDrawerQuiet(){ $('drawer').hidden = true; $('scrim').hidden = true; $('btnMenu').setAttribute('aria-expanded', 'false'); }
+function startTimer(){ stopTimer(); SH.timer = setInterval(() => { if(SH.step === 'pay' && ORD && ORD.status === 'awaiting_payment') { const t = $('osTimer'); if(t) t.textContent = timerText(ORD); } }, 30000); }
+function timerText(o){
+  const left = Number(o.quoteEndsAt) - Date.now();
+  if(left <= 0) return 'انتهت صلاحية السعر. إذا دفعت هلق ممكن يتغيّر المبلغ، فتواصل معنا لتأكيده.';
+  return 'السعر مضمون لمدة ' + Math.max(1, Math.ceil(left / 60000)) + ' دقيقة (لحد ' + new Date(o.quoteEndsAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ').';
+}
+function renderSheet(){
+  const b = $('osBody'); b.textContent = '';
+  if(SH.step === 'closed') return;
+  if(SH.step === 'loading'){ $('osTitle').textContent = 'اطلب'; b.append(el('p', { id: 'osLoading', text: 'عم نحمّل السعر...' })); return; }
+  if(SH.step === 'error'){ $('osTitle').textContent = 'اطلب'; b.append(el('div', { class: 'warn', id: 'osError', role: 'alert', text: SH.msg || 'تعذّر تحميل السعر. جرّب كمان مرة.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return; }
+  if(SH.step === 'form') renderForm(b); else renderPay(b);
+}
+function msgBox(){ return el('div', { class: 'msg' + (SH.msg ? ' err' : ''), id: 'osMsg', role: 'alert', text: SH.msg || SH.ok || '' }); }
+function renderForm(b){
+  const it = SH.item, q = QUOTE; $('osTitle').textContent = 'اطلب: ' + it.name;
+  b.append(el('div', { class: 'sum' }, el('div', { text: 'سعرك حسب مستواك VIP ' + q.vip + ': ' + fmtUsd(q.priceUsd) })));
+  const pid = el('input', { class: 'tx', id: 'osPid', type: 'text', maxlength: '40', autocomplete: 'off', inputmode: 'text', 'aria-describedby': 'osPidHint' }); pid.value = SH.pid;
+  b.append(el('label', { class: 'f', for: 'osPid', text: 'معرّف اللاعب (Player ID)' }), pid, el('div', { class: 'warn', id: 'osPidHint', text: '⚠️ تأكد من المعرّف: الشحن بيتم عليه، وما في استرجاع إذا كان غلط.' }));
+  if(!q.methods.length){ b.append(el('div', { class: 'warn', id: 'osNoMethods', text: 'ما في طرق دفع متاحة هلق. تواصل معنا.' })); return; }
+  const opts = el('div', { class: 'opts', role: 'radiogroup', 'aria-label': 'طريقة الدفع' });
+  q.methods.forEach(m => opts.append(el('button', { class: 'chip', type: 'button', role: 'radio', 'data-mid': m.id, 'aria-checked': SH.methodId === m.id ? 'true' : 'false', 'aria-pressed': SH.methodId === m.id ? 'true' : 'false', text: m.name })));
+  const cur = q.methods.find(m => m.id === SH.methodId);
+  b.append(el('label', { class: 'f', text: 'طريقة الدفع' }), opts, el('div', { class: 'big', id: 'osAmount', text: cur ? amountStr(cur) : '' }), el('div', { class: 'hint', text: 'بتأكّد الطلب وبتشوف تعليمات التحويل. السعر صالح ' + q.validMinutes + ' دقيقة بعد التأكيد.' }), msgBox(), el('button', { class: 'btn-main', id: 'osSubmit', type: 'button', text: 'تأكيد الطلب' }));
+  if(SH.busy) $('osBody').querySelector('#osSubmit').disabled = true;
+}
+function copyBtn(text){ return el('button', { class: 'dr-close', type: 'button', 'data-copy': text, style: 'margin-top:4px;', text: '📋 نسخ' }); }
+function renderPay(b){
+  const o = ORD, st = o.status; $('osTitle').textContent = 'طلبك ' + o.code;
+  const pill = el('span', { class: 'stat', id: 'osStatus', text: ORDER_ST[st] || st });
+  b.append(el('div', { class: 'sum' }, el('div', { style: 'font-weight:700;word-break:break-word;', text: o.itemPath || o.itemName }), el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'المبلغ: ' + orderAmount(o) + ' (عبر ' + o.method.name + ') · ' + fmtUsd(o.priceUsd) }), el('div', {}, pill)));
+  if(st === 'awaiting_payment' || st === 'payment_submitted'){
+    if(st === 'awaiting_payment'){
+      b.append(el('div', { class: 'big', id: 'osPayAmount', text: orderAmount(o) }));
+      if(o.method.account){ b.append(el('div', { class: 'f', style: 'font-weight:700;margin-top:8px;', text: 'حوّل على (' + o.method.name + '):' }), el('div', { class: 'accbox', id: 'osAccount', text: o.method.account }), copyBtn(o.method.account)); }
+      if(o.method.instructions) b.append(el('div', { class: 'warn', id: 'osInstr', text: o.method.instructions }));
+      b.append(el('div', { class: 'warn', text: 'حوّل المبلغ بالضبط، واذكر رقم الطلب ' + o.code + ' بالملاحظة إذا بتقدر.' }));
+      const tm = el('div', { class: 'hint', id: 'osTimer', text: timerText(o) }); b.append(tm);
+    } else b.append(el('div', { class: 'warn', id: 'osWaiting', text: 'وصلنا دفعك' + (o.proof && o.proof.ref ? ' (' + o.proof.ref + ')' : '') + '، ورح نراجعه ونبلّغك. بتقدر تضيف أو تغيّر الإيصال تحت.' }));
+    const ref = el('input', { class: 'tx', id: 'osRef', type: 'text', maxlength: '120', autocomplete: 'off', placeholder: 'رقم العملية / TXID' }); ref.value = SH.ref;
+    const file = el('input', { class: 'tx', id: 'osFile', type: 'file', accept: 'image/*' });
+    b.append(el('label', { class: 'f', for: 'osRef', text: st === 'awaiting_payment' ? 'بعد التحويل: أرسل الإيصال' : 'إيصال إضافي' }), ref, el('label', { class: 'f', for: 'osFile', text: 'أو صورة الإيصال' }), file);
+    if(SH.img) b.append(el('img', { class: 'pv', id: 'osPreview', alt: 'الإيصال', src: SH.img }), el('button', { class: 'dr-close', id: 'osImgDel', type: 'button', style: 'margin-top:6px;', text: 'حذف الصورة' }));
+    b.append(msgBox(), el('button', { class: 'btn-main', id: 'osSend', type: 'button', text: st === 'awaiting_payment' ? 'أرسلت الدفع' : 'إرسال' }));
+    if(st === 'awaiting_payment') b.append(el('button', { class: 'btn-ghost', id: 'osCancel', type: 'button', text: 'ألغي الطلب' }));
+    b.append(el('button', { class: 'btn-ghost', id: 'osRefresh', type: 'button', text: '🔄 تحديث حالة الطلب' }));
+    return;
+  }
+  const lines = { done: 'تم تنفيذ طلبك ✅ تأكد من حسابك باللعبة.', rejected: 'انرفض طلبك.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : ''), cancelled: 'ألغيت هالطلب.', expired: 'انتهت صلاحية هالطلب لأنه ما انرسل دفع خلال 24 ساعة. بتقدر تعمل طلب جديد.', refunded: 'تم استرجاع هالطلب.' };
+  b.append(el('div', { class: 'warn', id: 'osFinal', text: lines[st] || '' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' }));
+}
+// صورة الإيصال: بنصغّرها بالمتصفح (أقصى 1000px) وبنضغطها حتى تضل صغيرة
+async function receiptToDataUrl(file){
+  if(!/^image\/(png|jpeg|webp|gif|bmp)$/.test(file.type)) throw new Error('اختار صورة (PNG أو JPEG أو WebP).');
+  const bmp = await createImageBitmap(file);
+  for(const max of [1000, 800, 600, 400]){
+    const sc = Math.min(1, max / Math.max(bmp.width, bmp.height)), w = Math.max(1, Math.round(bmp.width * sc)), h = Math.max(1, Math.round(bmp.height * sc));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    for(const q of [0.8, 0.6, 0.45]){ let url = cv.toDataURL('image/webp', q); if(!/^data:image\/webp/.test(url)) url = cv.toDataURL('image/png'); if(url.length <= 200000) return url; }
+  }
+  throw new Error('الصورة كبيرة كتير حتى بعد التصغير، جرّب صورة تانية.');
+}
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true; }catch(e){}
+  try{ const ta = el('textarea', { style: 'position:fixed;opacity:0;' }); ta.value = t; document.body.append(ta); ta.select(); const okc = document.execCommand('copy'); ta.remove(); return !!okc; }catch(e){ return false; }
+}
+async function reloadOrder(){
+  const j = await apiAuth('/store/orders'); MY = Array.isArray(j.orders) ? j.orders : []; MY_STATE = 'ok'; const n = MY.find(x => x.id === ORD.id); if(n) ORD = n;
+}
+$('osClose').addEventListener('click', closeSheet);
+$('scrim2').addEventListener('click', closeSheet);
+$('osBody').addEventListener('input', e => { if(e.target.id === 'osPid') SH.pid = e.target.value; if(e.target.id === 'osRef') SH.ref = e.target.value; });
+$('osBody').addEventListener('change', async e => {
+  if(e.target.id !== 'osFile') return; const f = e.target.files && e.target.files[0]; if(!f) return;
+  SH.msg = ''; SH.ok = '';
+  try{ SH.img = await receiptToDataUrl(f); }catch(err){ SH.img = undefined; SH.msg = err.message; }
+  renderSheet();
+});
+$('osBody').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if(!b) return;
+  if(b.dataset.mid){ SH.methodId = b.dataset.mid; renderSheet(); return; }
+  if(b.id === 'osDone'){ closeSheet(); return; }
+  if(b.dataset.copy !== undefined){ const okc = await copyText(b.dataset.copy); b.textContent = okc ? '✅ تم النسخ' : 'انسخ يدوياً'; return; }
+  if(b.id === 'osImgDel'){ SH.img = undefined; renderSheet(); return; }
+  if(b.id === 'osSubmit'){
+    const pid = SH.pid.trim(); SH.msg = ''; SH.ok = '';
+    if(pid.length < 3 || pid.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(pid)){ SH.msg = 'اكتب معرّف اللاعب (Player ID) بشكل صحيح: 3 لـ40 خانة، أرقام وأحرف.'; renderSheet(); $('osPid').focus(); return; }
+    if(!SH.methodId){ SH.msg = 'اختار طريقة دفع.'; renderSheet(); return; }
+    SH.busy = true; renderSheet();
+    try{ const j = await apiAuth('/store/order', { itemId: SH.item.id, methodId: SH.methodId, playerId: pid, reqId: SH.rid }); ORD = j.order; SH.step = 'pay'; SH.busy = false; renderSheet(); startTimer(); loadMyOrders(); $('osClose').focus(); }
+    catch(err){ SH.busy = false; SH.msg = err.message; renderSheet(); }
+    return;
+  }
+  if(b.id === 'osSend'){
+    const ref = SH.ref.trim(); SH.msg = ''; SH.ok = '';
+    if(!ref && !SH.img && !(ORD.proof && ORD.proof.hasImage)){ SH.msg = 'اكتب رقم العملية أو ارفق صورة الإيصال.'; renderSheet(); return; }
+    b.disabled = true;
+    try{ const body = { orderId: ORD.id, ref }; if(SH.img) body.image = SH.img; const j = await apiAuth('/store/order/proof', body); ORD = j.order; SH.img = undefined; SH.ref = ''; SH.ok = 'وصلنا إيصالك ✅ رح نراجعه ونبلّغك.'; renderSheet(); loadMyOrders(); }
+    catch(err){ SH.msg = err.message; renderSheet(); }
+    return;
+  }
+  if(b.id === 'osCancel'){
+    if(!window.confirm('تلغي الطلب ' + ORD.code + '؟')) return;
+    try{ const j = await apiAuth('/store/order/cancel', { orderId: ORD.id }); ORD = j.order; stopTimer(); renderSheet(); loadMyOrders(); }
+    catch(err){ SH.msg = err.message; renderSheet(); }
+    return;
+  }
+  if(b.id === 'osRefresh'){ try{ await reloadOrder(); SH.msg = ''; SH.ok = 'تم التحديث.'; }catch(err){ SH.msg = err.message; } renderSheet(); }
+});
+$('drBody').addEventListener('click', e => {
+  const r = e.target.closest('[data-oid]'); if(r){ openExisting(r.dataset.oid); return; }
+  if(e.target.closest('#btnRefreshOrders')) loadMyOrders();
+});
+if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); } });
 
 </script>
 </body>
