@@ -1356,6 +1356,36 @@ async function handleAdminStore(request, env) {
         catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
+    if (b.action === "wallet_get") { const w = await storeLoadWallet(env); return jsonResponse({ ok: true, ...w }, 200); }
+    if (b.action === "wallet_save") {
+      const cfg = storeParseWallet(b.cfg), at = Date.now();
+      await fsCommit(env, [{ update: { name: docName(env, "config/storeWallet"), fields: objToFields({ ...cfg, updatedAt: at }) } }]);
+      return jsonResponse({ ok: true, cfg, configured: true, updatedAt: at }, 200);
+    }
+    if (b.action === "customer_balance") {         // تعديل يدوي لرصيد الزبون (إيداع صار خارج النظام، أو تصحيح)؛ بينسجّل
+      const uid = validId(String(b.uid || "")); const delta = Number(b.deltaUsd);
+      if (!uid) throw new ApiError("bad_request", "طلب غلط.");
+      if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 100000) throw new ApiError("bad_delta", "اكتب مبلغ (موجب أو سالب) أكبر من 0 وأقل من 100,000.");
+      const note = cleanText(b.note, 120), { sizes } = await storeLoadVipSizes(env);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cur = await fsGetDoc(env, "storeCustomers/" + uid);
+        if (!cur.exists) throw new ApiError("not_found", "هالزبون مو موجود.", 404);
+        const after = r2((Number(cur.data.balanceUsd) || 0) + delta), at = Date.now();
+        if (after < 0) throw new ApiError("insufficient_balance", "رصيد الزبون ما بيكفي لهالخصم.");
+        try {
+          await fsCommit(env, [
+            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: after }) }, updateMask: { fieldPaths: ["balanceUsd"] }, currentDocument: { updateTime: cur.updateTime } },
+            { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "adjust", amountUsd: r2(delta), points: 0, balanceAfter: after, ref: "", note, at, by: "admin" }) }, currentDocument: { exists: false } },
+          ]);
+          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, balanceUsd: after }, sizes, { admin: true }) }, 200);
+        } catch (e) { if (!e.conflict || attempt === 2) throw e; }
+      }
+    }
+    if (b.action === "customer_ledger") {
+      const uid = validId(String(b.uid || "")); if (!uid) throw new ApiError("bad_request", "طلب غلط.");
+      const rows = (await fsRunQuery(env, "storeLedger", null, 200, 0, { field: "uid", value: uid })).map(r => ({ type: String(r.data.type || ""), amountUsd: Number(r.data.amountUsd) || 0, points: Number(r.data.points) || 0, balanceAfter: Number(r.data.balanceAfter) || 0, ref: String(r.data.ref || ""), note: String(r.data.note || ""), at: Number(r.data.at) || 0, by: String(r.data.by || "") })).sort((a, c2) => c2.at - a.at);
+      return jsonResponse({ ok: true, ledger: rows }, 200);
+    }
     if (b.action === "customer_log") {
       const uid = validId(String(b.uid || "")); if (!uid) throw new ApiError("bad_request", "طلب غلط.");
       const rows = (await fsRunQuery(env, "storeSpendLog", null, 200, 0, { field: "uid", value: uid })).map(r => ({ deltaUsd: Number(r.data.deltaUsd) || 0, spentAfter: Number(r.data.spentAfter) || 0, note: String(r.data.note || ""), at: Number(r.data.at) || 0 })).sort((a, c2) => c2.at - a.at);
@@ -1523,7 +1553,7 @@ function storeVipWithFloor(sizes, spentUsd, floor) {
 }
 function storeCustomerOut(uid, c, sizes, opts = {}) {
   const now = opts.now || Date.now(), sz = sizes || STORE_VIP_DEFAULT_SIZES, ms = storeMerchantState(c.merchant, c.spentUsd, now);
-  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
+  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, balanceUsd: r2(Number(c.balanceUsd) || 0), ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
   if (opts.admin) out.autoVip = storeVipInfo(sz, c.spentUsd).vip;      // للأدمن بس: مستواه لو ما في نقل يدوي
   const m = c.merchant;
   if (ms.status !== "none" && (opts.admin || ms.status === "trial" || ms.status === "locked")) {
@@ -1542,27 +1572,57 @@ function storeSpendPlan(env, uid, cur, delta, note, by, at) {
   writes.push({ update: { name: docName(env, "storeSpendLog/" + randomId()), fields: objToFields({ uid, deltaUsd: r2(delta), spentAfter: after, note, at, by }) }, currentDocument: { exists: false } });
   return { after, upd, writes };
 }
+// ===== محفظة المتجر (الخطوة 6أ): رصيد دولار منفصل عن رصيد اللعبة القابل للسحب + تحويل نقاط ↔ دولار =====
+// storeCustomers/{uid}.balanceUsd. كل حركة بتنسجّل بـstoreLedger. الإعدادات من الأدمن (config/storeWallet).
+// شرط أمان: سعر شراء النقاط (دولار←نقاط) لازم يعطي نقاط أقل أو يساوي سعر بيعها (نقاط←دولار)، وإلا في ربح مضمون بدورة تحويل.
+const STORE_WALLET_DEFAULTS = { pointsPerUsdSell: 925, pointsPerUsdBuy: 700, minConvertUsd: 1, weeklyCapUsd: 5, minActiveDays: 3, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 };
+function storeParseWallet(o) {
+  o = o || {}; const num = (v, d) => (v === undefined || v === "" || v === null ? d : Number(v));
+  const w = { pointsPerUsdSell: num(o.pointsPerUsdSell, STORE_WALLET_DEFAULTS.pointsPerUsdSell), pointsPerUsdBuy: num(o.pointsPerUsdBuy, STORE_WALLET_DEFAULTS.pointsPerUsdBuy), minConvertUsd: num(o.minConvertUsd, STORE_WALLET_DEFAULTS.minConvertUsd), weeklyCapUsd: num(o.weeklyCapUsd, STORE_WALLET_DEFAULTS.weeklyCapUsd), minActiveDays: num(o.minActiveDays, STORE_WALLET_DEFAULTS.minActiveDays), minTopupUsd: num(o.minTopupUsd, STORE_WALLET_DEFAULTS.minTopupUsd), maxTopupUsd: num(o.maxTopupUsd, STORE_WALLET_DEFAULTS.maxTopupUsd), maxProcessing: num(o.maxProcessing, STORE_WALLET_DEFAULTS.maxProcessing) };
+  const bad = (m) => { throw new ApiError("bad_wallet", m); };
+  if (!Number.isFinite(w.pointsPerUsdSell) || w.pointsPerUsdSell < 1 || w.pointsPerUsdSell > 1000000) bad("سعر بيع النقاط (نقطة لكل 1$) لازم يكون رقم بين 1 ومليون.");
+  if (!Number.isFinite(w.pointsPerUsdBuy) || w.pointsPerUsdBuy < 1 || w.pointsPerUsdBuy > 1000000) bad("سعر شراء النقاط (نقطة لكل 1$) لازم يكون رقم بين 1 ومليون.");
+  if (w.pointsPerUsdBuy > w.pointsPerUsdSell) bad("سعر شراء النقاط لازم يعطي نقاط أقل أو يساوي سعر بيعها (وإلا في ربح مضمون بدورة تحويل).");
+  if (!Number.isFinite(w.minConvertUsd) || w.minConvertUsd < 0.01 || w.minConvertUsd > 1000) bad("أقل مبلغ تحويل من 0.01$ لـ1000$.");
+  if (!Number.isFinite(w.weeklyCapUsd) || w.weeklyCapUsd < 0 || w.weeklyCapUsd > 100000) bad("الحد الأسبوعي من 0 (بدون حد) لـ100,000$.");
+  if (!Number.isInteger(w.minActiveDays) || w.minActiveDays < 0 || w.minActiveDays > 365) bad("أيام النشاط من 0 لـ365.");
+  if (!Number.isFinite(w.minTopupUsd) || w.minTopupUsd < 1 || w.minTopupUsd > 10000) bad("أقل إيداع من 1$ لـ10,000$.");
+  if (!Number.isFinite(w.maxTopupUsd) || w.maxTopupUsd < w.minTopupUsd || w.maxTopupUsd > 100000) bad("أعلى إيداع لازم يكون أكبر من أقل إيداع (وأقل من 100,000$).");
+  if (!Number.isInteger(w.maxProcessing) || w.maxProcessing < 1 || w.maxProcessing > 100) bad("عدد الطلبات المفتوحة من 1 لـ100.");
+  for (const k of ["minConvertUsd", "weeklyCapUsd", "minTopupUsd", "maxTopupUsd"]) w[k] = r2(w[k]);
+  return w;
+}
+async function storeLoadWallet(env) {
+  const d = await fsGetDoc(env, "config/storeWallet");
+  if (d.exists && d.data) { try { return { cfg: storeParseWallet(d.data), configured: true, updatedAt: Number(d.data.updatedAt) || 0 }; } catch (e) {} }
+  return { cfg: { ...STORE_WALLET_DEFAULTS }, configured: false, updatedAt: 0 };
+}
+const STORE_WEEK_MS = 7 * 86400000;
+function storeWalletView(c, game, cfg, now) {
+  const start = Number(c.p2uWindowStart) || 0, inWin = start && now - start < STORE_WEEK_MS, used = inWin ? Number(c.p2uWindowUsd) || 0 : 0;
+  return { pointsPerUsdSell: cfg.pointsPerUsdSell, pointsPerUsdBuy: cfg.pointsPerUsdBuy, minConvertUsd: cfg.minConvertUsd, weeklyCapUsd: cfg.weeklyCapUsd, minActiveDays: cfg.minActiveDays, minTopupUsd: cfg.minTopupUsd, maxTopupUsd: cfg.maxTopupUsd, weeklyUsedUsd: r2(used), weeklyLeftUsd: cfg.weeklyCapUsd > 0 ? r2(Math.max(0, cfg.weeklyCapUsd - used)) : null, windowEndsAt: inWin ? start + STORE_WEEK_MS : 0, game: { has: !!game.exists, points: game.exists ? Math.floor(Number(game.data.points) || 0) : 0, activeDays: game.exists ? Number(game.data.activeDays) || 0 : 0 } };
+}
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);
     const uid = validId(String(user.sub || ""));
     if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
-    const now = Date.now(), path = "storeCustomers/" + uid, { sizes } = await storeLoadVipSizes(env);
+    const now = Date.now(), path = "storeCustomers/" + uid, { sizes } = await storeLoadVipSizes(env), { cfg: wcfg } = await storeLoadWallet(env), gdoc = await fsGetDoc(env, "players/" + uid);
     const name = cleanText(user.name || (user.email ? String(user.email).split("@")[0] : ""), 60) || "زبون";
     const email = cleanText(user.email || "", 120);
     let cur = await fsGetDoc(env, path);
     if (!cur.exists) {
-      const c = { name, email, spentUsd: 0, createdAt: now, lastSeenAt: now };
+      const c = { name, email, spentUsd: 0, balanceUsd: 0, createdAt: now, lastSeenAt: now };
       try {
         await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(c) }, currentDocument: { exists: false } }]);
-        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c, sizes) }, 200);
+        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c, sizes), wallet: storeWalletView(c, gdoc, wcfg, now) }, 200);
       } catch (e) { if (!e.conflict) throw e; cur = await fsGetDoc(env, path); }          // طلبين بنفس اللحظة: التاني بيقرأ اللي انعمل
     }
     const upd = { lastSeenAt: now };
     if (!cur.data.name && name) upd.name = name;
     if (!cur.data.email && email) upd.email = email;
     await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { exists: true } }]);
-    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes) }, 200);
+    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes), wallet: storeWalletView({ ...cur.data, ...upd }, gdoc, wcfg, now) }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "store me error", error: String(e.message || e) });
@@ -1637,6 +1697,41 @@ async function handleStoreOrderApi(request, env, action) {
         const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, again.data, now, false) }, 200);
       }
       }
+    }
+    if (action === "convert") {
+      const { cfg } = await storeLoadWallet(env), dir = String(b.direction || "");
+      if (dir !== "points_to_usd" && dir !== "usd_to_points") throw new ApiError("bad_request", "طلب غلط.");
+      const amountUsd = r2(Number(b.amountUsd));
+      if (!Number.isFinite(amountUsd) || amountUsd < cfg.minConvertUsd || amountUsd > 10000) throw new ApiError("bad_amount", `أقل مبلغ للتحويل ${cfg.minConvertUsd}$.`);
+      const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
+      const lid = "c" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeLedger/" + lid);
+      if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, result: { direction: dir, amountUsd: Number(dup.data.amountUsd), points: Number(dup.data.points) } }, 200); }
+      const gd = await fsGetDoc(env, "players/" + uid);
+      if (!gd.exists) throw new ApiError("no_game", "افتح لعبة ياردوفا مرة بنفس الحساب أول (حتى يتفعّل رصيد النقاط).");
+      const out = await mutatePlayer(env, uid, async (p, now2) => {
+        const cd = await fsGetDoc(env, "storeCustomers/" + uid);
+        if (!cd.exists) throw new ApiError("no_account", "افتح حسابك أول (من ☰) وجرّب كمان مرة.");
+        const bal = r2(Number(cd.data.balanceUsd) || 0); let upd, pts, dUsd, dPts;
+        if (dir === "points_to_usd") {
+          if ((Number(p.activeDays) || 0) < cfg.minActiveDays) throw new ApiError("not_active_enough", `لازم ${cfg.minActiveDays} أيام نشاط بياردوفا قبل ما تحوّل نقاط لدولار (عندك ${Number(p.activeDays) || 0}).`);
+          pts = Math.ceil(amountUsd * cfg.pointsPerUsdSell - 1e-9);
+          if ((Number(p.points) || 0) < pts) throw new ApiError("not_enough_points", `بدك ${pts} نقطة وعندك ${Math.floor(Number(p.points) || 0)}.`);
+          const start = Number(cd.data.p2uWindowStart) || 0, inWin = start && now2 - start < STORE_WEEK_MS, used = inWin ? Number(cd.data.p2uWindowUsd) || 0 : 0;
+          if (cfg.weeklyCapUsd > 0 && used + amountUsd > cfg.weeklyCapUsd + 1e-9) throw new ApiError("weekly_cap", `الحد الأسبوعي لتحويل النقاط ${cfg.weeklyCapUsd}$، وباقي لك ${r2(Math.max(0, cfg.weeklyCapUsd - used))}$.`);
+          p.points = (Number(p.points) || 0) - pts; dUsd = amountUsd; dPts = -pts;
+          upd = { balanceUsd: r2(bal + amountUsd), p2uWindowStart: inWin ? start : now2, p2uWindowUsd: r2(used + amountUsd) };
+        } else {
+          if (bal + 1e-9 < amountUsd) throw new ApiError("insufficient_balance", `رصيدك ${bal}$ وما بيكفي.`);
+          pts = Math.floor(amountUsd * cfg.pointsPerUsdBuy + 1e-9);
+          if (pts < 1) throw new ApiError("bad_amount", "المبلغ صغير: ما بيعطي ولا نقطة.");
+          p.points = (Number(p.points) || 0) + pts; dUsd = -amountUsd; dPts = pts; upd = { balanceUsd: r2(bal - amountUsd) };
+        }
+        return { writes: [
+          { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: cd.updateTime } },
+          { update: { name: docName(env, "storeLedger/" + lid), fields: objToFields({ uid, type: dir, amountUsd: dUsd, points: dPts, balanceAfter: upd.balanceUsd, ref: reqId, note: "", at: now2, by: "customer" }) }, currentDocument: { exists: false } },
+        ], result: { direction: dir, amountUsd: dUsd, points: dPts, balanceUsd: upd.balanceUsd } };
+      });
+      return jsonResponse({ ok: true, result: { ...out.result, pointsBalance: Math.floor(Number(out.p.points) || 0) } }, 200);
     }
     if (action === "prices") {            // أسعار كل المنتجات الظاهرة بمستوى VIP تبع الزبون (بتتحسب بالسيرفر)
       const nodes = await storeAllNodes(env), { vip } = await storeCustomerCtx(env, uid), prices = {};
@@ -2745,7 +2840,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/convert", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
