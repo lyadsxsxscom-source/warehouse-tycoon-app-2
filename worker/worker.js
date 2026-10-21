@@ -1272,7 +1272,8 @@ function storeParseMethods(raw) {
 async function handleStoreCatalog(env) {
   const tree = storeTree(await storeAllNodes(env));
   const methods = (await storeLoadMethods(env)).filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, rate: m.rate, decimals: m.decimals, feePct: m.feePct }));
-  const r = jsonResponse({ ok: true, items: tree, methods }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
+  const { cfg: wcfg } = await storeLoadWallet(env);
+  const r = jsonResponse({ ok: true, items: tree, methods, wallet: { pointsPerUsd: wcfg.pointsPerUsd } }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
 }
 async function handleStoreImage(env, id) {
   const d = id ? await fsGetDoc(env, "storeImages/" + id) : { exists: false };

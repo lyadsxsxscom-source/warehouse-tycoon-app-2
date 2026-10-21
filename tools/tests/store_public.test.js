@@ -18,8 +18,8 @@ function open(opts = {}) {
   const calls = []; let mode = opts.mode || "ok", tree = opts.tree || TREE; const methods = opts.methods === undefined ? METHODS : opts.methods;
   const dom = new JSDOM(html, { url: "https://yardova.ly-ad.de/store/", runScripts: "dangerously", pretendToBeVisual: true, beforeParse(w) {
     w.scrollTo = () => {};
-    if (opts.blockedStorage) Object.defineProperty(w, "localStorage", { get() { throw new Error("blocked"); } }); else if (opts.saved) w.localStorage.setItem("store_method", opts.saved);
-    w.fetch = async (url) => { calls.push(String(url)); if (opts.delay) await new Promise(r => setTimeout(r, opts.delay)); if (mode === "net") throw new Error("offline"); if (mode === "bad") return { ok: true, status: 200, json: async () => ({ ok: false }) }; return { ok: true, status: 200, json: async () => ({ ok: true, items: tree, methods }) }; };
+    if (opts.blockedStorage) Object.defineProperty(w, "localStorage", { get() { throw new Error("blocked"); } }); else if (opts.saved) w.localStorage.setItem("store_unit", opts.saved);
+    w.fetch = async (url) => { calls.push(String(url)); if (opts.delay) await new Promise(r => setTimeout(r, opts.delay)); if (mode === "net") throw new Error("offline"); if (mode === "bad") return { ok: true, status: 200, json: async () => ({ ok: false }) }; return { ok: true, status: 200, json: async () => ({ ok: true, items: tree, methods, ...(opts.wallet ? { wallet: opts.wallet } : {}) }) }; };
   } });
   return { dom, d: dom.window.document, w: dom.window, calls, setMode: m => { mode = m; }, setTree: t => { tree = t; } };
 }
@@ -35,21 +35,21 @@ const crumbs = (d) => d.getElementById("crumbs").textContent.replace(/\s+/g, "")
     ok(crumbs(d) === "الرئيسية" && d.querySelector("#crumbs b") && cards(d).length === 3, "home: the path shows 'الرئيسية' and every top-level entry is a card");
     ok(nm(cards(d)[0]) === "PUBG" && cards(d)[0].tagName === "BUTTON" && cards(d)[0].querySelector("img").getAttribute("src") === "https://postback.ly-ad.de/store/img/nA?v=1", "a folder is a tappable card with its picture");
     ok(nm(cards(d)[2]) === "منتج بالرئيسية" && cards(d)[2].tagName === "DIV" && cards(d)[2].querySelector("button.order-btn") && cards(d)[2].querySelector("button.order-btn").textContent === "اطلب" && cards(d)[2].querySelector("button.order-btn").dataset.order === "nE", "a product at the top has an 'اطلب' (order) button");
-    const chips = [...d.querySelectorAll("#methods .chip")];
-    ok(!d.getElementById("methods").hidden && chips.map(c => c.textContent).join("|") === "شام كاش|USDT" && chips[0].getAttribute("aria-pressed") === "true" && chips[1].getAttribute("aria-pressed") === "false", "the payment methods are shown as buttons, the first one selected");
-    ok(/143 ل\.س/.test(cards(d)[2].querySelector(".pr").textContent) && /\$1\.00/.test(cards(d)[2].querySelector(".pr small").textContent), "prices are shown in the selected method's currency (dollar price x rate), with the dollar price underneath");
-    chips[1].click(); await sleep(30);
-    ok(d.querySelectorAll("#methods .chip")[1].getAttribute("aria-pressed") === "true" && /1\.02 USDT/.test(cards(d)[2].querySelector(".pr").textContent) && h.w.location.hash === "", "choosing another method changes every price at once (the extra percentage is included and 1.015 rounds to 1.02) without leaving the page");
-    ok(h.w.localStorage.getItem("store_method") === "usdt", "his choice is remembered");
-    d.querySelectorAll("#methods .chip")[0].click(); await sleep(30);
+    const seg = [...d.querySelectorAll("#walletBar [data-unit]")];
+    ok(seg.map(c => c.textContent).join("|") === "$ دولار|نقاط" && seg[0].getAttribute("aria-pressed") === "true" && seg[1].getAttribute("aria-pressed") === "false" && !d.getElementById("btnTopup") && !d.getElementById("methods"), "signed out: the top bar has a '$ / points' switch (dollars selected) and no balance or payment-method chips");
+    ok(/\$1\.00/.test(cards(d)[2].querySelector(".pr").textContent.split("1,000")[0]) && /1,000 نقطة/.test(cards(d)[2].querySelector(".pr small").textContent), "prices are in dollars with the points underneath ($1.00 and 1,000 points)");
+    seg[1].click(); await sleep(30);
+    ok(d.querySelectorAll("#walletBar [data-unit]")[1].getAttribute("aria-pressed") === "true" && /^1,000 نقطة/.test(cards(d)[2].querySelector(".pr").textContent) && /\$1\.00/.test(cards(d)[2].querySelector(".pr small").textContent) && h.w.location.hash === "", "switching to points shows every price in points (dollars underneath) without leaving the page");
+    ok(h.w.localStorage.getItem("store_unit") === "pts", "his choice is remembered");
+    d.querySelectorAll("#walletBar [data-unit]")[0].click(); await sleep(30);
 
     /* ---- navigate ---- */
     cards(d)[0].click(); await sleep(30);
-    ok(h.w.location.hash === "#/nA" && crumbs(d) === "الرئيسية›PUBG" && cards(d).map(nm).join("|") === "فوري|بطاقة داخل PUBG" && /7,125 ل\.س/.test(cards(d)[1].textContent), "opening a folder shows its path and what is inside; prices keep the chosen method");
+    ok(h.w.location.hash === "#/nA" && crumbs(d) === "الرئيسية›PUBG" && cards(d).map(nm).join("|") === "فوري|بطاقة داخل PUBG" && /\$50\.00/.test(cards(d)[1].textContent) && /50,000 نقطة/.test(cards(d)[1].textContent), "opening a folder shows its path and what is inside; prices keep the chosen unit");
     ok(h.d.title.startsWith("PUBG |"), "the page title follows the folder");
     cards(d)[0].click(); await sleep(30);
     ok(crumbs(d) === "الرئيسية›PUBG›فوري" && cards(d).map(nm).join("|") === "60 UC|660 UC", "a folder inside a folder (PUBG > فوري)");
-    ok(/131 ل\.س/.test(cards(d)[0].textContent) && /\$0\.92/.test(cards(d)[0].textContent) && /1,248 ل\.س/.test(cards(d)[1].textContent) && /\$8\.76/.test(cards(d)[1].textContent) && cards(d)[0].querySelector("img") && !cards(d)[1].querySelector("img") && /🎮/.test(cards(d)[1].querySelector(".pic").textContent), "products show picture (or a placeholder), the converted price and the dollar price (0.92 x 142.5 = 131, 8.76 x 142.5 = 1,248)");
+    ok(/\$0\.92/.test(cards(d)[0].querySelector(".pr").textContent) && /920 نقطة/.test(cards(d)[0].textContent) && /\$8\.76/.test(cards(d)[1].querySelector(".pr").textContent) && /8,760 نقطة/.test(cards(d)[1].textContent) && cards(d)[0].querySelector("img") && !cards(d)[1].querySelector("img") && /🎮/.test(cards(d)[1].querySelector(".pic").textContent), "products show picture (or a placeholder), the dollar price and the points (0.92 = 920, 8.76 = 8,760)");
     d.querySelector('#crumbs a[href="#/nA"]').click(); await sleep(30); ok(crumbs(d) === "الرئيسية›PUBG", "tapping a name in the path goes back to that folder");
     d.querySelector('#crumbs a[href="#"]').click(); await sleep(30); ok(crumbs(d) === "الرئيسية" && cards(d).length === 3, "'الرئيسية' goes back to the top");
     h.w.location.hash = "#/zzz"; await sleep(30); ok(d.getElementById("noteMsg") && /مو موجود/.test(d.getElementById("noteMsg").textContent) && cards(d).length === 3, "a link to something that no longer exists shows a note and the home page");
@@ -63,15 +63,13 @@ const crumbs = (d) => d.getElementById("crumbs").textContent.replace(/\s+/g, "")
     ok(d.querySelector("#catalog img[src=x]") === null && nm(evil) === "<img src=x onerror=alert(1)>" && !evil.querySelector("img"), "names are plain text, and a picture from another website is never loaded");
     evil.click(); await sleep(30); ok(!d.querySelector("#catalog img") && /🎮/.test(cards(d)[0].querySelector(".pic").textContent), "a javascript: picture link is ignored too");
   }
-  /* ---- payment methods: remembered, none, invalid, blocked storage ---- */
-  { const h = open({ saved: "usdt" }); await sleep(100); ok(h.d.querySelectorAll("#methods .chip")[1].getAttribute("aria-pressed") === "true" && /1\.02 USDT/.test(cards(h.d)[2].textContent), "a returning visitor gets his last method"); }
-  { const h = open({ saved: "gone" }); await sleep(100); ok(h.d.querySelectorAll("#methods .chip")[0].getAttribute("aria-pressed") === "true", "a remembered method that no longer exists falls back to the first"); }
-  { const h = open({ methods: [] }); await sleep(100); const pr = cards(h.d)[2].querySelector(".pr");
-    ok(h.d.getElementById("methods").hidden && pr.textContent === "$1.00" && !pr.querySelector("small"), "with no payment methods the prices are simply in dollars"); }
-  { const h = open({ methods: [{ id: "a", name: "ok", currency: "x", rate: 2, decimals: 0, feePct: 0 }, { id: "b", name: "no rate", currency: "x", rate: 0, decimals: 0 }, { id: "c", name: "no currency", currency: "", rate: 3, decimals: 0 }, null] }); await sleep(100);
-    ok([...h.d.querySelectorAll("#methods .chip")].map(c => c.textContent).join() === "ok", "a method with a bad rate or no currency symbol is ignored"); }
-  { const h = open({ blockedStorage: true }); await sleep(100); h.d.querySelectorAll("#methods .chip")[1].click(); await sleep(30);
-    ok(/1\.02 USDT/.test(cards(h.d)[2].textContent), "if the phone blocks storage the store still works"); }
+  /* ---- the unit: remembered, rate from the server, blocked storage ---- */
+  { const h = open({ saved: "pts" }); await sleep(100); ok(h.d.querySelectorAll("#walletBar [data-unit]")[1].getAttribute("aria-pressed") === "true" && /^1,000 نقطة/.test(cards(h.d)[2].querySelector(".pr").textContent), "a returning visitor gets his last choice (points)"); }
+  { const h = open({ saved: "gone" }); await sleep(100); ok(h.d.querySelectorAll("#walletBar [data-unit]")[0].getAttribute("aria-pressed") === "true", "an unknown remembered value falls back to dollars"); }
+  { const h = open({ wallet: { pointsPerUsd: 500 } }); await sleep(100); ok(/500 نقطة/.test(cards(h.d)[2].querySelector(".pr small").textContent), "the points rate comes from the server (500 points = $1 here)"); }
+  { const h = open({ wallet: { pointsPerUsd: "x" } }); await sleep(100); ok(/1,000 نقطة/.test(cards(h.d)[2].querySelector(".pr small").textContent), "a bad rate from the server is ignored (1000 stays)"); }
+  { const h = open({ blockedStorage: true }); await sleep(100); h.d.querySelectorAll("#walletBar [data-unit]")[1].click(); await sleep(30);
+    ok(/^1,000 نقطة/.test(cards(h.d)[2].querySelector(".pr").textContent), "if the phone blocks storage the switch still works"); }
   /* ---- empty and errors ---- */
   { const h = open({ tree: [] }); await sleep(100); ok(/ما في منتجات هلق/.test(h.d.getElementById("emptyNote").textContent) && crumbs(h.d) === "الرئيسية", "an empty store says so"); }
   { const h = open({ mode: "net" }); await sleep(100);

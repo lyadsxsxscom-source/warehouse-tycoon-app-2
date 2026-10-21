@@ -164,6 +164,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(leaf.priceUsd === 1 && !("prices" in leaf) && !("price" in leaf) && /^\/store\/img\/n/.test(leaf.imageUrl) && !("enabled" in leaf) && !("sort" in leaf), "the public price is the VIP 1 price only; the other VIP prices are never sent to the public");
   ok(cj.methods.length === 2 && cj.methods[0].name === "شام كاش" && cj.methods[0].rate === 142.5 && cj.methods[1].feePct === 1.5 && !cj.methods.some(m => m.name === "مخفية") && !("enabled" in cj.methods[0]), "the catalog carries the ENABLED payment methods with their rate, decimals and extra percentage");
   ok((await (await pub("/store/catalog", "POST")).json()).items.length === 1, "also works as POST");
+  ok(cj.wallet && cj.wallet.pointsPerUsd === 1000 && Object.keys(cj.wallet).join() === "pointsPerUsd", "the public catalog also tells the page the points rate (1000 per dollar by default), and nothing else about the wallet");
   await adm({ action: "save", id: I2.id, name: "I2", prices: [2], enabled: true });
   cj = await (await pub("/store/catalog")).json(); ok(cj.items[0].children[0].children.map(x => x.name).join() === "I1,I2,I3", "turning a product on makes it appear in its place");
   await save([]); cj = await (await pub("/store/catalog")).json(); ok(Array.isArray(cj.methods) && cj.methods.length === 0, "with no methods the list is empty (the page then shows dollars only)");

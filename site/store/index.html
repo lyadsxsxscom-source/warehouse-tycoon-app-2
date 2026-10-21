@@ -88,6 +88,13 @@ body.lock{overflow:hidden}
 .fill{height:100%;background:var(--tape)}
 .prog{color:var(--ink);font-size:.98rem;line-height:1.6}
 .mnote{border:2px dashed var(--edge);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.98rem;line-height:1.7}
+.wallet{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:0 0 16px;padding:10px 12px;border:3px solid var(--edge);border-radius:12px;background:var(--panel)}
+.wallet .bal{flex:1;min-width:150px}
+.wallet .bal .lb{color:var(--muted);font-size:.95rem}
+.wallet .bal b{font-size:1.3rem;direction:ltr;display:inline-block;margin-inline-start:8px}
+.wallet .bal small{display:block;color:var(--muted);font-size:.85rem;direction:ltr;text-align:start}
+.wallet .cta-btn{min-width:0;padding:6px 14px;font-size:.95rem}
+.seg{display:flex;gap:6px;margin-inline-start:auto}
 .order-btn{display:block;width:100%;margin-top:10px;font:inherit;font-weight:700;font-size:1rem;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:8px 10px;cursor:pointer}
 .vipnote{display:block;font-size:.78rem;font-weight:700;color:#10211C}
 .scrim2{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:55}
@@ -135,7 +142,7 @@ body.lock{overflow:hidden}
 </section>
 <main class="wrap" id="app">
   <nav class="crumbs" id="crumbs" aria-label="المسار"></nav>
-  <div class="methods" id="methods" hidden></div>
+  <div class="wallet" id="walletBar"></div>
   <div id="catalog" aria-live="polite"></div>
 </main>
 <section class="wrap" id="merchantCta" aria-labelledby="mcTitle">
@@ -167,7 +174,7 @@ body.lock{overflow:hidden}
 <script>
 // متجر الشدات (الخطوة 2): بيعرض الشجرة اللي بنيتها بالأدمن (أقسام بصور ← منتجات بأسعارها). بدون طلبات بعد.
 const API = 'https://postback.ly-ad.de';
-let TREE = null, METHODS = [], METHOD = null;       // METHOD: طريقة الدفع المختارة (null = دولار بس)
+let TREE = null;
 const $ = id => document.getElementById(id);
 function el(tag, attrs, ...kids){
   const e = document.createElement(tag);
@@ -176,12 +183,9 @@ function el(tag, attrs, ...kids){
 }
 const roundTo = (x, d) => Math.round(Number((x * Math.pow(10, d)).toPrecision(12))) / Math.pow(10, d);   // toPrecision: حتى ما يطلع 1.01 بدل 1.02 بسبب كسور الفاصلة
 const fmtUsd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-// السعر بعملة طريقة الدفع: بالدولار × سعر الصرف × (1 + النسبة الإضافية)
-function priceIn(m, usd){ const d = Number(m.decimals); return roundTo(Number(usd) * Number(m.rate) * (1 + (Number(m.feePct) || 0) / 100), d).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + m.currency; }
 let PRICES = null, PRICE_VIP = 1;                                  // أسعار المنتجات بمستوى الزبون المسجّل (من السيرفر)
 function priceBox(usd){
-  const box = el('span', { class: 'pr' });
-  if(METHOD){ box.append(document.createTextNode(priceIn(METHOD, usd)), el('small', { text: fmtUsd(usd) })); } else box.textContent = fmtUsd(usd);
+  const box = el('span', { class: 'pr' }); box.append(document.createTextNode(money(usd)), el('small', { text: moneyAlt(usd) }));
   return box;
 }
 function imgSrc(u){ return typeof u === 'string' && /^\/store\/img\/[A-Za-z0-9_-]+(\?v=\d+)?$/.test(u) ? API + u : ''; }   // بس صور من سيرفرنا
@@ -207,17 +211,10 @@ function itemCard(n){
   if(PRICES && mine !== n.priceUsd) pb.append(el('span', { class: 'vipnote', text: 'سعرك VIP ' + PRICE_VIP }));
   return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), pb, el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: 'اطلب' })));
 }
-function savedMethod(){ try{ return localStorage.getItem('store_method') || ''; }catch(e){ return ''; } }
-function renderMethods(){
-  const bar = $('methods'); bar.textContent = '';
-  bar.hidden = !METHODS.length; if(!METHODS.length) return;
-  bar.append(el('span', { class: 'lb', text: 'الدفع عبر:' }));
-  METHODS.forEach(m => { const c = el('button', { class: 'chip', type: 'button', 'data-m': m.id, 'aria-pressed': METHOD && METHOD.id === m.id ? 'true' : 'false', text: m.name }); bar.append(c); });
-}
 function render(){
   const box = $('catalog'), cr = $('crumbs'); box.textContent = ''; cr.textContent = '';
   if(TREE === null) return;
-  renderMethods();
+  renderWallet();
   const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
   let trail = id ? findPath(TREE, id, []) : [];
   let note = '';
@@ -240,8 +237,7 @@ async function load(){
   try{
     const res = await fetch(API + '/store/catalog'); const j = await res.json();
     if(!res.ok || !j.ok || !Array.isArray(j.items)) throw new Error('bad');
-    TREE = j.items; METHODS = Array.isArray(j.methods) ? j.methods.filter(m => m && m.id && m.currency && Number(m.rate) > 0) : [];
-    METHOD = METHODS.find(m => m.id === savedMethod()) || METHODS[0] || null;          // أول طريقة افتراضياً، وبنتذكّر اختيار الزبون
+    TREE = j.items; if(j.wallet && Number(j.wallet.pointsPerUsd) > 0) WALLET.pointsPerUsd = Number(j.wallet.pointsPerUsd);
     render();
   }catch(e){
     box.textContent = '';
@@ -249,11 +245,6 @@ async function load(){
     box.append(st); $('btnRetry').onclick = load;
   }
 }
-$('methods').addEventListener('click', e => {
-  const c = e.target.closest('[data-m]'); if(!c) return; METHOD = METHODS.find(m => m.id === c.dataset.m) || METHOD;
-  try{ localStorage.setItem('store_method', METHOD.id); }catch(err){}
-  render();
-});
 $('catalog').addEventListener('click', e => {
   const ob = e.target.closest('[data-order]'); if(ob){ openOrder(ob.dataset.order); return; } const b = e.target.closest('[data-go]'); if(b){ location.hash = '#/' + encodeURIComponent(b.dataset.go); window.scrollTo(0, 0); } });
 window.addEventListener('hashchange', render);
@@ -274,7 +265,7 @@ function authMsg(err){
   return 'تعذّر الدخول. جرّب كمان مرة.';
 }
 function renderDrawer(){
-  renderCta();
+  renderCta(); renderWallet();
   const b = $('drBody'); b.textContent = '';
   if(!auth){ b.append(el('div', { class: 'msg err', id: 'accMsg', text: 'تعذّر تحميل تسجيل الدخول. حدّث الصفحة وجرّب كمان مرة.' })); return; }
   if(!USER){
@@ -292,6 +283,8 @@ function renderDrawer(){
     el('div', { class: 'acc-row' }, el('span', { text: 'مستوى VIP' }), el('span', { class: 'vipbadge', id: 'accVip', text: 'VIP ' + c.vip })),
     progBox(c),
     merchantNote(c),
+    el('div', { class: 'acc-row' }, el('span', { text: 'رصيدك' }), el('b', { id: 'accBalance', dir: 'ltr', text: money(c.balanceUsd) })),
+    el('button', { class: 'btn-main', id: 'btnDrTopup', type: 'button', style: 'margin-top:10px;', text: '➕ شحن الرصيد' }),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
     ordersSection(),
     el('button', { class: 'btn-ghost', id: 'btnMerchant', type: 'button', text: '🏪 هل أنت تاجر؟ تواصل معنا' }),
@@ -318,7 +311,7 @@ async function _loadCustomer(){
     const token = await USER.getIdToken();
     const res = await fetch(API + '/store/me', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: '{}' });
     const j = await res.json(); if(!res.ok || !j.ok || !j.customer) throw new Error('bad');
-    CUSTOMER = j.customer; ACC = 'ok';
+    CUSTOMER = j.customer; if(j.wallet) WALLET = { ...WALLET, ...j.wallet }; ACC = 'ok';
   }catch(e){ ACC = 'error'; }
   renderDrawer();
   if(ACC === 'ok'){ loadPrices(); loadMyOrders(); }
@@ -382,15 +375,40 @@ function renderCta(){
   $('ctaHint').hidden = !!(USER && ACC === 'ok' && CUSTOMER);
 }
 renderCta();
-// ===== الطلب: نافذة (Player ID وطريقة الدفع) ثم تعليمات الدفع ورفع الإيصال، وقائمة "طلباتي" =====
-const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', payment_submitted: 'دفعك قيد المراجعة', done: 'تم التنفيذ ✅', rejected: 'مرفوض', cancelled: 'ملغى', expired: 'انتهت صلاحيته', refunded: 'مسترجع' };
-let MY = [], MY_STATE = 'idle', QUOTE = null, ORD = null, SH = { step: 'closed', item: null, methodId: '', pid: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null };
+// ===== المحفظة (رصيد بالدولار + عرض $ أو نقاط) + الشراء من الرصيد + إيداع الرصيد =====
+const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', processing: 'قيد التنفيذ', payment_submitted: 'دفعك قيد المراجعة', done: 'تم التنفيذ ✅', rejected: 'مرفوض', cancelled: 'ملغى', expired: 'انتهت صلاحيته', refunded: 'مسترجع' };
+let WALLET = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000 };
+let UNIT = (() => { try{ return localStorage.getItem('store_unit') === 'pts' ? 'pts' : 'usd'; }catch(e){ return 'usd'; } })();      // وحدة العرض: دولار أو نقاط (المخزّن دايماً دولار)
+let MY = [], MY_STATE = 'idle', QUOTE = null, TQ = null, ORD = null, ordTriggerSel = '', tqTimer = null;      // ordTriggerSel: الزر اللي فتح النافذة (بنرجّع له التركيز حتى لو انرسم من جديد)
+const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null });
+let SH = freshSheet('closed');
+const rate = () => Number(WALLET.pointsPerUsd) || 1000;
+const ptsStr = usd => Math.round(Number(usd) * rate()).toLocaleString('en-US') + ' نقطة';
+const money = usd => UNIT === 'pts' ? ptsStr(usd) : fmtUsd(usd);
+const moneyAlt = usd => UNIT === 'pts' ? fmtUsd(usd) : ptsStr(usd);
+function setUnit(u){
+  UNIT = u === 'pts' ? 'pts' : 'usd'; try{ localStorage.setItem('store_unit', UNIT); }catch(e){}
+  renderWallet(); render(); renderDrawer(); if(SH.step !== 'closed') renderSheet();
+}
+function renderWallet(){
+  const bar = $('walletBar'); if(!bar) return; bar.textContent = '';
+  if(USER && auth && ACC === 'ok' && CUSTOMER){
+    bar.append(el('div', { class: 'bal', id: 'walBalance' }, el('span', { class: 'lb', text: 'رصيدك' }), el('b', { id: 'walAmount', text: money(CUSTOMER.balanceUsd || 0) }), el('small', { id: 'walAlt', text: moneyAlt(CUSTOMER.balanceUsd || 0) })), el('button', { class: 'cta-btn', id: 'btnTopup', type: 'button', text: '➕ شحن الرصيد' }));
+  }
+  bar.append(el('div', { class: 'seg', role: 'group', 'aria-label': 'عرض الأسعار' },
+    el('button', { class: 'chip', type: 'button', 'data-unit': 'usd', 'aria-pressed': UNIT === 'usd' ? 'true' : 'false', text: '$ دولار' }),
+    el('button', { class: 'chip', type: 'button', 'data-unit': 'pts', 'aria-pressed': UNIT === 'pts' ? 'true' : 'false', text: 'نقاط' })));
+}
+$('walletBar').addEventListener('click', e => {
+  const u = e.target.closest('[data-unit]'); if(u){ setUnit(u.dataset.unit); return; }
+  if(e.target.closest('#btnTopup')){ ordTriggerSel = '#btnTopup'; openTopup(); }
+});
 async function apiAuth(path, body){
   if(!USER) throw Object.assign(new Error('سجّل دخول أول.'), { code: 'no_user' });
   const token = await USER.getIdToken();
   const res = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(body || {}) });
   let j = {}; try{ j = await res.json(); }catch(e){}
-  if(!res.ok || !j.ok){ const err = new Error(j.message || 'صار خطأ، جرّب كمان مرة.'); err.code = j.error; throw err; }
+  if(!res.ok || !j.ok){ const err = new Error(j.message || 'صار خطأ، جرّب كمان مرة.'); err.code = j.error; err.data = j; throw err; }
   return j;
 }
 function newRid(){ const a = new Uint8Array(12); try{ crypto.getRandomValues(a); }catch(e){ for(let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); } return 'r' + [...a].map(x => x.toString(16).padStart(2, '0')).join(''); }
@@ -399,6 +417,9 @@ const orderAmount = o => amountStr({ amount: o.amount, decimals: o.method.decima
 function findItem(nodes, id){ for(const n of nodes){ if(n.id === id) return n; if(n.children){ const r = findItem(n.children, id); if(r) return r; } } return null; }
 async function loadPrices(){
   try{ const j = await apiAuth('/store/prices'); PRICES = j.prices && typeof j.prices === 'object' ? j.prices : null; PRICE_VIP = Number(j.vip) || 1; render(); }catch(e){ PRICES = null; }
+}
+async function refreshBalance(){
+  try{ const j = await apiAuth('/store/me'); if(j.customer){ CUSTOMER = j.customer; if(j.wallet) WALLET = { ...WALLET, ...j.wallet }; renderWallet(); renderDrawer(); } }catch(e){}
 }
 async function loadMyOrders(){
   MY_STATE = 'loading'; if(!$('drawer').hidden) renderDrawer();
@@ -411,37 +432,39 @@ function ordersSection(){
   if(MY_STATE === 'loading' || MY_STATE === 'idle') box.append(el('p', { class: 'hint', id: 'myLoading', text: 'عم نحمّل طلباتك...' }));
   else if(MY_STATE === 'error') box.append(el('p', { class: 'hint', id: 'myError', text: 'تعذّر تحميل طلباتك. اضغط 🔄.' }));
   else if(!MY.length) box.append(el('p', { class: 'hint', id: 'myEmpty', text: 'ما عندك طلبات بعد.' }));
-  else MY.slice(0, 10).forEach(o => box.append(el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: ORDER_ST[o.status] || o.status })), el('div', { class: 'b', text: o.itemName + ' · ' + orderAmount(o) }))));
+  else MY.slice(0, 10).forEach(o => box.append(el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: ORDER_ST[o.status] || o.status })), el('div', { class: 'b', text: o.kind === 'topup' ? 'إيداع رصيد · ' + money(o.priceUsd) : o.itemName + ' · ' + (o.kind === 'order' ? money(o.priceUsd) : orderAmount(o)) }))));
   return box;
 }
 // ---- النافذة
 function showSheet(){ $('osheet').hidden = false; $('scrim2').hidden = false; document.body.classList.add('lock'); }
 function stopTimer(){ if(SH.timer){ clearInterval(SH.timer); SH.timer = null; } }
 function closeSheet(){
-  stopTimer(); $('osheet').hidden = true; $('scrim2').hidden = true; SH.step = 'closed';
+  stopTimer(); clearTimeout(tqTimer); $('osheet').hidden = true; $('scrim2').hidden = true; SH.step = 'closed';
   if($('drawer').hidden) document.body.classList.remove('lock');
-  const t = ordTrigger && document.body.contains(ordTrigger) ? ordTrigger : $('btnMenu'); t.focus();
+  const t = (ordTriggerSel && document.querySelector(ordTriggerSel)) || $('btnMenu'); t.focus();
 }
-let ordTrigger = null;
+async function needAccount(msg){
+  if(!USER || !auth){ ACC_MSG = msg; openDrawer(); return false; }
+  if(ACC !== 'ok'){ if(!ACC_P || ACC === 'error' || ACC === 'idle') loadCustomer(); await ACC_P; if(ACC !== 'ok'){ openDrawer(); return false; } }
+  return true;
+}
 async function openOrder(itemId){
   const item = findItem(TREE || [], itemId); if(!item) return;
-  ordTrigger = document.activeElement;
-  if(!USER || !auth){ ACC_MSG = 'سجّل دخول عشان تطلب.'; openDrawer(); return; }
-  if(ACC !== 'ok'){ if(!ACC_P || ACC === 'error' || ACC === 'idle') loadCustomer(); await ACC_P; if(ACC !== 'ok'){ openDrawer(); return; } }
-  SH = { step: 'loading', item, methodId: '', pid: '', msg: '', ok: '', busy: false, rid: newRid(), img: undefined, ref: '', timer: null };
+  ordTriggerSel = '[data-order="' + itemId + '"]';
+  if(!(await needAccount('سجّل دخول عشان تطلب.'))) return;
+  SH = freshSheet('loading'); SH.item = item; SH.rid = newRid();
   showSheet(); renderSheet(); $('osClose').focus();
-  try{ QUOTE = (await apiAuth('/store/quote', { itemId })).quote; SH.step = 'form'; SH.methodId = QUOTE.methods[0] ? QUOTE.methods[0].id : ''; }
+  try{ QUOTE = (await apiAuth('/store/quote', { itemId })).quote; SH.step = 'form'; }
   catch(e){ SH.step = 'error'; SH.msg = e.message; }
   renderSheet();
 }
 function openExisting(id){
   const o = MY.find(x => x.id === id); if(!o) return;
-  ordTrigger = $('btnMenu'); closeDrawerQuiet();
-  ORD = o; SH = { step: 'pay', item: null, methodId: '', pid: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null };
-  showSheet(); renderSheet(); startTimer(); $('osClose').focus();
+  ordTriggerSel = '#btnMenu'; closeDrawerQuiet();
+  ORD = o; SH = freshSheet('pay'); showSheet(); renderSheet(); startTimer(); $('osClose').focus();
 }
 function closeDrawerQuiet(){ $('drawer').hidden = true; $('scrim').hidden = true; $('btnMenu').setAttribute('aria-expanded', 'false'); }
-function startTimer(){ stopTimer(); SH.timer = setInterval(() => { if(SH.step === 'pay' && ORD && ORD.status === 'awaiting_payment') { const t = $('osTimer'); if(t) t.textContent = timerText(ORD); } }, 30000); }
+function startTimer(){ stopTimer(); SH.timer = setInterval(() => { if(SH.step === 'pay' && ORD && ORD.kind !== 'order' && ORD.status === 'awaiting_payment'){ const t = $('osTimer'); if(t) t.textContent = timerText(ORD); } }, 30000); }
 function timerText(o){
   const left = Number(o.quoteEndsAt) - Date.now();
   if(left <= 0) return 'انتهت صلاحية السعر. إذا دفعت هلق ممكن يتغيّر المبلغ، فتواصل معنا لتأكيده.';
@@ -452,44 +475,92 @@ function renderSheet(){
   if(SH.step === 'closed') return;
   if(SH.step === 'loading'){ $('osTitle').textContent = 'اطلب'; b.append(el('p', { id: 'osLoading', text: 'عم نحمّل السعر...' })); return; }
   if(SH.step === 'error'){ $('osTitle').textContent = 'اطلب'; b.append(el('div', { class: 'warn', id: 'osError', role: 'alert', text: SH.msg || 'تعذّر تحميل السعر. جرّب كمان مرة.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return; }
-  if(SH.step === 'form') renderForm(b); else renderPay(b);
+  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else renderPay(b);
 }
 function msgBox(){ return el('div', { class: 'msg' + (SH.msg ? ' err' : ''), id: 'osMsg', role: 'alert', text: SH.msg || SH.ok || '' }); }
+// ---- الشراء من الرصيد
 function renderForm(b){
   const it = SH.item, q = QUOTE; $('osTitle').textContent = 'اطلب: ' + it.name;
-  b.append(el('div', { class: 'sum' }, el('div', { text: 'سعرك حسب مستواك VIP ' + q.vip + ': ' + fmtUsd(q.priceUsd) })));
+  b.append(el('div', { class: 'sum' }, el('div', { id: 'osPrice', text: 'سعرك حسب مستواك VIP ' + q.vip + ': ' + money(q.priceUsd) }), el('div', { id: 'osBal', text: 'رصيدك: ' + money(q.balanceUsd) }), q.enough ? el('div', { id: 'osAfter', text: 'بعد الشراء: ' + money(q.balanceUsd - q.priceUsd) }) : document.createTextNode('')));
   const pid = el('input', { class: 'tx', id: 'osPid', type: 'text', maxlength: '40', autocomplete: 'off', inputmode: 'text', 'aria-describedby': 'osPidHint' }); pid.value = SH.pid;
   b.append(el('label', { class: 'f', for: 'osPid', text: 'معرّف اللاعب (Player ID)' }), pid, el('div', { class: 'warn', id: 'osPidHint', text: '⚠️ تأكد من المعرّف: الشحن بيتم عليه، وما في استرجاع إذا كان غلط.' }));
-  if(!q.methods.length){ b.append(el('div', { class: 'warn', id: 'osNoMethods', text: 'ما في طرق دفع متاحة هلق. تواصل معنا.' })); return; }
-  const opts = el('div', { class: 'opts', role: 'radiogroup', 'aria-label': 'طريقة الدفع' });
-  q.methods.forEach(m => opts.append(el('button', { class: 'chip', type: 'button', role: 'radio', 'data-mid': m.id, 'aria-checked': SH.methodId === m.id ? 'true' : 'false', 'aria-pressed': SH.methodId === m.id ? 'true' : 'false', text: m.name })));
-  const cur = q.methods.find(m => m.id === SH.methodId);
-  b.append(el('label', { class: 'f', text: 'طريقة الدفع' }), opts, el('div', { class: 'big', id: 'osAmount', text: cur ? amountStr(cur) : '' }), el('div', { class: 'hint', text: 'بتأكّد الطلب وبتشوف تعليمات التحويل. السعر صالح ' + q.validMinutes + ' دقيقة بعد التأكيد.' }), msgBox(), el('button', { class: 'btn-main', id: 'osSubmit', type: 'button', text: 'تأكيد الطلب' }));
-  if(SH.busy) $('osBody').querySelector('#osSubmit').disabled = true;
+  if(!q.enough){ b.append(el('div', { class: 'warn', id: 'osShort', role: 'alert', text: 'رصيدك ما بيكفي: ناقصك ' + money(q.shortUsd) + '.' }), msgBox(), el('button', { class: 'btn-main', id: 'osTopup', type: 'button', text: '➕ شحن الرصيد' })); return; }
+  b.append(el('div', { class: 'hint', text: 'بينخصم السعر من رصيدك فوراً، وبننفّذ طلبك وبنبلّغك.' }), msgBox(), el('button', { class: 'btn-main', id: 'osSubmit', type: 'button', text: 'اشتري الآن' }));
+  if(SH.busy) b.querySelector('#osSubmit').disabled = true;
 }
-function copyBtn(text){ return el('button', { class: 'dr-close', type: 'button', 'data-copy': text, style: 'margin-top:4px;', text: '📋 نسخ' }); }
+// ---- إيداع الرصيد
+async function openTopup(pre){
+  if(!ordTriggerSel) ordTriggerSel = '#btnMenu';
+  if(!(await needAccount('سجّل دخول عشان تشحن رصيدك.'))) return;
+  const min = Number(WALLET.minTopupUsd) || 5, max = Number(WALLET.maxTopupUsd) || 1000;
+  let amt = pre ? Math.ceil(Number(pre)) : 10; amt = Math.min(max, Math.max(min, amt));
+  closeDrawerQuiet(); SH = freshSheet('tform'); SH.amt = String(amt); SH.rid = newRid(); TQ = null;
+  showSheet(); renderSheet(); $('osClose').focus(); loadTopupQuote();
+}
+function renderTopupForm(b){
+  $('osTitle').textContent = 'شحن الرصيد';
+  const min = Number(WALLET.minTopupUsd) || 5, max = Number(WALLET.maxTopupUsd) || 1000;
+  b.append(el('div', { class: 'hint', text: 'بتدفع بإحدى طرق الدفع، وبعد ما نأكّد دفعك بيزيد رصيدك. الرصيد للشراء من المتجر؛ واسترجاعه نقداً بيتم بطلب وبقرار الإدارة.' }));
+  const inp = el('input', { class: 'tx', id: 'tqAmount', type: 'number', inputmode: 'decimal', min: String(min), max: String(max), step: '0.01', 'aria-describedby': 'tqPts' }); inp.value = SH.amt;
+  const presets = el('div', { class: 'opts', 'aria-label': 'مبالغ جاهزة' });
+  [10, 25, 50, 100].filter(v => v >= min && v <= max).forEach(v => presets.append(el('button', { class: 'chip', type: 'button', 'data-preset': String(v), text: '$' + v })));
+  b.append(el('label', { class: 'f', for: 'tqAmount', text: 'المبلغ بالدولار ($)' }), inp, presets, el('div', { class: 'hint', id: 'tqPts' }), el('div', { id: 'tqBox' }));
+  updateTopupPts(); renderTopupDynamic();
+}
+function updateTopupPts(){ const a = Number(SH.amt), t = $('tqPts'); if(t) t.textContent = a > 0 ? '= ' + ptsStr(a) : ''; }
+function renderTopupDynamic(){
+  const box = $('tqBox'); if(!box) return; box.textContent = '';
+  const a = Number(SH.amt), min = Number(WALLET.minTopupUsd) || 5, max = Number(WALLET.maxTopupUsd) || 1000;
+  if(!(a >= min && a <= max)){ box.append(el('div', { class: 'warn', id: 'tqRange', text: 'مبلغ الإيداع من ' + fmtUsd(min) + ' لـ' + fmtUsd(max) + '.' })); return; }
+  if(!TQ){ box.append(el('p', { id: 'tqLoading', text: 'عم نحسب...' }), msgBox()); return; }
+  if(!TQ.methods.length){ box.append(el('div', { class: 'warn', id: 'tqNoMethods', text: 'ما في طرق دفع متاحة هلق. تواصل معنا.' }), msgBox()); return; }       // msgBox: لو السبب رسالة خطأ من السيرفر بتنعرض
+  const opts = el('div', { class: 'opts', role: 'radiogroup', 'aria-label': 'طريقة الدفع' });
+  TQ.methods.forEach(m => opts.append(el('button', { class: 'chip', type: 'button', role: 'radio', 'data-mid': m.id, 'aria-checked': SH.methodId === m.id ? 'true' : 'false', 'aria-pressed': SH.methodId === m.id ? 'true' : 'false', text: m.name })));
+  const cur = TQ.methods.find(m => m.id === SH.methodId);
+  box.append(el('label', { class: 'f', text: 'طريقة الدفع' }), opts, el('div', { class: 'big', id: 'tqAmountDue', text: cur ? amountStr(cur) : '' }), el('div', { class: 'hint', text: 'هاد المبلغ اللي بتحوّله. السعر صالح ' + TQ.validMinutes + ' دقيقة بعد التأكيد.' }), msgBox(), el('button', { class: 'btn-main', id: 'tqSubmit', type: 'button', text: 'تأكيد الإيداع' }));
+  if(SH.busy) box.querySelector('#tqSubmit').disabled = true;
+}
+async function loadTopupQuote(){
+  const a = Number(SH.amt), min = Number(WALLET.minTopupUsd) || 5, max = Number(WALLET.maxTopupUsd) || 1000; TQ = null; SH.msg = ''; renderTopupDynamic();
+  if(!(a >= min && a <= max)) return;
+  try{ const j = await apiAuth('/store/topup/quote', { amountUsd: a }); if(Number(SH.amt) !== a || SH.step !== 'tform') return; TQ = j.quote; if(!TQ.methods.find(m => m.id === SH.methodId)) SH.methodId = TQ.methods[0] ? TQ.methods[0].id : ''; }
+  catch(e){ if(SH.step !== 'tform') return; SH.msg = e.message; TQ = { methods: [], validMinutes: 30 }; }
+  renderTopupDynamic();
+}
+// ---- حالة الطلب أو الإيداع (بعد التأكيد، أو من "طلباتي")
 function renderPay(b){
-  const o = ORD, st = o.status; $('osTitle').textContent = 'طلبك ' + o.code;
+  const o = ORD, st = o.status, isTop = o.kind === 'topup', isOrd = o.kind === 'order';
+  $('osTitle').textContent = (isTop ? 'إيداعك ' : 'طلبك ') + o.code;
   const pill = el('span', { class: 'stat', id: 'osStatus', text: ORDER_ST[st] || st });
-  b.append(el('div', { class: 'sum' }, el('div', { style: 'font-weight:700;word-break:break-word;', text: o.itemPath || o.itemName }), el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'المبلغ: ' + orderAmount(o) + ' (عبر ' + o.method.name + ') · ' + fmtUsd(o.priceUsd) }), el('div', {}, pill)));
+  const sum = el('div', { class: 'sum' }, el('div', { style: 'font-weight:700;word-break:break-word;', text: o.itemPath || o.itemName }));
+  if(isTop) sum.append(el('div', { text: 'بيزيد رصيدك: ' + money(o.priceUsd) }), el('div', { text: 'المبلغ المطلوب: ' + orderAmount(o) + ' (عبر ' + o.method.name + ')' }));
+  else if(isOrd) sum.append(el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'السعر: ' + money(o.priceUsd) + ' · انخصم من رصيدك' }));
+  else sum.append(el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'المبلغ: ' + orderAmount(o) + ' (عبر ' + o.method.name + ') · ' + fmtUsd(o.priceUsd) }));
+  sum.append(el('div', {}, pill)); b.append(sum);
+  if(isOrd){
+    const lines = { processing: 'تم طلبك ✅ قيد التنفيذ، رح نبلّغك لما يخلص.', done: 'تم تنفيذ طلبك ✅ تأكد من حسابك باللعبة.', rejected: 'انرفض طلبك.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : '') + ' ورجع المبلغ لرصيدك.', refunded: 'تم استرجاع طلبك ورجع المبلغ لرصيدك.' };
+    b.append(el('div', { class: 'warn', id: 'osFinal', text: lines[st] || '' }));
+    if(CUSTOMER) b.append(el('div', { class: 'hint', id: 'osNewBal', text: 'رصيدك هلق: ' + money(CUSTOMER.balanceUsd || 0) }));
+    b.append(el('button', { class: 'btn-ghost', id: 'osRefresh', type: 'button', text: '🔄 تحديث حالة الطلب' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return;
+  }
   if(st === 'awaiting_payment' || st === 'payment_submitted'){
     if(st === 'awaiting_payment'){
       b.append(el('div', { class: 'big', id: 'osPayAmount', text: orderAmount(o) }));
-      if(o.method.account){ b.append(el('div', { class: 'f', style: 'font-weight:700;margin-top:8px;', text: 'حوّل على (' + o.method.name + '):' }), el('div', { class: 'accbox', id: 'osAccount', text: o.method.account }), copyBtn(o.method.account)); }
+      if(o.method.account){ b.append(el('div', { class: 'f', style: 'font-weight:700;margin-top:8px;', text: 'حوّل على (' + o.method.name + '):' }), el('div', { class: 'accbox', id: 'osAccount', text: o.method.account }), el('button', { class: 'dr-close', type: 'button', 'data-copy': o.method.account, style: 'margin-top:4px;', text: '📋 نسخ' })); }
       if(o.method.instructions) b.append(el('div', { class: 'warn', id: 'osInstr', text: o.method.instructions }));
-      b.append(el('div', { class: 'warn', text: 'حوّل المبلغ بالضبط، واذكر رقم الطلب ' + o.code + ' بالملاحظة إذا بتقدر.' }));
-      const tm = el('div', { class: 'hint', id: 'osTimer', text: timerText(o) }); b.append(tm);
+      b.append(el('div', { class: 'warn', text: 'حوّل المبلغ بالضبط، واذكر رقم ' + (isTop ? 'الإيداع ' : 'الطلب ') + o.code + ' بالملاحظة إذا بتقدر.' }), el('div', { class: 'hint', id: 'osTimer', text: timerText(o) }));
     } else b.append(el('div', { class: 'warn', id: 'osWaiting', text: 'وصلنا دفعك' + (o.proof && o.proof.ref ? ' (' + o.proof.ref + ')' : '') + '، ورح نراجعه ونبلّغك. بتقدر تضيف أو تغيّر الإيصال تحت.' }));
     const ref = el('input', { class: 'tx', id: 'osRef', type: 'text', maxlength: '120', autocomplete: 'off', placeholder: 'رقم العملية / TXID' }); ref.value = SH.ref;
     const file = el('input', { class: 'tx', id: 'osFile', type: 'file', accept: 'image/*' });
     b.append(el('label', { class: 'f', for: 'osRef', text: st === 'awaiting_payment' ? 'بعد التحويل: أرسل الإيصال' : 'إيصال إضافي' }), ref, el('label', { class: 'f', for: 'osFile', text: 'أو صورة الإيصال' }), file);
     if(SH.img) b.append(el('img', { class: 'pv', id: 'osPreview', alt: 'الإيصال', src: SH.img }), el('button', { class: 'dr-close', id: 'osImgDel', type: 'button', style: 'margin-top:6px;', text: 'حذف الصورة' }));
     b.append(msgBox(), el('button', { class: 'btn-main', id: 'osSend', type: 'button', text: st === 'awaiting_payment' ? 'أرسلت الدفع' : 'إرسال' }));
-    if(st === 'awaiting_payment') b.append(el('button', { class: 'btn-ghost', id: 'osCancel', type: 'button', text: 'ألغي الطلب' }));
-    b.append(el('button', { class: 'btn-ghost', id: 'osRefresh', type: 'button', text: '🔄 تحديث حالة الطلب' }));
+    if(st === 'awaiting_payment') b.append(el('button', { class: 'btn-ghost', id: 'osCancel', type: 'button', text: isTop ? 'ألغي الإيداع' : 'ألغي الطلب' }));
+    b.append(el('button', { class: 'btn-ghost', id: 'osRefresh', type: 'button', text: '🔄 تحديث الحالة' }));
     return;
   }
-  const lines = { done: 'تم تنفيذ طلبك ✅ تأكد من حسابك باللعبة.', rejected: 'انرفض طلبك.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : ''), cancelled: 'ألغيت هالطلب.', expired: 'انتهت صلاحية هالطلب لأنه ما انرسل دفع خلال 24 ساعة. بتقدر تعمل طلب جديد.', refunded: 'تم استرجاع هالطلب.' };
+  const lines = isTop ? { done: 'تم شحن رصيدك ✅', rejected: 'انرفض الإيداع.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : ''), cancelled: 'ألغيت هالإيداع.', expired: 'انتهت صلاحية هالإيداع لأنه ما انرسل دفع خلال 24 ساعة. بتقدر تعمل إيداع جديد.', refunded: 'تم استرجاع هالإيداع.' }
+    : { done: 'تم تنفيذ طلبك ✅ تأكد من حسابك باللعبة.', rejected: 'انرفض طلبك.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : ''), cancelled: 'ألغيت هالطلب.', expired: 'انتهت صلاحية هالطلب لأنه ما انرسل دفع خلال 24 ساعة.', refunded: 'تم استرجاع هالطلب.' };
   b.append(el('div', { class: 'warn', id: 'osFinal', text: lines[st] || '' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' }));
 }
 // صورة الإيصال: بنصغّرها بالمتصفح (أقصى 1000px) وبنضغطها حتى تضل صغيرة
@@ -508,11 +579,15 @@ async function copyText(t){
   try{ const ta = el('textarea', { style: 'position:fixed;opacity:0;' }); ta.value = t; document.body.append(ta); ta.select(); const okc = document.execCommand('copy'); ta.remove(); return !!okc; }catch(e){ return false; }
 }
 async function reloadOrder(){
-  const j = await apiAuth('/store/orders'); MY = Array.isArray(j.orders) ? j.orders : []; MY_STATE = 'ok'; const n = MY.find(x => x.id === ORD.id); if(n) ORD = n;
+  const j = await apiAuth('/store/orders'); MY = Array.isArray(j.orders) ? j.orders : []; MY_STATE = 'ok'; const n = MY.find(x => x.id === ORD.id); if(n) ORD = n; refreshBalance();
 }
 $('osClose').addEventListener('click', closeSheet);
 $('scrim2').addEventListener('click', closeSheet);
-$('osBody').addEventListener('input', e => { if(e.target.id === 'osPid') SH.pid = e.target.value; if(e.target.id === 'osRef') SH.ref = e.target.value; });
+$('osBody').addEventListener('input', e => {
+  if(e.target.id === 'osPid') SH.pid = e.target.value;
+  if(e.target.id === 'osRef') SH.ref = e.target.value;
+  if(e.target.id === 'tqAmount'){ SH.amt = e.target.value; updateTopupPts(); clearTimeout(tqTimer); tqTimer = setTimeout(loadTopupQuote, 350); }
+});
 $('osBody').addEventListener('change', async e => {
   if(e.target.id !== 'osFile') return; const f = e.target.files && e.target.files[0]; if(!f) return;
   SH.msg = ''; SH.ok = '';
@@ -521,17 +596,32 @@ $('osBody').addEventListener('change', async e => {
 });
 $('osBody').addEventListener('click', async e => {
   const b = e.target.closest('button'); if(!b) return;
-  if(b.dataset.mid){ SH.methodId = b.dataset.mid; renderSheet(); return; }
+  if(b.dataset.preset){ SH.amt = b.dataset.preset; const i = $('tqAmount'); if(i) i.value = SH.amt; updateTopupPts(); clearTimeout(tqTimer); loadTopupQuote(); return; }
+  if(b.dataset.mid){ SH.methodId = b.dataset.mid; if(SH.step === 'tform') renderTopupDynamic(); else renderSheet(); return; }
   if(b.id === 'osDone'){ closeSheet(); return; }
   if(b.dataset.copy !== undefined){ const okc = await copyText(b.dataset.copy); b.textContent = okc ? '✅ تم النسخ' : 'انسخ يدوياً'; return; }
   if(b.id === 'osImgDel'){ SH.img = undefined; renderSheet(); return; }
+  if(b.id === 'osTopup'){ openTopup(QUOTE ? QUOTE.shortUsd : 0); return; }
   if(b.id === 'osSubmit'){
     const pid = SH.pid.trim(); SH.msg = ''; SH.ok = '';
     if(pid.length < 3 || pid.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(pid)){ SH.msg = 'اكتب معرّف اللاعب (Player ID) بشكل صحيح: 3 لـ40 خانة، أرقام وأحرف.'; renderSheet(); $('osPid').focus(); return; }
-    if(!SH.methodId){ SH.msg = 'اختار طريقة دفع.'; renderSheet(); return; }
     SH.busy = true; renderSheet();
-    try{ const j = await apiAuth('/store/order', { itemId: SH.item.id, methodId: SH.methodId, playerId: pid, reqId: SH.rid }); ORD = j.order; SH.step = 'pay'; SH.busy = false; renderSheet(); startTimer(); loadMyOrders(); $('osClose').focus(); }
-    catch(err){ SH.busy = false; SH.msg = err.message; renderSheet(); }
+    try{
+      const j = await apiAuth('/store/order', { itemId: SH.item.id, playerId: pid, reqId: SH.rid }); ORD = j.order;
+      if(CUSTOMER && typeof j.balanceUsd === 'number') CUSTOMER.balanceUsd = j.balanceUsd;
+      SH.step = 'pay'; SH.busy = false; renderSheet(); renderWallet(); renderDrawer(); loadMyOrders(); $('osClose').focus();
+    }catch(err){
+      SH.busy = false;
+      if(err.code === 'insufficient_balance' && err.data){ QUOTE = { ...QUOTE, balanceUsd: Number(err.data.balanceUsd), enough: false, shortUsd: Number(err.data.shortUsd) }; if(CUSTOMER) CUSTOMER.balanceUsd = Number(err.data.balanceUsd); renderWallet(); }
+      SH.msg = err.message; renderSheet();
+    }
+    return;
+  }
+  if(b.id === 'tqSubmit'){
+    SH.msg = ''; const a = Number(SH.amt); if(!SH.methodId){ SH.msg = 'اختار طريقة دفع.'; renderTopupDynamic(); return; }
+    SH.busy = true; renderTopupDynamic();
+    try{ const j = await apiAuth('/store/topup', { amountUsd: a, methodId: SH.methodId, reqId: SH.rid }); ORD = j.order; SH.step = 'pay'; SH.busy = false; renderSheet(); startTimer(); loadMyOrders(); $('osClose').focus(); }
+    catch(err){ SH.busy = false; SH.msg = err.message; renderTopupDynamic(); }
     return;
   }
   if(b.id === 'osSend'){
@@ -543,7 +633,7 @@ $('osBody').addEventListener('click', async e => {
     return;
   }
   if(b.id === 'osCancel'){
-    if(!window.confirm('تلغي الطلب ' + ORD.code + '؟')) return;
+    if(!window.confirm('تلغي ' + (ORD.kind === 'topup' ? 'الإيداع ' : 'الطلب ') + ORD.code + '؟')) return;
     try{ const j = await apiAuth('/store/order/cancel', { orderId: ORD.id }); ORD = j.order; stopTimer(); renderSheet(); loadMyOrders(); }
     catch(err){ SH.msg = err.message; renderSheet(); }
     return;
@@ -552,9 +642,10 @@ $('osBody').addEventListener('click', async e => {
 });
 $('drBody').addEventListener('click', e => {
   const r = e.target.closest('[data-oid]'); if(r){ openExisting(r.dataset.oid); return; }
-  if(e.target.closest('#btnRefreshOrders')) loadMyOrders();
+  if(e.target.closest('#btnRefreshOrders')){ loadMyOrders(); refreshBalance(); return; }
+  if(e.target.closest('#btnDrTopup')){ ordTriggerSel = '#btnMenu'; openTopup(); }
 });
-if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); } });
+if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); } });
 
 </script>
 </body>
