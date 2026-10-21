@@ -746,6 +746,7 @@ $('btnSpCheck').onclick = async () => {
   const box = $('spStatus'); box.textContent = 'عم نفحص...'; box.style.color = 'var(--dim)'; $('btnSpCheck').disabled = true;
   try{
     const j = await storeApi({ action: 'supplier_status' }), st = j.status; box.textContent = ''; box.style.color = 'var(--ink)';
+    if(!SP.hasKey){ SP.hasKey = true; renderKeyBox(); }          // الفحص نجح = المفتاح موجود (يمكن انضاف بعد ما انفتح التبويب)
     const line = (t) => box.append(el('div', { text: t }));
     line('الحساب: ' + st.login + ' · الخطة: ' + st.plan);
     line('الاشتراك: ' + (st.subscriptionActive ? 'فعّال ✅' : 'غير فعّال ⚠️') + (st.planExpiresAt ? ' · ينتهي ' + dmy(st.planExpiresAt) : '') + ' · تجديد تلقائي: ' + (st.planAutoRenew ? 'نعم' : 'لا'));

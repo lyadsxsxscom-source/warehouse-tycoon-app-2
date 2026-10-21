@@ -44,6 +44,8 @@ const click = async (el) => { el.click(); await sleep(80); };
 
   /* ---- the key ---- */
   ok(!!$("spKeyMissing") && /مو مضاف/.test($("spKeyMissing").textContent) && /FAZER_API_KEY/.test($("spKeyMissing").textContent) && /Variables and Secrets/.test($("spKeyMissing").textContent) && /Secret/.test($("spKeyMissing").textContent) && /لا تبعت المفتاح لأي حدا، ولا لي/.test($("spKeyMissing").textContent), "no key yet: step-by-step instructions (create it at FazerCards, add it as a Cloudflare Secret named FAZER_API_KEY) and a warning never to send it to anyone, including me");
+  /* the key was added AFTER the tab opened: a successful check must fix the box without reloading */
+  statusMode = "ok"; await click($("btnSpCheck")); ok(!!$("spKeyOk") && !$("spKeyMissing") && /الحساب: partner1/.test($("spStatus").textContent), "if the key was added after the page opened, a successful check updates the key box to 'exists' (no stale 'missing' box)");
   hasKey = true; await (async () => { $("tabCatalog").click(); $("tabSupplier").click(); await sleep(200); })();
   ok(!!$("spKeyOk") && /موجود/.test($("spKeyOk").textContent) && !$("spKeyMissing") && !/SECRET|sk_/.test($("viewSupplier").textContent), "with a key it only says it exists (the key itself is never on this screen)");
 
