@@ -1237,10 +1237,11 @@ function storeParseMethods(raw) {
     if (!Number.isInteger(decimals) || decimals < 0 || decimals > 4) throw new ApiError("bad_method", `"${name}": عدد الخانات العشرية من 0 لـ4.`);
     const feePct = m.feePct === undefined || m.feePct === "" || m.feePct === null ? 0 : Number(m.feePct);
     if (!Number.isFinite(feePct) || feePct < 0 || feePct > 50) throw new ApiError("bad_method", `"${name}": النسبة الإضافية من 0 لـ50.`);
+    const instructions = cleanText(m.instructions, 300), account = cleanText(m.account, 120);
     let id = typeof m.id === "string" && /^[a-z0-9_-]{1,24}$/.test(m.id) ? m.id : "m" + randomId().slice(0, 8);
     while (seen.has(id)) id = "m" + randomId().slice(0, 8);
     seen.add(id);
-    return { id, name, currency, rate: Math.round(rate * 1000000) / 1000000, decimals, feePct: Math.round(feePct * 100) / 100, enabled: m.enabled !== false };
+    return { id, name, currency, rate: Math.round(rate * 1000000) / 1000000, decimals, feePct: Math.round(feePct * 100) / 100, enabled: m.enabled !== false, instructions, account };
   });
 }
 async function handleStoreCatalog(env) {
@@ -1276,7 +1277,7 @@ async function handleAdminStore(request, env) {
       rows.sort((a, c2) => c2.lastSeenAt - a.lastSeenAt || a.id.localeCompare(c2.id));
       return jsonResponse({ ok: true, total, customers: rows.slice(0, 200) }, 200);
     }
-    if (b.action === "customer_spend") {         // تعديل يدوي للصرف (قبل ما تشتغل الطلبات، أو لتصحيح)؛ بينسجّل
+    if (b.action === "customer_spend") {         // تعديل يدوي للصرف (للتصحيح، أو لمبيعات صارت خارج النظام)؛ بينسجّل
       const uid = validId(String(b.uid || "")); const delta = Number(b.deltaUsd);
       if (!uid) throw new ApiError("bad_request", "طلب غلط.");
       if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 1000000) throw new ApiError("bad_delta", "اكتب مبلغ (موجب أو سالب) أكبر من 0 وأقل من مليون.");
@@ -1284,20 +1285,48 @@ async function handleAdminStore(request, env) {
       for (let attempt = 0; attempt < 3; attempt++) {
         const cur = await fsGetDoc(env, "storeCustomers/" + uid);
         if (!cur.exists) throw new ApiError("not_found", "هالزبون مو موجود.", 404);
-        const after = Math.max(0, r2((Number(cur.data.spentUsd) || 0) + delta)), at = Date.now();
-        const upd = { spentUsd: after }, m = cur.data.merchant, writes = [];
-        if (m && m.status === "trial" && at <= Number(m.endsAt) && after - (Number(m.baseSpent) || 0) + 1e-9 >= Number(m.targetUsd)) {       // وصل الرقم خلال الفترة: بيثبت
-          upd.merchant = { ...m, status: "locked", lockedAt: at };
-          writes.push({ update: { name: docName(env, "storeVipLog/" + randomId()), fields: objToFields({ uid, action: "auto_lock", level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, at, by: "auto" }) }, currentDocument: { exists: false } });
-        }
+        const plan = storeSpendPlan(env, uid, cur.data, delta, note, "admin", Date.now());
         try {
-          await fsCommit(env, [
-            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: cur.updateTime } },
-            { update: { name: docName(env, "storeSpendLog/" + randomId()), fields: objToFields({ uid, deltaUsd: r2(delta), spentAfter: after, note, at, by: "admin" }) }, currentDocument: { exists: false } },
-            ...writes,
-          ]);
-          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes, { admin: true }) }, 200);
+          await fsCommit(env, [{ update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields(plan.upd) }, updateMask: { fieldPaths: Object.keys(plan.upd) }, currentDocument: { updateTime: cur.updateTime } }, ...plan.writes]);
+          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, ...plan.upd }, sizes, { admin: true }) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
+      }
+    }
+    if (b.action === "orders_list") {
+      const now2 = Date.now(), q = cleanText(b.q, 60).toLowerCase(), st = String(b.status || "all");
+      const all = (await fsRunQuery(env, "storeOrders", null, 500, 0)).map(r => storeOrderOut(r.id, r.data, now2, true)).sort((a, c2) => c2.createdAt - a.createdAt);
+      const counts = {}; for (const o of all) counts[o.status] = (counts[o.status] || 0) + 1;
+      let rows = all.filter(o => st === "all" || (st === "open" ? (o.status === "payment_submitted" || (o.status === "awaiting_payment")) : o.status === st));
+      if (q) rows = rows.filter(o => (o.code + " " + o.name + " " + o.email + " " + o.playerId + " " + o.itemName + " " + o.uid).toLowerCase().includes(q));
+      return jsonResponse({ ok: true, counts, total: all.length, orders: rows.slice(0, 200) }, 200);
+    }
+    if (b.action === "order_proof") {
+      const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      const d = await fsGetDoc(env, "storeProofs/" + id);
+      return jsonResponse({ ok: true, image: d.exists && d.data ? String(d.data.data || "") : "" }, 200);
+    }
+    if (["order_done", "order_reject", "order_refund"].includes(b.action)) {
+      const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      const note = cleanText(b.action === "order_reject" ? b.reason : b.note, 200);
+      if (b.action === "order_reject" && !note) throw new ApiError("reason_required", "اكتب سبب الرفض (بيوصل للزبون).");
+      const { sizes } = await storeLoadVipSizes(env);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const od = await fsGetDoc(env, "storeOrders/" + id);
+        if (!od.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
+        const o = od.data, now2 = Date.now(), open = o.status === "awaiting_payment" || o.status === "payment_submitted";
+        let upd, delta = 0;
+        if (b.action === "order_done") { if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ")."); upd = { status: "done", doneAt: now2, adminNote: note, updatedAt: now2, events: storeEvent(o, "done", "admin", note, now2) }; delta = Number(o.priceUsd) || 0; }
+        else if (b.action === "order_reject") { if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ")."); upd = { status: "rejected", rejectReason: note, updatedAt: now2, events: storeEvent(o, "rejected", "admin", note, now2) }; }
+        else { if (o.status !== "done") throw new ApiError("bad_status", "بتقدر ترجّع طلب منفّذ بس."); upd = { status: "refunded", adminNote: note, updatedAt: now2, events: storeEvent(o, "refunded", "admin", note, now2) }; delta = -(Number(o.priceUsd) || 0); }
+        const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
+        if (delta !== 0) {
+          const cd = await fsGetDoc(env, "storeCustomers/" + o.uid);
+          if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
+          const plan = storeSpendPlan(env, o.uid, cd.data, delta, (delta > 0 ? "طلب " : "مرتجع ") + o.code, "order", now2);
+          writes.push({ update: { name: docName(env, "storeCustomers/" + o.uid), fields: objToFields(plan.upd) }, updateMask: { fieldPaths: Object.keys(plan.upd) }, currentDocument: { updateTime: cd.updateTime } }, ...plan.writes);
+        }
+        try { await fsCommit(env, writes); return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200); }
+        catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
     if (b.action === "customer_log") {
@@ -1476,6 +1505,16 @@ function storeCustomerOut(uid, c, sizes, opts = {}) {
   }
   return out;
 }
+// خطة تعديل الصرف: بترجّع الحقول الجديدة + كتابات السجل (وبتثبّت التاجر إذا وصل لرقمه خلال فترته)
+function storeSpendPlan(env, uid, cur, delta, note, by, at) {
+  const after = Math.max(0, r2((Number(cur.spentUsd) || 0) + delta)), upd = { spentUsd: after }, m = cur.merchant, writes = [];
+  if (m && m.status === "trial" && at <= Number(m.endsAt) && after - (Number(m.baseSpent) || 0) + 1e-9 >= Number(m.targetUsd)) {
+    upd.merchant = { ...m, status: "locked", lockedAt: at };
+    writes.push({ update: { name: docName(env, "storeVipLog/" + randomId()), fields: objToFields({ uid, action: "auto_lock", level: Number(m.level) || 0, targetUsd: Number(m.targetUsd) || 0, at, by: "auto" }) }, currentDocument: { exists: false } });
+  }
+  writes.push({ update: { name: docName(env, "storeSpendLog/" + randomId()), fields: objToFields({ uid, deltaUsd: r2(delta), spentAfter: after, note, at, by }) }, currentDocument: { exists: false } });
+  return { after, upd, writes };
+}
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);
@@ -1503,6 +1542,108 @@ async function handleStoreMe(request, env) {
     return jsonResponse({ ok: false, error: "server_error" }, 500);
   }
 }
+
+// ===== طلبات المتجر (الخطوة 5أ): دفع يدوي (رقم عملية و/أو صورة إيصال) والأدمن بيأكّد وبينفّذ =====
+// حالات: awaiting_payment ← payment_submitted ← done (أو rejected / cancelled / refunded). وبعد 24 ساعة بدون دفع بتصير "expired" (محسوبة بس).
+// السعر بيتحسب بالسيرفر حسب مستوى الزبون وطريقة الدفع، وبينحفظ بالطلب. الصرف وVIP بيتحسبوا لما الأدمن يضغط "تم التنفيذ".
+const STORE_QUOTE_MIN = 30, STORE_ORDER_TTL_MS = 24 * 3600 * 1000, STORE_MAX_OPEN = 5;
+const storeRound = (x, d) => Math.round(Number((x * Math.pow(10, d)).toPrecision(12))) / Math.pow(10, d);
+function storeVisibleItem(nodes, id) {
+  const by = new Map(nodes.map(n => [n.id, n])), n = by.get(id);
+  if (!n || n.type !== "item" || n.enabled === false || !storePricesOf(n).length) return null;
+  let p = String(n.parentId || ""), g = 0;
+  while (p && g++ < 12) { const pn = by.get(p); if (!pn || pn.enabled === false) return null; p = String(pn.parentId || ""); }
+  return n;
+}
+function storeItemPath(nodes, id) { const by = new Map(nodes.map(n => [n.id, n])), out = []; let c = by.get(id), g = 0; while (c && g++ < 12) { out.unshift(String(c.name || "")); c = by.get(String(c.parentId || "")); } return out.join(" › "); }
+function storeQuoteFor(item, vip, methods) {
+  const pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1];
+  return { priceUsd, methods: methods.filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, decimals: m.decimals, amount: storeRound(priceUsd * m.rate * (1 + (Number(m.feePct) || 0) / 100), m.decimals) })) };
+}
+async function storeCustomerCtx(env, uid) {
+  const cur = await fsGetDoc(env, "storeCustomers/" + uid);
+  if (!cur.exists) throw new ApiError("no_account", "افتح حسابك أول (من ☰) وجرّب كمان مرة.");
+  const { sizes } = await storeLoadVipSizes(env);
+  return { cur, vip: storeCustomerOut(uid, cur.data, sizes).vip };
+}
+function storeOrderOut(id, o, now, admin) {
+  const expired = o.status === "awaiting_payment" && now > Number(o.createdAt) + STORE_ORDER_TTL_MS, status = expired ? "expired" : o.status, pr = o.proof;
+  const out = { id, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
+    method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || "") },
+    amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
+    proof: pr && pr.submittedAt ? { ref: String(pr.ref || ""), hasImage: !!pr.hasImage, submittedAt: Number(pr.submittedAt) || 0, late: !!pr.late } : null, rejectReason: String(o.rejectReason || ""), doneAt: Number(o.doneAt) || 0 };
+  if (admin) Object.assign(out, { uid: String(o.uid || ""), name: String(o.name || ""), email: String(o.email || ""), adminNote: String(o.adminNote || ""), events: Array.isArray(o.events) ? o.events : [] });
+  return out;
+}
+const storeEvent = (o, action, by, note, at) => [...(Array.isArray(o.events) ? o.events : []), { at, action, by, note: note || "" }].slice(-20);
+async function handleStoreOrderApi(request, env, action) {
+  try {
+    const user = await requireUser(request);
+    const uid = validId(String(user.sub || "")); if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
+    let b = {}; try { b = await request.json(); } catch (e) {}
+    const now = Date.now();
+    if (action === "quote" || action === "order") {
+      const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
+      if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
+      const { vip } = await storeCustomerCtx(env, uid), methods = await storeLoadMethods(env), q = storeQuoteFor(item, vip, methods);
+      if (action === "quote") return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), vip, priceUsd: q.priceUsd, validMinutes: STORE_QUOTE_MIN, methods: q.methods } }, 200);
+      const method = methods.find(m => m.id === String(b.methodId || "") && m.enabled !== false), qm = method && q.methods.find(m => m.id === method.id);
+      if (!method) throw new ApiError("no_method", "اختار طريقة دفع.");
+      const playerId = String(b.playerId == null ? "" : b.playerId).trim();       // بدون تنظيف: لازم يكون نظيف أصلاً (حروف وأرقام ورموز بسيطة، 3 لـ40)
+      if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
+      const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
+      const id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
+      if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, dup.data, now, false) }, 200); }
+      const mine = await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid });
+      if (mine.filter(r => storeOrderOut(r.id, r.data, now, false).status === "awaiting_payment" || r.data.status === "payment_submitted").length >= STORE_MAX_OPEN) throw new ApiError("too_many_open", `عندك ${STORE_MAX_OPEN} طلبات مفتوحة. خلّصهم أو ألغي واحد قبل ما تطلب غيرهم.`);
+      const u = storeUserName(user);
+      for (let attempt = 0; attempt < 3; attempt++) {                       // طلبين بنفس اللحظة: التاني بياخد الرقم اللي بعده
+      const ctr = await nextRequestNo(env, "store"), code = "T-" + ctr.no;
+      const order = { code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, vip, priceUsd: q.priceUsd, methodId: method.id, methodName: method.name, currency: method.currency, decimals: method.decimals, rate: method.rate, feePct: Number(method.feePct) || 0, amount: qm.amount, methodAccount: String(method.account || ""), methodInstructions: String(method.instructions || ""), status: "awaiting_payment", createdAt: now, expiresAt: now + STORE_QUOTE_MIN * 60000, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+      try {
+        await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } }]);
+        return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false) }, 200);
+      } catch (e) {
+        if (!e.conflict || attempt === 2) throw e;
+        const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, again.data, now, false) }, 200);
+      }
+      }
+    }
+    if (action === "orders") {
+      const rows = (await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid })).sort((a, c2) => (Number(c2.data.createdAt) || 0) - (Number(a.data.createdAt) || 0)).slice(0, 30);
+      return jsonResponse({ ok: true, orders: rows.map(r => storeOrderOut(r.id, r.data, now, false)) }, 200);
+    }
+    if (action === "proof" || action === "cancel") {
+      const id = validId(String(b.orderId || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      const od = await fsGetDoc(env, "storeOrders/" + id);
+      if (!od.exists || od.data.uid !== uid) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
+      const o = od.data, view = storeOrderOut(id, o, now, false);
+      if (action === "cancel") {
+        if (view.status !== "awaiting_payment") throw new ApiError("bad_status", "بتقدر تلغي الطلب قبل ما ترسل الدفع بس.");
+        const upd = { status: "cancelled", updatedAt: now, events: storeEvent(o, "cancelled", "customer", "", now) };
+        await fsCommit(env, [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }]);
+        return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now, false) }, 200);
+      }
+      if (view.status !== "awaiting_payment" && view.status !== "payment_submitted") throw new ApiError("bad_status", view.status === "expired" ? "انتهت صلاحية الطلب. اعمل طلب جديد." : "هالطلب مو بحالة بتسمح بإرسال دفع.");
+      const ref = cleanText(b.ref, 120); let image = "";
+      if (b.image !== undefined && b.image !== "" && b.image !== null) { if (typeof b.image === "string" && b.image.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image)) image = b.image; else throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير."); }
+      const hadImage = !!(o.proof && o.proof.hasImage);
+      if (!ref && !image && !hadImage) throw new ApiError("bad_proof", "اكتب رقم العملية أو ارفق صورة الإيصال.");
+      const proof = { ref: ref || (o.proof && o.proof.ref) || "", hasImage: !!image || hadImage, submittedAt: now, late: now > Number(o.expiresAt) };
+      const upd = { status: "payment_submitted", proof, updatedAt: now, events: storeEvent(o, "proof", "customer", proof.late ? "late" : "", now) };
+      const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
+      if (image) writes.push({ update: { name: docName(env, "storeProofs/" + id), fields: objToFields({ data: image, ver: now }) } });
+      await fsCommit(env, writes);
+      return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now, false) }, 200);
+    }
+    throw new ApiError("bad_action", "طلب غلط.", 404);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "store order error", action, error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+function storeUserName(user) { return { name: cleanText(user.name || (user.email ? String(user.email).split("@")[0] : ""), 60) || "زبون", email: cleanText(user.email || "", 120) }; }
 
 // ===== رقم تعريف الطلب =====
 // كل طلب جديد بياخد رقم تسلسلي: W-1001 للسحب، S-1001 لطلبات المتجر (والشراء P-xxxxx مشتق من معرّف المستند). الطلبات القديمة بدون رقم بتاخد رمز مشتق من معرّفها.
@@ -2569,6 +2710,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
