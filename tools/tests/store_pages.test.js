@@ -37,9 +37,10 @@ function open() {
 }
 const html2 = admHtml.replace(/<script src="[^"]+"><\/script>\s*/g, "");
 const dom = new JSDOM(html2, { runScripts: "dangerously", url: "https://example.test/store-admin.html", pretendToBeVisual: true, beforeParse(w) {
-  const auth = () => ({ onAuthStateChanged(cb) { authCb = cb; }, signInWithPopup() { events.signIn++; return events.signInFail ? Promise.reject(new Error("popup closed <b>x</b>")) : Promise.resolve(); }, signOut() { events.signOut++; return Promise.resolve(); } });
+  const auth = () => ({ currentUser: { getIdToken: async () => "T" }, onAuthStateChanged(cb) { authCb = cb; }, signInWithPopup() { events.signIn++; return events.signInFail ? Promise.reject(new Error("popup closed <b>x</b>")) : Promise.resolve(); }, signOut() { events.signOut++; return Promise.resolve(); } });
   auth.GoogleAuthProvider = function () {};
   w.firebase = { initializeApp() {}, auth };
+  w.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, nodes: [], max: {} }) });
 } });
 const d = dom.window.document, $ = id => d.getElementById(id), vis = id => $(id).style.display !== "none";
 (async () => {
@@ -53,7 +54,7 @@ const d = dom.window.document, $ = id => d.getElementById(id), vis = id => $(id)
   ok(vis("gate") && !vis("panel") && /مو مشرف/.test($("gateMsg").textContent) && events.signOut === 1, "admin page: a signed-in non-admin is refused and signed out");
   authCb({ uid: "09DZoXtB6afGTGHtFghiUx5t71N2", email: "admin@x.com" }); await sleep(20);
   ok(!vis("gate") && vis("panel") && $("who").textContent === "admin@x.com", "admin page: the admin sees the panel with his email");
-  ok([...d.querySelectorAll("#tabs .tab")].length === 1 && /نظرة عامة/.test(d.querySelector("#tabs .tab").textContent) && /فاضية/.test($("emptyNote").textContent), "admin page: one empty 'overview' tab, ready for the next steps");
+  await sleep(50); ok([...d.querySelectorAll("#tabs .tab")].length === 1 && /الكتالوج/.test(d.querySelector("#tabs .tab").textContent) && /فاضي/.test($("emptyNote").textContent), "admin page: the catalog tab, empty at first");
   $("btnLogout").click(); await sleep(20); ok(events.signOut === 2, "admin page: sign out works");
   authCb(null); ok(vis("gate") && !vis("panel"), "admin page: after signing out the panel is hidden again");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);

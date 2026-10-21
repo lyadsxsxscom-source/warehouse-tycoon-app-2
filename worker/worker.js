@@ -1184,6 +1184,108 @@ async function handleWannadsPostback(request, env, ctx) {
   return new Response("OK", { status: 200 });
 }
 
+// ===== متجر الشدات (الخطوة 1): شجرة مجلدات ومنتجات =====
+// storeNodes/{id}: { parentId ("" = الجذر), type: folder|item, name, price (ل.س), enabled, sort, imageVer }، والصورة بمستند لحاله storeImages/{id} (حتى ما تنقل الصور مع كل قراءة).
+// الأدمن بيبني الشجرة (/admin/store)، والصفحة العامة بتقرأ الشجرة المفعّلة بس (/store/catalog) والصور (/store/img/{id}).
+const STORE_MAX_DEPTH = 4, STORE_MAX_NODES = 300, STORE_IMG_MAX = 280000;
+function storeNodeOut(n) {
+  return { id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), price: Number(n.price) || 0, enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
+}
+async function storeAllNodes(env) { return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data })); }
+function storeSorted(list) { return [...list].sort((a, b) => ((Number(a.sort) || 0) - (Number(b.sort) || 0)) || a.id.localeCompare(b.id)); }
+function storeDepth(nodes, id) { const by = new Map(nodes.map(n => [n.id, n])); let d = 0, cur = id; while (cur && d < 12) { d++; const n = by.get(cur); cur = n ? String(n.parentId || "") : ""; } return d; }
+function storeTree(nodes) {
+  const kids = new Map();
+  for (const n of nodes) { if (n.enabled === false) continue; const k = String(n.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(n); }
+  const build = (pid) => storeSorted(kids.get(pid) || []).map(n => {
+    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage;
+    if (n.type === "item") return o;
+    const children = build(n.id); return children.length ? { ...o, children } : null;      // مجلد فاضي ما بينعرض بالصفحة العامة
+  }).filter(Boolean);
+  return build("");
+}
+async function handleStoreCatalog(env) {
+  const tree = storeTree(await storeAllNodes(env));
+  const r = jsonResponse({ ok: true, items: tree }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
+}
+async function handleStoreImage(env, id) {
+  const d = id ? await fsGetDoc(env, "storeImages/" + id) : { exists: false };
+  const m = d.exists && d.data ? /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(d.data.data || "")) : null;
+  if (!m) return new Response("Not found", { status: 404, headers: corsHeaders() });
+  const bin = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
+  return new Response(bin, { status: 200, headers: { "Content-Type": m[1], "Cache-Control": "public, max-age=604800, immutable", "X-Content-Type-Options": "nosniff", ...corsHeaders() } });
+}
+async function handleAdminStore(request, env) {
+  if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  let b = {}; try { b = await request.json(); } catch (e) {}
+  try {
+    const nodes = await storeAllNodes(env);
+    const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: STORE_MAX_NODES } }, 200);
+    if (b.action === "list") return out(nodes);
+    const now = Date.now();
+    if (b.action === "save") {
+      const existing = b.id ? nodes.find(n => n.id === validId(String(b.id))) : null;
+      if (b.id && !existing) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
+      const name = cleanText(b.name, 60); if (!name) throw new ApiError("bad_name", "اكتب اسم.");
+      let price = Number(b.price == null || b.price === "" ? 0 : b.price);
+      if (!Number.isFinite(price) || price < 0 || price > 100000000) throw new ApiError("bad_price", "السعر لازم يكون رقم بين 0 و100,000,000.");
+      price = Math.round(price);
+      const enabled = b.enabled !== false;
+      let image; // undefined = ما منغيّر، "" = منحذف، data URL = منحط
+      if (b.image !== undefined) {
+        if (b.image === "" || b.image === null) image = "";
+        else if (typeof b.image === "string" && b.image.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image)) image = b.image;
+        else throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير.");
+      }
+      let id, writes = [], node;
+      if (existing) {
+        id = existing.id; node = { name, price, enabled, updatedAt: now };
+        writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, updateMask: { fieldPaths: Object.keys(node) }, currentDocument: { exists: true } });
+      } else {
+        const type = b.type === "item" ? "item" : b.type === "folder" ? "folder" : null; if (!type) throw new ApiError("bad_type", "النوع لازم مجلد أو منتج.");
+        const parentId = b.parentId ? validId(String(b.parentId)) : "";
+        if (b.parentId && !parentId) throw new ApiError("bad_parent", "المجلد الأب غلط.");
+        if (parentId) { const par = nodes.find(n => n.id === parentId); if (!par || par.type !== "folder") throw new ApiError("bad_parent", "لازم تضيف داخل مجلد."); if (storeDepth(nodes, parentId) + 1 > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات.`); }
+        if (nodes.length >= STORE_MAX_NODES) throw new ApiError("too_many", `وصلت للحد الأقصى (${STORE_MAX_NODES} عنصر).`);
+        const sibs = nodes.filter(n => String(n.parentId || "") === parentId);
+        id = "n" + randomId().slice(0, 12);
+        node = { parentId, type, name, price, enabled, sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
+        writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, currentDocument: { exists: false } });
+      }
+      if (image !== undefined) {
+        const ver = image ? now : 0;
+        writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ imageVer: ver }) }, updateMask: { fieldPaths: ["imageVer"] } });
+        writes.push(image ? { update: { name: docName(env, "storeImages/" + id), fields: objToFields({ data: image, ver }) } } : { delete: docName(env, "storeImages/" + id) });
+      }
+      await fsCommit(env, writes);
+      return out(await storeAllNodes(env));
+    }
+    if (b.action === "delete") {
+      const id = validId(String(b.id || "")); const n = nodes.find(x => x.id === id);
+      if (!n) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
+      if (nodes.some(x => String(x.parentId || "") === id)) throw new ApiError("has_children", "المجلد مش فاضي. احذف اللي جواته أول.");
+      await fsCommit(env, [{ delete: docName(env, "storeNodes/" + id) }, { delete: docName(env, "storeImages/" + id) }]);
+      return out(nodes.filter(x => x.id !== id));
+    }
+    if (b.action === "reorder") {
+      const id = validId(String(b.id || "")); const n = nodes.find(x => x.id === id);
+      if (!n || (b.dir !== "up" && b.dir !== "down")) throw new ApiError("bad_request", "طلب غلط.");
+      const sibs = storeSorted(nodes.filter(x => String(x.parentId || "") === String(n.parentId || "")));
+      const i = sibs.findIndex(x => x.id === id), j = b.dir === "up" ? i - 1 : i + 1;
+      if (j < 0 || j >= sibs.length) return out(nodes);
+      const order = sibs.map(x => x.id); [order[i], order[j]] = [order[j], order[i]];
+      const writes = order.map((oid, k) => ({ update: { name: docName(env, "storeNodes/" + oid), fields: objToFields({ sort: k + 1 }) }, updateMask: { fieldPaths: ["sort"] }, currentDocument: { exists: true } }));
+      await fsCommit(env, writes);
+      return out(await storeAllNodes(env));
+    }
+    throw new ApiError("bad_action", "طلب غلط.");
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "admin store error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+
 // ===== رقم تعريف الطلب =====
 // كل طلب جديد بياخد رقم تسلسلي: W-1001 للسحب، S-1001 لطلبات المتجر (والشراء P-xxxxx مشتق من معرّف المستند). الطلبات القديمة بدون رقم بتاخد رمز مشتق من معرّفها.
 const REQ_WORD = { ar: "رقم الطلب", tr: "Talep no", en: "Request no" };
@@ -2247,6 +2349,9 @@ export default {
     if (url.pathname === "/admin/players" && request.method === "POST") return handleAdminPlayers(request, env);
     if (url.pathname === "/admin/message" && request.method === "POST") return handleAdminMessage(request, env);
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
+    if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
+    if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
+    if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
     if (url.pathname === "/admin/wallet-reindex" && request.method === "POST") return handleAdminWalletReindex(request, env);
     if (url.pathname === "/admin/shop-orders" && request.method === "POST") return handleAdminShopOrders(request, env);

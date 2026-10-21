@@ -25,6 +25,31 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 #gate h2{margin:0 0 8px}
 #gateMsg{min-height:1.6em;margin-top:14px;color:var(--err);font-size:.95rem}
 #who{color:var(--dim);font-size:.9rem}
+[hidden]{display:none!important}
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:18px 0 10px;font-size:.95rem}
+.crumbs a{color:var(--tape);cursor:pointer;text-decoration:none}
+.crumbs span.sep{color:var(--dim)}
+.crumbs b{color:var(--ink)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:10px;background:#12281F;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.row .thumb{width:48px;height:48px;border-radius:8px;background:#0E1B17;object-fit:cover;flex:none;display:flex;align-items:center;justify-content:center;font-size:1.4rem}
+.row .info{flex:1;min-width:0;cursor:pointer}
+.row .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .sub{color:var(--dim);font-size:.85rem}
+.row .acts{display:flex;gap:4px;flex:none}
+.row .acts button{padding:6px 9px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
+.row .acts button:disabled{opacity:.3;cursor:default}
+.badge{display:inline-block;background:#5a3b12;color:#ffd48a;border-radius:6px;padding:0 6px;font-size:.78rem;margin-inline-start:6px}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet-in{background:var(--panel);border:1px solid var(--line);border-radius:16px 16px 0 0;width:min(560px,100%);max-height:92vh;overflow:auto;padding:18px}
+.sheet-in h3{margin:0 0 10px}
+.sheet-in label{display:block;margin:12px 0 4px;color:var(--dim);font-size:.9rem}
+.sheet-in input[type=text],.sheet-in input[type=number]{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+.imgrow{display:flex;align-items:center;gap:12px}
+.imgrow .pv{width:84px;height:84px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:.8rem;overflow:hidden;flex:none}
+.imgrow .pv img{width:100%;height:100%;object-fit:cover}
+#edMsg{color:var(--err);min-height:1.5em;margin-top:10px;font-size:.92rem}
+#listMsg{color:var(--err);min-height:1.4em;margin:6px 0;font-size:.92rem}
 </style>
 </head>
 <body>
@@ -45,11 +70,37 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
   </header>
   <div class="wrap">
     <div class="tabs" id="tabs">
-      <button class="tab active" id="tabOverview">نظرة عامة</button>
+      <button class="tab active" id="tabCatalog">📁 الكتالوج</button>
     </div>
-    <div class="card" id="viewOverview">
-      <div class="empty" id="emptyNote">اللوحة فاضية هلق. الخطوات الجاية بتنضاف هون خطوة خطوة.</div>
+    <div class="card" id="viewCatalog">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="bar">
+        <button id="btnAddFolder">＋ مجلد</button>
+        <button id="btnAddItem">＋ منتج</button>
+      </div>
+      <div id="listMsg" role="alert"></div>
+      <div id="list"></div>
     </div>
+  </div>
+</div>
+<div class="sheet" id="editor" hidden>
+  <div class="sheet-in">
+    <h3 id="edTitle"></h3>
+    <label for="edName">الاسم</label>
+    <input type="text" id="edName" maxlength="60" autocomplete="off">
+    <label for="edPrice">السعر (ل.س) <span id="edPriceHint" style="color:var(--dim)"></span></label>
+    <input type="number" id="edPrice" min="0" step="1" inputmode="numeric">
+    <label>الصورة</label>
+    <div class="imgrow">
+      <div class="pv" id="edPv"><span id="edPvPh">لا صورة</span></div>
+      <div>
+        <input type="file" id="edFile" accept="image/*">
+        <div style="margin-top:8px;"><button class="ghost" id="edImgDel" type="button">حذف الصورة</button></div>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;color:var(--ink);margin-top:14px;"><input type="checkbox" id="edEnabled"> ظاهر بالمتجر</label>
+    <div id="edMsg" role="alert"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;"><button id="edSave">حفظ</button><button class="ghost" id="edCancel" type="button">إلغاء</button></div>
   </div>
 </div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -77,6 +128,7 @@ fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
+    loadCatalog();
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
     gateMsg.textContent = 'هالحساب مو مشرف.';
@@ -85,6 +137,122 @@ fbAuth.onAuthStateChanged(user => {
     gate.style.display = 'block'; panel.style.display = 'none';
   }
 });
+
+// ===== الكتالوج: شجرة مجلدات ومنتجات =====
+const API = 'https://postback.ly-ad.de';
+let NODES = [], CUR = '', EDIT = null, EDIMG = undefined;   // EDIMG: undefined = ما تغيّرت، '' = حذف، data URL = جديدة
+const $ = id => document.getElementById(id);
+function el(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  for(const k in (attrs || {})){ if(k === 'text') e.textContent = attrs[k]; else if(k.startsWith('on')) e[k] = attrs[k]; else e.setAttribute(k, attrs[k]); }
+  kids.forEach(x => e.append(x)); return e;
+}
+async function storeApi(body){
+  const token = await fbAuth.currentUser.getIdToken();
+  const res = await fetch(API + '/admin/store', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(body) });
+  let j = {}; try{ j = await res.json(); }catch(e){}
+  if(!res.ok || !j.ok){ const err = new Error(j.message || 'صار خطأ، جرّب كمان مرة.'); err.code = j.error; throw err; }
+  return j;
+}
+const byId = id => NODES.find(n => n.id === id);
+const childrenOf = pid => NODES.filter(n => n.parentId === pid).sort((a, b) => a.sort - b.sort);
+function pathOf(id){ const p = []; let c = byId(id); while(c){ p.unshift(c); c = byId(c.parentId); } return p; }
+function fmtPrice(n){ return Number(n).toLocaleString('en-US') + ' ل.س'; }
+function renderCatalog(){
+  const cr = $('crumbs'); cr.textContent = '';
+  const path = pathOf(CUR);
+  cr.append(path.length ? el('a', { text: 'الرئيسية', 'data-go': '' }) : el('b', { text: 'الرئيسية' }));
+  path.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === path.length - 1 ? el('b', { text: n.name }) : el('a', { text: n.name, 'data-go': n.id })); });
+  const list = $('list'); list.textContent = '';
+  const kids = childrenOf(CUR);
+  if(!kids.length){ list.append(el('div', { class: 'empty', id: 'emptyNote', text: CUR ? 'هالمجلد فاضي. ضيف مجلد أو منتج.' : 'الكتالوج فاضي. ضيف أول مجلد (مثلاً PUBG).' })); return; }
+  kids.forEach((n, i) => {
+    const thumb = n.hasImage ? el('img', { class: 'thumb', src: API + n.imageUrl, alt: '' }) : el('div', { class: 'thumb', text: n.type === 'folder' ? '📁' : '📄' });
+    const name = el('div', { class: 'nm', text: n.name });
+    if(!n.enabled) name.append(el('span', { class: 'badge', text: 'مخفي' }));
+    const sub = el('div', { class: 'sub', text: n.type === 'folder' ? ('مجلد · ' + childrenOf(n.id).length + ' عنصر' + (n.price ? ' · ' + fmtPrice(n.price) : '')) : ('منتج · ' + fmtPrice(n.price)) });
+    const info = el('div', { class: 'info', 'data-open': n.id }, name, sub);
+    const up = el('button', { 'data-act': 'up', 'data-id': n.id, title: 'فوق', text: '▲' }); if(i === 0) up.disabled = true;
+    const down = el('button', { 'data-act': 'down', 'data-id': n.id, title: 'تحت', text: '▼' }); if(i === kids.length - 1) down.disabled = true;
+    const acts = el('div', { class: 'acts' }, up, down, el('button', { 'data-act': 'edit', 'data-id': n.id, title: 'تعديل', text: '✏️' }), el('button', { 'data-act': 'del', 'data-id': n.id, title: 'حذف', text: '🗑' }));
+    list.append(el('div', { class: 'row', 'data-row': n.id }, thumb, info, acts));
+  });
+}
+async function loadCatalog(){
+  $('listMsg').textContent = '';
+  try{ NODES = (await storeApi({ action: 'list' })).nodes; if(CUR && !byId(CUR)) CUR = ''; renderCatalog(); }
+  catch(e){ $('listMsg').textContent = 'تعذّر تحميل الكتالوج: ' + e.message; }
+}
+$('crumbs').addEventListener('click', e => { const a = e.target.closest('[data-go]'); if(!a) return; CUR = a.dataset.go; renderCatalog(); });
+$('list').addEventListener('click', async e => {
+  const open = e.target.closest('[data-open]');
+  if(open){ const n = byId(open.dataset.open); if(n.type === 'folder'){ CUR = n.id; renderCatalog(); } else openEditor(n); return; }
+  const b = e.target.closest('button[data-act]'); if(!b) return;
+  const n = byId(b.dataset.id); $('listMsg').textContent = '';
+  if(b.dataset.act === 'edit') return openEditor(n);
+  try{
+    if(b.dataset.act === 'up' || b.dataset.act === 'down'){ NODES = (await storeApi({ action: 'reorder', id: n.id, dir: b.dataset.act })).nodes; renderCatalog(); }
+    else if(b.dataset.act === 'del'){
+      if(!window.confirm('احذف "' + n.name + '"؟')) return;
+      NODES = (await storeApi({ action: 'delete', id: n.id })).nodes; renderCatalog();
+    }
+  }catch(err){ $('listMsg').textContent = err.message; }
+});
+// --- المحرّر ---
+function openEditor(n, type){
+  EDIT = n ? { id: n.id, type: n.type } : { id: null, type };
+  EDIMG = undefined;
+  const isFolder = EDIT.type === 'folder';
+  $('edTitle').textContent = n ? (isFolder ? 'تعديل المجلد' : 'تعديل المنتج') : (isFolder ? 'مجلد جديد' : 'منتج جديد');
+  $('edName').value = n ? n.name : ''; $('edPrice').value = n ? n.price : '';
+  $('edPriceHint').textContent = isFolder ? '(اختياري للمجلد)' : '';
+  $('edEnabled').checked = n ? n.enabled : true;
+  $('edFile').value = ''; $('edMsg').textContent = '';
+  showPreview(n && n.hasImage ? API + n.imageUrl : '');
+  $('editor').hidden = false; $('edName').focus();
+}
+function showPreview(src){
+  const pv = $('edPv'); pv.textContent = '';
+  if(src) pv.append(el('img', { src, alt: '' })); else pv.append(el('span', { id: 'edPvPh', text: 'لا صورة' }));
+}
+$('btnAddFolder').onclick = () => openEditor(null, 'folder');
+$('btnAddItem').onclick = () => openEditor(null, 'item');
+$('edCancel').onclick = () => { $('editor').hidden = true; };
+$('edImgDel').onclick = () => { EDIMG = ''; $('edFile').value = ''; showPreview(''); };
+// صورة: بنصغّرها بالمتصفح (أقصى 400px) وبنضغطها (WebP) حتى تضل صغيرة
+async function fileToDataUrl(file){
+  if(!/^image\/(png|jpeg|webp|gif|bmp)$/.test(file.type)) throw new Error('اختار صورة (PNG أو JPEG أو WebP).');
+  const bmp = await createImageBitmap(file);
+  for(const max of [400, 300, 200]){
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    for(const q of [0.85, 0.7, 0.5]){
+      let url = cv.toDataURL('image/webp', q);
+      if(!/^data:image\/webp/.test(url)) url = cv.toDataURL('image/png');     // متصفح ما بيدعم WebP
+      if(url.length <= 200000) return url;
+    }
+  }
+  throw new Error('الصورة كبيرة كتير حتى بعد التصغير، جرّب صورة تانية.');
+}
+$('edFile').onchange = async () => {
+  const f = $('edFile').files && $('edFile').files[0]; if(!f) return;
+  $('edMsg').textContent = '';
+  try{ EDIMG = await fileToDataUrl(f); showPreview(EDIMG); }
+  catch(err){ EDIMG = undefined; $('edFile').value = ''; $('edMsg').textContent = err.message; }
+};
+$('edSave').onclick = async () => {
+  const name = $('edName').value.trim();
+  if(!name){ $('edMsg').textContent = 'اكتب اسم.'; return; }
+  const body = { action: 'save', name, price: $('edPrice').value === '' ? 0 : Number($('edPrice').value), enabled: $('edEnabled').checked };
+  if(EDIT.id) body.id = EDIT.id; else { body.type = EDIT.type; body.parentId = CUR; }
+  if(EDIMG !== undefined) body.image = EDIMG;
+  $('edSave').disabled = true; $('edMsg').textContent = '';
+  try{ NODES = (await storeApi(body)).nodes; $('editor').hidden = true; renderCatalog(); }
+  catch(err){ $('edMsg').textContent = err.message; }
+  $('edSave').disabled = false;
+};
 </script>
 </body>
 </html>
