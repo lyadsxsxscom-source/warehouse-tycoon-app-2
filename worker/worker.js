@@ -1390,6 +1390,8 @@ async function handleAdminStore(request, env) {
       return jsonResponse({ ok: true, ...(await storeSupplierOffers(env, cid)) }, 200);
     }
     if (b.action === "supplier_validators") return jsonResponse({ ok: true, validators: (await storeSupplierValidators(env)).map(v => ({ categoryId: v.categoryId, name: v.name })) }, 200);
+    if (b.action === "supplier_search") return jsonResponse({ ok: true, ...(await storeSupplierSearch(env, b.q)) }, 200);
+    if (b.action === "supplier_section_offers") return jsonResponse({ ok: true, offers: await storeSupplierSectionOffers(env, String(b.section || ""), String(b.id || "")) }, 200);
     if (b.action === "supplier_link") {            // ربط منتج بخيار عند FazerCards (أو فك الربط)؛ بره محرّر المنتج حتى ما ينمسح بالغلط
       const it = nodes.find(n => n.id === String(b.id || ""));
       if (!it) throw new ApiError("not_found", "هالمنتج مو موجود.", 404);
@@ -1713,6 +1715,45 @@ async function storeRateHit(env, uid, name, max, windowSec) {
   if (!start || now - start > windowSec * 1000) { start = now; n = 0; }
   if (n >= max) throw new ApiError("rate_limited", "عملت تحقق كتير. جرّب بعد شوي.", 429);
   await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields({ start, n: n + 1 }) } }]);
+}
+// ===== بحث شامل بكل أقسام FazerCards (شحن ألعاب، بطاقات هدايا، خدمات يدوية): قراءة بس =====
+let FZR_CATALOG = { at: 0, data: null };
+async function fzrCategoryPages(env, base) {
+  const out = []; let cursor = "";
+  for (let i = 0; i < 6; i++) {
+    const j = await fzrCall(env, "GET", base + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+    for (const it of Array.isArray(j.items) ? j.items : []) { const id = String(it.category_id || ""); if (/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) out.push({ id, name: cleanText(it.name, 80) }); }
+    cursor = j.meta && j.meta.has_more && j.meta.next_cursor ? String(j.meta.next_cursor) : ""; if (!cursor) break;
+  }
+  return out;
+}
+async function storeSupplierCatalog(env) {
+  if (FZR_CATALOG.data && Date.now() - FZR_CATALOG.at < 600000) return FZR_CATALOG.data;
+  const data = { topups: [], giftcards: [], manual: [], errors: {} };
+  const tasks = [
+    ["topups", async () => fzrCategoryPages(env, "/topups?limit=100")],
+    ["giftcards", async () => fzrCategoryPages(env, "/giftcards?limit=100")],
+    ["manual", async () => { const j = await fzrCall(env, "GET", "/manual-services"); return (Array.isArray(j.items) ? j.items : []).map(it => ({ id: String(it.id || ""), name: cleanText(it.name, 80) })).filter(x => /^[A-Za-z0-9_.:-]{1,80}$/.test(x.id)); }],
+  ];
+  let firstErr = null;
+  for (const [k, fn] of tasks) { try { data[k] = await fn(); } catch (e) { data.errors[k] = e instanceof ApiError ? e.message : "خطأ"; firstErr = firstErr || e; } }
+  if (Object.keys(data.errors).length === 3) throw firstErr;
+  if (!Object.keys(data.errors).length) FZR_CATALOG = { at: Date.now(), data };            // ما منحفظ نتيجة ناقصة (حتى لو انصلحت الخطة تظهر الأقسام فوراً)
+  return data;
+}
+async function storeSupplierSearch(env, q) {
+  const cat = await storeSupplierCatalog(env), words = fzrNorm(q).split(" ").filter(Boolean);
+  if (!words.length) throw new ApiError("bad_request", "اكتب اسم التطبيق أو اللعبة.");
+  const results = [];
+  for (const sec of ["topups", "giftcards", "manual"]) for (const it of cat[sec]) { const n = fzrNorm(it.name); if (words.every(w => n.includes(w))) results.push({ section: sec, id: it.id, name: it.name }); }
+  return { results: results.slice(0, 60), errors: cat.errors };
+}
+async function storeSupplierSectionOffers(env, section, id) {
+  if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) throw new ApiError("bad_request", "طلب غلط.");
+  if (section === "topups") { const o = await storeSupplierOffers(env, id); return o.offers.map(x => ({ id: x.offerId, name: x.name, priceUsd: x.priceUsd, note: "" })); }
+  if (section === "giftcards") { const j = await fzrCall(env, "GET", "/giftcards/cards?category_id=" + encodeURIComponent(id)); return (Array.isArray(j.offers) ? j.offers : []).map(x => ({ id: String(x.card_id || ""), name: cleanText(x.name, 80), priceUsd: fzrNum(x.price_usd), note: x.stock !== undefined ? "مخزون " + (Number(x.stock) || 0) : "" })).filter(x => x.id && x.priceUsd !== null); }
+  if (section === "manual") { const j = await fzrCall(env, "GET", "/manual-services/" + encodeURIComponent(id) + "/offers"); return (Array.isArray(j.items) ? j.items : []).map(x => ({ id: String(x.id || ""), name: cleanText(x.name, 80), priceUsd: fzrNum(x.price_usd), note: Number(x.delivery_minutes) > 0 ? "تسليم خلال " + Number(x.delivery_minutes) + " دقيقة" : "" })).filter(x => x.id && x.priceUsd !== null); }
+  throw new ApiError("bad_request", "طلب غلط.");
 }
 function storeParseSupplierLink(raw) {
   if (raw === null) return null;

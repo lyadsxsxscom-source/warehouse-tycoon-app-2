@@ -487,7 +487,9 @@ const idFormatOk = v => v.length >= 3 && v.length <= 40 && /^[\p{L}\p{N}_#@.\- ]
 function updateIdStatus(){
   const n = $('osIdCheck'); if(!n) return; const r = SH.idRes;
   if(!r || r.pid !== SH.pid.trim()){ n.textContent = ''; return; }
-  n.textContent = r.state === 'checking' ? 'عم نتحقق من الـID...' : r.state === 'valid' ? '✔ اللاعب: ' + (r.name || '—') + (r.region ? ' · ' + r.region : '') + ' — تأكد إنه حسابك.' : r.state === 'invalid' ? '❌ ما لقينا حساب بهالـID. تأكد منه.' : '⚠️ ما قدرنا نتحقق هلق. تأكد من الـID بنفسك (ما في استرجاع إذا كان غلط).';
+  n.textContent = '';
+  if(r.state === 'valid'){ const nm = document.createElement('bdi'); nm.textContent = r.name || '—'; n.append('✔ اللاعب: ', nm, (r.region ? ' · ' + r.region : '') + ' — تأكد إنه حسابك.'); }      // bdi: الاسم بيتعزل حتى لو عربي أو مختلط الاتجاه
+  else n.textContent = r.state === 'checking' ? 'عم نتحقق من الـID...' : r.state === 'invalid' ? '❌ ما لقينا حساب بهالـID. تأكد منه.' : '⚠️ ما قدرنا نتحقق هلق. تأكد من الـID بنفسك (ما في استرجاع إذا كان غلط).';
 }
 async function checkPlayerId(){
   const pid = SH.pid.trim(); if(!SH.item || SH.step !== 'form' || SH.idSupported === false || !idFormatOk(pid)) return;

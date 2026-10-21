@@ -156,6 +156,12 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <div class="bar"><button id="btnSpCheck">🔌 فحص الاتصال (الخطة والرصيد)</button></div>
       <div id="spStatus" role="status" style="min-height:1.4em;font-size:.92rem;line-height:1.9;"></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="h">🔎 بحث بكل أقسام FazerCards</div>
+      <div class="hint">اكتب اسم التطبيق أو اللعبة (مثلاً Xena). بيقلك <b>بأي قسم هو</b>، وهل ممكن يتنفّذ تلقائياً أو يدوي، وبتشوف أسعار حزمه.</div>
+      <div class="bar" style="align-items:center;"><input type="search" id="gsQuery" placeholder="مثلاً: Xena، Bigo، PUBG" style="flex:1;min-width:140px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;"><button id="btnGs">🔎 بحث</button></div>
+      <div id="gsMsg" role="status" style="min-height:1.3em;font-size:.9rem;line-height:1.8;margin-top:6px;"></div>
+      <div id="gsList"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
       <div class="h">إعدادات التنفيذ التلقائي</div>
       <div class="hint">هالإعدادات بتتحفظ هلق <b>وبتشتغل بالخطوة الجاية (7ج)</b>. <b>هلق ما في أي شراء تلقائي</b> ولا أي خصم من رصيدك عند FazerCards.</div>
       <label style="display:flex;gap:8px;align-items:center;margin-bottom:8px;"><input type="checkbox" id="spEnabled"> فعّل التنفيذ التلقائي (لما تجهز)</label>
@@ -846,6 +852,39 @@ $('spItems').addEventListener('click', async e => {
       $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = 'تحدّثت التكلفة: ' + usd4(o.priceUsd);
     }
   }catch(err){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = err.message; }
+});
+
+// ===== بحث شامل بكل أقسام FazerCards =====
+const GS_SEC = {
+  topups: { icon: '🎮', label: 'شحن ألعاب', hint: 'ممكن ينربط وينتنفّذ تلقائياً. للربط: تحت اضغط 🔗 ربط على المنتج وابحث باسمه.' },
+  giftcards: { icon: '🎁', label: 'بطاقات هدايا', hint: 'مو شحن ألعاب: ما بينربط تلقائياً بالمتجر، بتنفّذه يدوي.' },
+  manual: { icon: '🛠', label: 'خدمة يدوية', hint: 'بينفّذها مشغّل بشري عندهم: بتنفّذه يدوي.' },
+};
+async function gsSearch(){
+  const q = $('gsQuery').value.trim(), msg = $('gsMsg'), list = $('gsList'); list.textContent = '';
+  if(!q){ msg.style.color = 'var(--err)'; msg.textContent = 'اكتب اسم التطبيق أو اللعبة.'; return; }
+  msg.style.color = 'var(--dim)'; msg.textContent = 'عم نبحث بكل الأقسام...'; $('btnGs').disabled = true;
+  try{
+    const j = await storeApi({ action: 'supplier_search', q }); msg.textContent = '';
+    const errs = Object.keys(j.errors || {});
+    if(errs.length){ msg.style.color = '#ffd48a'; errs.forEach(k => msg.append(el('div', { class: 'gserr', text: '⚠️ قسم "' + (GS_SEC[k] ? GS_SEC[k].label : k) + '" تعذّر تحميله: ' + j.errors[k] }))); }
+    if(!j.results.length){ list.append(el('div', { class: 'empty', id: 'gsEmpty', text: 'ما لقينا "' + q + '" بأي قسم' + (errs.length ? ' (من الأقسام اللي اشتغلت)' : '') + '. ممكن مو متوفر بخطتك أو انشال. اسأل الدعم.' })); }
+    j.results.forEach(r => {
+      const sec = GS_SEC[r.section];
+      list.append(el('div', { class: 'cust gsrow', 'data-gs': r.id }, el('div', { class: 'nm', text: r.name }), el('div', { class: 'sm', 'data-gssec': r.id, text: sec.icon + ' ' + sec.label + ' — ' + sec.hint }), el('div', { class: 'tools' }, el('button', { 'data-gsact': 'offers', 'data-sec': r.section, 'data-id': r.id, text: '💲 الحزم والأسعار' })), el('div', { class: 'logbox', 'data-gsoff': r.id })));
+    });
+  }catch(e){ msg.style.color = 'var(--err)'; msg.textContent = e.message; }
+  $('btnGs').disabled = false;
+}
+$('btnGs').onclick = gsSearch; $('gsQuery').addEventListener('keydown', e => { if(e.key === 'Enter') gsSearch(); });
+$('gsList').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-gsact]'); if(!b) return; const box = document.querySelector('[data-gsoff="' + b.dataset.id + '"]');
+  if(box.textContent){ box.textContent = ''; return; } box.textContent = 'عم يجيب...';
+  try{
+    const j = await storeApi({ action: 'supplier_section_offers', section: b.dataset.sec, id: b.dataset.id }); box.textContent = '';
+    if(!j.offers.length) box.textContent = 'ما في حزم.';
+    j.offers.forEach(o => box.append(el('div', { text: o.name + ' · تكلفتك ' + usd4(o.priceUsd) + (o.note ? ' · ' + o.note : '') })));
+  }catch(err){ box.textContent = 'تعذّر: ' + err.message; }
 });
 </script>
 </body>

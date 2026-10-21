@@ -183,6 +183,36 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(!JSON.stringify(r.json).includes(KEY), "the key never appears in any answer");
   var link2;
 
+  /* ---- E4) search across every section ---- */
+  const resetCat = () => vm.runInContext("FZR_CATALOG = { at: 0, data: null }", c);
+  sup.routes["/giftcards?limit=100"] = { body: { ok: true, items: [{ category_id: "gc_steam_1", name: "Steam USD" }, { category_id: "gc_xena", name: "<b>Xena</b> Coins" }], meta: { has_more: false } } };
+  sup.routes["/manual-services"] = { body: { ok: true, items: [{ id: "ms_bigo", name: "Bigo Live", kind: "manual_transfer" }, { id: "ms_xena", name: "Xena Live", kind: "manual_transfer" }, { id: "bad id", name: "x" }] } };
+  sup.routes["/giftcards/cards?category_id=gc_xena"] = { body: { ok: true, offers: [{ card_id: "x1", name: "1000 coins", price_usd: "1.1000", stock: 50 }, { card_id: "x2", name: "no price", price_usd: "abc" }] } };
+  sup.routes["/manual-services/ms_xena/offers"] = { body: { ok: true, items: [{ id: "m1", name: "Express", price_usd: "25.0000", delivery_minutes: 60 }, { id: "m2", name: "Slow", price_usd: "20", delivery_minutes: 0 }] } };
+  ok((await adm({ action: "supplier_search", q: "xena" }, "u1")).status === 401 && (await adm({ action: "supplier_section_offers", section: "manual", id: "ms_xena" }, null)).status === 401, "both are admin-only");
+  resetCat(); let nS = sup.calls.length; r = await adm({ action: "supplier_search", q: "xena" });
+  ok(r.status === 200 && r.json.results.map(x => x.section + ":" + x.id + ":" + x.name).join() === "giftcards:gc_xena:Xena Coins,manual:ms_xena:Xena Live" && Object.keys(r.json.errors).length === 0, "searching 'xena' finds it in every section where it exists and tells which section (gift cards and manual services here), cleaned names, invalid ids dropped");
+  ok(sup.calls.length - nS === 4 && sup.calls.slice(nS).every(x => x.method === "GET"), "(it read the 3 section lists: 2 pages of top-ups, gift cards, manual services; reads only)");
+  nS = sup.calls.length; r = await adm({ action: "supplier_search", q: "pubg" }); ok(r.json.results.length === 1 && r.json.results[0].section === "topups" && sup.calls.length === nS, "the lists are remembered for 10 minutes (a second search calls nobody); PUBG is found in game top-ups");
+  r = await adm({ action: "supplier_search", q: "LIVE xena" }); ok(r.json.results.length === 1 && r.json.results[0].id === "ms_xena", "every word must match, in any order, any case ('LIVE xena' finds only 'Xena Live')");
+  r = await adm({ action: "supplier_search", q: "live" }); ok(r.json.results.map(x => x.id).join() === "ms_bigo,ms_xena", "a shorter word finds more");
+  r = await adm({ action: "supplier_search", q: "nothingatall" }); ok(r.status === 200 && r.json.results.length === 0, "no match gives an empty list");
+  for (const bad of ["", "   ", "!!!"]) { r = await adm({ action: "supplier_search", q: bad }); ok(r.status === 400, "an empty search is refused: " + JSON.stringify(bad)); }
+  /* a section unavailable (plan) must not hide the others, and is not remembered */
+  resetCat(); sup.routes["/giftcards?limit=100"] = { status: 403, body: { ok: false, error: "disabled" } };
+  r = await adm({ action: "supplier_search", q: "xena" }); ok(r.status === 200 && r.json.results.length === 1 && r.json.results[0].section === "manual" && /غير مفعّلة بخطتك/.test(r.json.errors.giftcards) && !r.json.errors.manual && !r.json.errors.topups, "if one section is unavailable (e.g. not in your plan) the others still work and you are told which one failed and why");
+  sup.routes["/giftcards?limit=100"] = { body: { ok: true, items: [{ category_id: "gc_xena", name: "Xena Coins" }], meta: { has_more: false } } };
+  r = await adm({ action: "supplier_search", q: "xena" }); ok(r.json.results.length === 2 && Object.keys(r.json.errors).length === 0, "an incomplete result is never remembered: once fixed, the missing section appears at once");
+  resetCat(); sup.routes["/topups?limit=100"] = { status: 403, body: { ok: false } }; sup.routes["/giftcards?limit=100"] = { status: 403, body: { ok: false } }; sup.routes["/manual-services"] = { status: 403, body: { ok: false } };
+  r = await adm({ action: "supplier_search", q: "xena" }); ok(r.status === 502 && r.json.error === "supplier_error", "if every section fails it is an error (not an empty list that looks like 'does not exist')");
+  sup.routes["/topups?limit=100"] = { body: { ok: true, items: [{ category_id: "cat_pubgm_1", name: "PUBG Mobile" }], meta: { has_more: false } } }; sup.routes["/giftcards?limit=100"] = { body: { ok: true, items: [{ category_id: "gc_xena", name: "Xena Coins" }], meta: { has_more: false } } }; sup.routes["/manual-services"] = { body: { ok: true, items: [{ id: "ms_xena", name: "Xena Live" }] } }; resetCat();
+  /* the packages and prices behind a result */
+  r = await adm({ action: "supplier_section_offers", section: "giftcards", id: "gc_xena" }); ok(r.status === 200 && r.json.offers.length === 1 && r.json.offers[0].name === "1000 coins" && r.json.offers[0].priceUsd === 1.1 && r.json.offers[0].note === "مخزون 50", "gift cards: packages with their price and stock (one without a valid price is dropped)");
+  r = await adm({ action: "supplier_section_offers", section: "manual", id: "ms_xena" }); ok(r.json.offers.map(o => o.name + ":" + o.priceUsd + ":" + o.note).join() === "Express:25:تسليم خلال 60 دقيقة,Slow:20:", "manual services: packages with price and delivery time");
+  r = await adm({ action: "supplier_section_offers", section: "topups", id: "cat_pubgm_1" }); ok(r.json.offers.length === 2 && r.json.offers[1].priceUsd === 8.76, "game top-ups: the same packages and prices as when linking");
+  for (const [sec, id] of [["steam", "x"], ["manual", "bad id"], ["", "x"], ["manual", ""]]) { const nB = sup.calls.length; r = await adm({ action: "supplier_section_offers", section: sec, id }); ok(r.status === 400 && sup.calls.length === nB, "refused without calling anybody: " + sec + "/" + id); }
+  sup.routes["/manual-services/gone/offers"] = { status: 404, body: { ok: false, error: "not found" } }; r = await adm({ action: "supplier_section_offers", section: "manual", id: "gone" }); ok(r.status === 502 && /not found/.test(r.json.message), "an unknown id from FazerCards is shown");
+
   /* ---- F) the key never leaks and nobody else is called ---- */
   ok(sup.calls.every(x => x.url.startsWith("https://api.fzr.cards/api/v2/")) && sup.calls.every(x => x.method === "GET" || (x.method === "POST" && x.url.endsWith("/topups/validate-id"))), "everything sent to FazerCards went to its API and was read-only: reads, plus the ID check; nothing was ever bought or changed (no /topups/order call)");
   ok(!sup.calls.some(x => /\/topups\/order/.test(x.url)), "(and no order was ever placed)");
