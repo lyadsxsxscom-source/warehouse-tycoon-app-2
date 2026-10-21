@@ -61,6 +61,25 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .pm .tools{display:flex;gap:6px;align-items:center;justify-content:space-between;margin-top:8px}
 .pm .tools button{padding:5px 9px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
 #pmMsg{min-height:1.5em;margin-top:8px;font-size:.92rem}
+.h{font-weight:700;font-size:1.05rem;margin:0 0 6px}
+.hint{color:var(--dim);font-size:.88rem;line-height:1.8;margin-bottom:10px}
+.vrow{display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.vrow input{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+.vrow .cum{grid-column:2;color:var(--dim);font-size:.82rem;margin-top:-4px}
+.cust{background:#12281F;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.cust .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cust .nm{font-weight:700;word-break:break-word}
+.cust .em{color:var(--dim);font-size:.85rem;word-break:break-all}
+.vb{background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:1px 12px;white-space:nowrap}
+.track{height:10px;border-radius:6px;background:#0E1B17;border:1px solid var(--line);overflow:hidden;margin:8px 0 4px}
+.fill{height:100%;background:var(--tape)}
+.cust .sm{color:var(--dim);font-size:.85rem}
+.cust .tools{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.cust .tools button{padding:5px 10px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
+.cust form{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.cust form input{padding:7px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;width:100%}
+.logbox{margin-top:8px;font-size:.85rem;color:var(--dim)}
+#custSearch{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;margin:8px 0 12px}
 </style>
 </head>
 <body>
@@ -83,6 +102,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
     <div class="tabs" id="tabs">
       <button class="tab active" id="tabCatalog">📁 الكتالوج</button>
       <button class="tab" id="tabPayments">💳 طرق الدفع</button>
+      <button class="tab" id="tabCustomers">👥 الزباين وVIP</button>
     </div>
     <div class="card" id="viewCatalog">
       <div class="crumbs" id="crumbs"></div>
@@ -92,6 +112,18 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       </div>
       <div id="listMsg" role="alert"></div>
       <div id="list"></div>
+    </div>
+    <div class="card" id="viewCustomers" hidden>
+      <div class="h">مستويات VIP</div>
+      <div class="hint">لكل مستوى: <b>المبلغ اللازم لإكماله</b> بالدولار. مثال: VIP 1 = 200 ← زبون صرف 250$ بيصير <b>VIP 2</b> وتقدّمه 50$ (من مبلغ VIP 2). VIP 10 هو الأعلى. <span id="vipNote"></span></div>
+      <div id="vipRows"></div>
+      <div class="bar"><button id="btnSaveVip">حفظ مستويات VIP</button></div>
+      <div id="vipMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="h">الزباين <span id="custCount" style="color:var(--dim);font-weight:400;"></span></div>
+      <input type="search" id="custSearch" placeholder="🔎 بحث بالاسم أو الإيميل">
+      <div id="custMsg" role="alert" style="color:var(--err);min-height:1.2em;font-size:.92rem;"></div>
+      <div id="custList"></div>
     </div>
     <div class="card" id="viewPayments" hidden>
       <div style="color:var(--dim);font-size:.9rem;line-height:1.8;margin-bottom:12px;">الأسعار بالدولار. لكل طريقة دفع <b>سعر صرف</b> (كم وحدة من عملتها مقابل 1 دولار) ونسبة إضافية اختيارية. غيّر السعر لما يتقلّب، والصفحة العامة بتحسب الأسعار لحالها.</div>
@@ -294,11 +326,12 @@ $('edSave').onclick = async () => {
 
 // ===== التبويبات =====
 function showTab(which){
-  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments';
-  $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments');
+  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers';
+  $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers');
   if(which === 'payments') loadMethods();
+  if(which === 'customers'){ loadVip(); loadCustomers(); }
 }
-$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments');
+$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers');
 
 // ===== طرق الدفع =====
 let METHODS = [];
@@ -352,6 +385,79 @@ $('btnSaveMethods').onclick = async () => {
   }catch(e){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = e.message; }
   $('btnSaveMethods').disabled = false;
 };
+
+// ===== الزباين وVIP =====
+let VIP = [];
+function usd(n){ const v = Number(n); return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function renderVipRows(){
+  const box = $('vipRows'); box.textContent = '';
+  let cum = 0;
+  VIP.forEach((v, i) => {
+    cum += Number(v) || 0;
+    const inp = el('input', { type: 'number', min: '0', step: '0.01', inputmode: 'decimal', 'data-vip': i }); inp.value = v;
+    box.append(el('div', { class: 'vrow', 'data-vrow': i }, el('label', { text: 'VIP ' + (i + 1) + ' ←' }), inp, el('div', { class: 'cum', 'data-cum': i, text: 'بيبدأ VIP ' + (i + 2) + ' عند إجمالي صرف ' + usd(cum) })));
+  });
+  box.append(el('div', { class: 'hint', text: 'VIP 10: الأعلى (بعد إجمالي ' + usd(cum) + ').' }));
+}
+$('vipRows').addEventListener('input', e => {
+  if(e.target.dataset.vip === undefined) return; VIP[Number(e.target.dataset.vip)] = e.target.value;
+  let cum = 0; VIP.forEach((v, i) => { cum += Number(v) || 0; const c = document.querySelector('[data-cum="' + i + '"]'); if(c) c.textContent = 'بيبدأ VIP ' + (i + 2) + ' عند إجمالي صرف ' + usd(cum); });
+});
+async function loadVip(){
+  $('vipMsg').textContent = '';
+  try{ const j = await storeApi({ action: 'vip_get' }); VIP = j.sizes.slice(); renderVipRows(); $('vipNote').textContent = j.configured ? '' : '(هاي أرقام مثال، عدّلها واحفظ.)'; }
+  catch(e){ $('vipMsg').style.color = 'var(--err)'; $('vipMsg').textContent = 'تعذّر تحميل المستويات: ' + e.message; }
+}
+$('btnSaveVip').onclick = async () => {
+  $('btnSaveVip').disabled = true; $('vipMsg').textContent = '';
+  try{ const j = await storeApi({ action: 'vip_save', sizes: VIP.map(Number) }); VIP = j.sizes.slice(); renderVipRows(); $('vipNote').textContent = ''; $('vipMsg').style.color = 'var(--ok, #4caf50)'; $('vipMsg').textContent = 'انحفظ ✓ (مستويات الزباين انحسبت من جديد)'; loadCustomers(); }
+  catch(e){ $('vipMsg').style.color = 'var(--err)'; $('vipMsg').textContent = e.message; }
+  $('btnSaveVip').disabled = false;
+};
+let CUST = [], custTimer = null;
+function renderCustomers(){
+  const box = $('custList'); box.textContent = '';
+  if(!CUST.length){ box.append(el('div', { class: 'empty', id: 'custEmpty', text: 'ما في زباين.' })); return; }
+  CUST.forEach(c => {
+    const max = c.sizeUsd === null, pct = max ? 100 : Math.max(0, Math.min(100, c.progressUsd / c.sizeUsd * 100));
+    const fill = el('div', { class: 'fill' }); fill.style.width = pct.toFixed(1) + '%';
+    const prog = max ? 'أعلى مستوى 🎉' : ('تقدّمه ' + usd(c.progressUsd) + ' من ' + usd(c.sizeUsd) + ' · باقي ' + usd(c.remainingUsd) + ' لـVIP ' + c.nextVip);
+    const spendBtn = el('button', { 'data-act': 'spend', 'data-id': c.id, text: '➕ تعديل الصرف' }), logBtn = el('button', { 'data-act': 'log', 'data-id': c.id, text: '📜 السجل' });
+    box.append(el('div', { class: 'cust', 'data-cust': c.id },
+      el('div', { class: 'top' }, el('div', {}, el('div', { class: 'nm', text: c.name || '—' }), el('div', { class: 'em', dir: 'ltr', text: c.email || c.id })), el('span', { class: 'vb', text: 'VIP ' + c.vip })),
+      el('div', { class: 'track' }, fill), el('div', { class: 'sm', text: prog }),
+      el('div', { class: 'sm', text: 'إجمالي الصرف ' + usd(c.spentUsd) + ' · آخر زيارة: ' + (c.lastSeenAt ? new Date(c.lastSeenAt).toLocaleString('en-GB') : '—') }),
+      el('div', { class: 'tools' }, spendBtn, logBtn), el('div', { class: 'logbox', 'data-box': c.id })));
+  });
+}
+async function loadCustomers(){
+  $('custMsg').textContent = '';
+  try{ const j = await storeApi({ action: 'customers_list', q: $('custSearch').value.trim() }); CUST = j.customers; $('custCount').textContent = '(' + j.total + ')'; renderCustomers(); }
+  catch(e){ $('custMsg').textContent = 'تعذّر تحميل الزباين: ' + e.message; }
+}
+$('custSearch').addEventListener('input', () => { clearTimeout(custTimer); custTimer = setTimeout(loadCustomers, 300); });
+$('custList').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]'); if(!b) return; const id = b.dataset.id, card = document.querySelector('[data-cust="' + id + '"]'), box = card.querySelector('.logbox');
+  if(b.dataset.act === 'spend'){
+    if(card.querySelector('form')){ card.querySelector('form').remove(); return; }
+    const f = el('form', {}, el('input', { type: 'number', step: '0.01', placeholder: 'المبلغ $ (سالب للتصحيح)', 'data-f': 'delta' }), el('input', { type: 'text', maxlength: '120', placeholder: 'ملاحظة (اختياري)', 'data-f': 'note' }), el('button', { type: 'submit', text: 'تطبيق' }), el('div', { class: 'err', 'data-f': 'err', style: 'color:var(--err);font-size:.85rem;' }));
+    f.addEventListener('submit', async ev => {
+      ev.preventDefault(); const delta = Number(f.querySelector('[data-f="delta"]').value), errEl = f.querySelector('[data-f="err"]'); errEl.textContent = '';
+      if(!f.querySelector('[data-f="delta"]').value || !Number.isFinite(delta) || delta === 0){ errEl.textContent = 'اكتب مبلغ (غير صفر).'; return; }
+      try{ await storeApi({ action: 'customer_spend', uid: id, deltaUsd: delta, note: f.querySelector('[data-f="note"]').value }); await loadCustomers(); }
+      catch(err){ errEl.textContent = err.message; }
+    });
+    card.insertBefore(f, box);
+  } else if(b.dataset.act === 'log'){
+    if(box.textContent){ box.textContent = ''; return; }
+    box.textContent = 'عم يحمّل...';
+    try{
+      const j = await storeApi({ action: 'customer_log', uid: id }); box.textContent = '';
+      if(!j.log.length) box.textContent = 'ما في تعديلات.';
+      j.log.forEach(x => box.append(el('div', { text: new Date(x.at).toLocaleString('en-GB') + ' · ' + (x.deltaUsd > 0 ? '+' : '') + usd(x.deltaUsd) + ' ← ' + usd(x.spentAfter) + (x.note ? ' · ' + x.note : '') })));
+    }catch(err){ box.textContent = 'تعذّر: ' + err.message; }
+  }
+});
 </script>
 </body>
 </html>

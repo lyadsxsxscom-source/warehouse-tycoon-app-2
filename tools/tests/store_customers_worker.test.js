@@ -52,14 +52,14 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
 
   /* ---- the first sign-in creates the account ---- */
   const t0 = Date.now(); r = await me("a");
-  ok(r.status === 200 && r.json.ok && r.json.created === true && r.json.customer.id === "ua" && r.json.customer.name === "Ali Salem" && r.json.customer.email === "ali@x.com" && r.json.customer.vip === 1 && r.json.customer.spentUsd === 0 && r.json.customer.createdAt >= t0, "the first call creates the account: name and email from the sign-in, VIP 1, nothing spent");
-  const doc = get("storeCustomers/ua"); ok(doc && doc.name === "Ali Salem" && doc.vip === 1 && doc.createdAt === r.json.customer.createdAt && doc.lastSeenAt >= t0, "and stores it under the same id as his game account");
-  ok(!("lastSeenAt" in r.json.customer) && Object.keys(r.json.customer).sort().join() === "createdAt,email,id,name,spentUsd,vip", "the answer contains only the fields the page needs");
+  ok(r.status === 200 && r.json.ok && r.json.created === true && r.json.customer.id === "ua" && r.json.customer.name === "Ali Salem" && r.json.customer.email === "ali@x.com" && r.json.customer.vip === 1 && r.json.customer.spentUsd === 0 && r.json.customer.progressUsd === 0 && r.json.customer.sizeUsd === 200 && r.json.customer.createdAt >= t0, "the first call creates the account: name and email from the sign-in, VIP 1, nothing spent");
+  const doc = get("storeCustomers/ua"); ok(doc && doc.name === "Ali Salem" && doc.spentUsd === 0 && !("vip" in doc) && doc.createdAt === r.json.customer.createdAt && doc.lastSeenAt >= t0, "and stores it under the same id as his game account");
+  ok(!("lastSeenAt" in r.json.customer) && Object.keys(r.json.customer).sort().join() === "createdAt,email,id,name,nextVip,progressUsd,remainingUsd,sizeUsd,spentUsd,vip", "the answer contains only the fields the page needs");
 
   /* ---- the next sign-ins ---- */
-  put("storeCustomers/ua", { ...get("storeCustomers/ua"), vip: 5, spentUsd: 123.456, lastSeenAt: 1 });
+  put("storeCustomers/ua", { ...get("storeCustomers/ua"), spentUsd: 250.456, lastSeenAt: 1 });
   r = await me("a");
-  ok(r.json.created === false && r.json.customer.vip === 5 && r.json.customer.spentUsd === 123.46 && r.json.customer.createdAt === doc.createdAt && get("storeCustomers/ua").lastSeenAt > 1, "next time it only refreshes 'last seen' (VIP, spending and creation date are never reset)");
+  ok(r.json.created === false && r.json.customer.vip === 2 && r.json.customer.spentUsd === 250.46 && r.json.customer.progressUsd === 50.46 && r.json.customer.sizeUsd === 300 && r.json.customer.nextVip === 3 && r.json.customer.createdAt === doc.createdAt && get("storeCustomers/ua").lastSeenAt > 1 && get("storeCustomers/ua").spentUsd === 250.456, "next time it only refreshes 'last seen'; the level is worked out from the spending (250 spent = VIP 2, progress 50), and spending and creation date are never reset");
   put("storeCustomers/ua", { ...get("storeCustomers/ua"), name: "Chosen Name" }); r = await me("a"); ok(r.json.customer.name === "Chosen Name", "a name already saved is not overwritten by the sign-in provider");
   put("storeCustomers/ua", { ...get("storeCustomers/ua"), name: "", email: "" }); r = await me("a"); ok(r.json.customer.name === "Ali Salem" && r.json.customer.email === "ali@x.com", "an empty name or email is filled from the sign-in");
 

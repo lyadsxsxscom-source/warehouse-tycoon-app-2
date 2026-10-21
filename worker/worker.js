@@ -1262,6 +1262,43 @@ async function handleAdminStore(request, env) {
     const nodes = await storeAllNodes(env);
     const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: STORE_MAX_NODES } }, 200);
     if (b.action === "list") return out(nodes);
+    if (b.action === "vip_get") { const v = await storeLoadVipSizes(env); return jsonResponse({ ok: true, ...v }, 200); }
+    if (b.action === "vip_save") {
+      const sizes = storeParseVipSizes(b.sizes), at = Date.now();
+      await fsCommit(env, [{ update: { name: docName(env, "config/storeVip"), fields: objToFields({ sizes, updatedAt: at }) } }]);
+      return jsonResponse({ ok: true, sizes, configured: true, updatedAt: at }, 200);
+    }
+    if (b.action === "customers_list") {
+      const { sizes } = await storeLoadVipSizes(env), q = cleanText(b.q, 60).toLowerCase();
+      let rows = (await fsRunQuery(env, "storeCustomers", null, 500, 0)).map(r => ({ ...storeCustomerOut(r.id, r.data, sizes), lastSeenAt: Number(r.data.lastSeenAt) || 0 }));
+      const total = rows.length;
+      if (q) rows = rows.filter(x => (x.name + " " + x.email).toLowerCase().includes(q));
+      rows.sort((a, c2) => c2.lastSeenAt - a.lastSeenAt || a.id.localeCompare(c2.id));
+      return jsonResponse({ ok: true, total, customers: rows.slice(0, 200) }, 200);
+    }
+    if (b.action === "customer_spend") {         // تعديل يدوي للصرف (قبل ما تشتغل الطلبات، أو لتصحيح)؛ بينسجّل
+      const uid = validId(String(b.uid || "")); const delta = Number(b.deltaUsd);
+      if (!uid) throw new ApiError("bad_request", "طلب غلط.");
+      if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 1000000) throw new ApiError("bad_delta", "اكتب مبلغ (موجب أو سالب) أكبر من 0 وأقل من مليون.");
+      const note = cleanText(b.note, 120), { sizes } = await storeLoadVipSizes(env);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cur = await fsGetDoc(env, "storeCustomers/" + uid);
+        if (!cur.exists) throw new ApiError("not_found", "هالزبون مو موجود.", 404);
+        const after = Math.max(0, r2((Number(cur.data.spentUsd) || 0) + delta)), at = Date.now();
+        try {
+          await fsCommit(env, [
+            { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ spentUsd: after }) }, updateMask: { fieldPaths: ["spentUsd"] }, currentDocument: { updateTime: cur.updateTime } },
+            { update: { name: docName(env, "storeSpendLog/" + randomId()), fields: objToFields({ uid, deltaUsd: r2(delta), spentAfter: after, note, at, by: "admin" }) }, currentDocument: { exists: false } },
+          ]);
+          return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, spentUsd: after }, sizes) }, 200);
+        } catch (e) { if (!e.conflict || attempt === 2) throw e; }
+      }
+    }
+    if (b.action === "customer_log") {
+      const uid = validId(String(b.uid || "")); if (!uid) throw new ApiError("bad_request", "طلب غلط.");
+      const rows = (await fsRunQuery(env, "storeSpendLog", null, 200, 0, { field: "uid", value: uid })).map(r => ({ deltaUsd: Number(r.data.deltaUsd) || 0, spentAfter: Number(r.data.spentAfter) || 0, note: String(r.data.note || ""), at: Number(r.data.at) || 0 })).sort((a, c2) => c2.at - a.at);
+      return jsonResponse({ ok: true, log: rows }, 200);
+    }
     if (b.action === "payments_get") { const d = await fsGetDoc(env, "config/storePayments"); return jsonResponse({ ok: true, methods: await storeLoadMethods(env), updatedAt: d.exists && d.data ? Number(d.data.updatedAt) || 0 : 0 }, 200); }
     if (b.action === "payments_save") {
       const methods = storeParseMethods(b.methods), at = Date.now();
@@ -1335,30 +1372,48 @@ async function handleAdminStore(request, env) {
 // ===== حسابات زباين المتجر (الخطوة 4أ) =====
 // storeCustomers/{uid}: نفس معرّف حساب Firebase تبع اللعبة (يعني لاعب ياردوفا بيدخل بحسابه لاحقاً ويدفع بنقاطه).
 // الدخول بيعمل الحساب أول مرة. vip وspentUsd هلق ثابتين (1 و0)؛ منظام VIP بيجي بالخطوة 4ب.
-function storeCustomerOut(uid, c) {
-  return { id: uid, name: String(c.name || ""), email: String(c.email || ""), vip: Math.min(10, Math.max(1, Number(c.vip) || 1)), spentUsd: Math.round((Number(c.spentUsd) || 0) * 100) / 100, createdAt: Number(c.createdAt) || 0 };
+const STORE_VIP_DEFAULT_SIZES = [200, 300, 500, 800, 1200, 2000, 3000, 5000, 8000];   // أرقام مثال لحد ما الأدمن يضبطها
+const r2 = (x) => Math.round(x * 100) / 100;
+// المستوى بيتحسب من إجمالي الصرف: sizes[i] = المبلغ اللازم لإكمال المستوى i+1. مثال: الأول 200 ← صرف 250 = VIP 2 وتقدمه 50
+function storeVipInfo(sizes, spentUsd) {
+  const spent = Math.max(0, Number(spentUsd) || 0); let rest = spent, level = 1;
+  for (let i = 0; i < sizes.length; i++) { if (rest + 1e-9 >= sizes[i]) { rest -= sizes[i]; level++; } else break; }
+  const max = level > sizes.length;
+  return { vip: level, spentUsd: r2(spent), progressUsd: max ? 0 : r2(Math.max(0, rest)), sizeUsd: max ? null : sizes[level - 1], remainingUsd: max ? 0 : r2(Math.max(0, sizes[level - 1] - rest)), nextVip: max ? null : level + 1 };
+}
+async function storeLoadVipSizes(env) { const d = await fsGetDoc(env, "config/storeVip"); const z = d.exists && d.data && Array.isArray(d.data.sizes) ? d.data.sizes.map(Number) : null; return z && z.length === 9 && z.every(x => x > 0) ? { sizes: z, configured: true, updatedAt: Number(d.data.updatedAt) || 0 } : { sizes: STORE_VIP_DEFAULT_SIZES, configured: false, updatedAt: 0 }; }
+function storeParseVipSizes(raw) {
+  if (!Array.isArray(raw) || raw.length !== 9) throw new ApiError("bad_vip", "لازم 9 مبالغ (من VIP 1 لـVIP 9).");
+  return raw.map((v, i) => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0 || n > 10000000) throw new ApiError("bad_vip", `المبلغ لإكمال VIP ${i + 1} لازم يكون رقم أكبر من 0.`);
+    return r2(n);
+  });
+}
+function storeCustomerOut(uid, c, sizes) {
+  return { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, ...storeVipInfo(sizes || STORE_VIP_DEFAULT_SIZES, c.spentUsd) };
 }
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);
     const uid = validId(String(user.sub || ""));
     if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
-    const now = Date.now(), path = "storeCustomers/" + uid;
+    const now = Date.now(), path = "storeCustomers/" + uid, { sizes } = await storeLoadVipSizes(env);
     const name = cleanText(user.name || (user.email ? String(user.email).split("@")[0] : ""), 60) || "زبون";
     const email = cleanText(user.email || "", 120);
     let cur = await fsGetDoc(env, path);
     if (!cur.exists) {
-      const c = { name, email, vip: 1, spentUsd: 0, createdAt: now, lastSeenAt: now };
+      const c = { name, email, spentUsd: 0, createdAt: now, lastSeenAt: now };
       try {
         await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(c) }, currentDocument: { exists: false } }]);
-        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c) }, 200);
+        return jsonResponse({ ok: true, created: true, customer: storeCustomerOut(uid, c, sizes) }, 200);
       } catch (e) { if (!e.conflict) throw e; cur = await fsGetDoc(env, path); }          // طلبين بنفس اللحظة: التاني بيقرأ اللي انعمل
     }
     const upd = { lastSeenAt: now };
     if (!cur.data.name && name) upd.name = name;
     if (!cur.data.email && email) upd.email = email;
     await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { exists: true } }]);
-    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }) }, 200);
+    return jsonResponse({ ok: true, created: false, customer: storeCustomerOut(uid, { ...cur.data, ...upd }, sizes) }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "store me error", error: String(e.message || e) });

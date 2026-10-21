@@ -7,7 +7,7 @@ const html0 = fs.readFileSync(path.join(__dirname, "../../site/store/index.html"
 const html = html0.replace(/<script src="[^"]+"><\/script>\s*/g, "");
 const TREE = [{ id: "nA", type: "folder", name: "PUBG", priceUsd: 0, imageUrl: "", children: [{ id: "n1", type: "item", name: "60 UC", priceUsd: 0.92, imageUrl: "" }] }];
 function open(opts = {}) {
-  const h = { calls: [], signIn: 0, signOut: 0, signInError: null, meMode: "ok", authCb: null, customer: opts.customer || { id: "u1", name: "Ali Salem", email: "ali@x.com", vip: 1, spentUsd: 0, createdAt: 1 } };
+  const h = { calls: [], signIn: 0, signOut: 0, signInError: null, meMode: "ok", authCb: null, customer: opts.customer || { id: "u1", name: "Ali Salem", email: "ali@x.com", vip: 1, spentUsd: 0, progressUsd: 0, sizeUsd: 200, remainingUsd: 200, nextVip: 2, createdAt: 1 } };
   h.dom = new JSDOM(html, { url: "https://yardova.ly-ad.de/store/", runScripts: "dangerously", pretendToBeVisual: true, beforeParse(w) {
     w.scrollTo = () => {};
     w.fetch = async (url, o) => { h.calls.push({ url: String(url), auth: o && o.headers && o.headers.Authorization });
@@ -58,7 +58,7 @@ function open(opts = {}) {
     $("btnCloseDrawer").click();
   }
   /* ---- values, safety, errors ---- */
-  { const h = open({ customer: { id: "u2", name: "<img src=x onerror=alert(1)>Mr", email: "m@x.com", vip: 5, spentUsd: 1234.5, createdAt: 1 } }); await sleep(60);
+  { const h = open({ customer: { id: "u2", name: "<img src=x onerror=alert(1)>Mr", email: "m@x.com", vip: 5, spentUsd: 1234.5, progressUsd: 100, sizeUsd: 1200, remainingUsd: 1100, nextVip: 6, createdAt: 1 } }); await sleep(60);
     h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
     ok(h.$("accVip").textContent === "VIP 5" && h.$("accSpent").textContent === "$1,234.50", "VIP level and spending are formatted (VIP 5, $1,234.50)");
     ok(h.d.querySelector("#drBody img") === null && h.$("accName").textContent === "<img src=x onerror=alert(1)>Mr", "a name is plain text, never HTML"); }
@@ -68,8 +68,16 @@ function open(opts = {}) {
   { const h = open(); await sleep(60); h.authCb(h.user()); await sleep(80);
     ok(h.calls.filter(c => c.url.endsWith("/store/me")).length === 1, "a visitor who is already signed in is recognised when the page opens");
     h.$("btnMenu").click(); ok(h.$("accName").textContent === "Ali Salem", "and the panel shows his account at once");
-    h.customer = { id: "u3", name: "Second User", email: "s@x.com", vip: 1, spentUsd: 0, createdAt: 1 }; h.authCb(null); h.authCb({ ...h.user(), uid: "u3" }); await sleep(80);
+    h.customer = { id: "u3", name: "Second User", email: "s@x.com", vip: 1, spentUsd: 0, progressUsd: 0, sizeUsd: 200, remainingUsd: 200, nextVip: 2, createdAt: 1 }; h.authCb(null); h.authCb({ ...h.user(), uid: "u3" }); await sleep(80);
     ok(h.$("accName").textContent === "Second User" && !/Ali Salem/.test(h.$("drBody").textContent), "when another person signs in nothing of the previous account is shown"); }
+  /* ---- progress to the next level ---- */
+  { const h = open({ customer: { id: "u4", name: "Sara", email: "s@x.com", vip: 2, spentUsd: 250, progressUsd: 50, sizeUsd: 300, remainingUsd: 250, nextVip: 3, createdAt: 1 } }); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
+    ok(h.$("accVip").textContent === "VIP 2" && h.$("accSpent").textContent === "$250.00" && /تقدّمك \$50\.00 من \$300\.00 · باقي \$250\.00 للوصول لـVIP 3/.test(h.$("accProg").textContent), "THE EXAMPLE: spent $250 -> VIP 2, progress $50 of $300, $250 left to VIP 3");
+    const pb = h.d.querySelector(".track"); ok(h.$("accFill").style.width === "16.7%" && pb.getAttribute("role") === "progressbar" && pb.getAttribute("aria-valuenow") === "17" && pb.getAttribute("aria-label"), "the progress bar is 16.7% full and readable by screen readers"); }
+  { const h = open({ customer: { id: "u5", name: "Top", email: "t@x.com", vip: 10, spentUsd: 25000, progressUsd: 0, sizeUsd: null, remainingUsd: 0, nextVip: null, createdAt: 1 } }); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
+    ok(/أعلى مستوى/.test(h.$("accProg").textContent) && h.$("accFill").style.width === "100%" && h.$("accVip").textContent === "VIP 10", "at the top level it says so, with a full bar"); }
+  { const h = open(); await sleep(60); h.authCb(h.user()); await sleep(80); h.$("btnMenu").click();
+    ok(/تقدّمك \$0\.00 من \$200\.00 · باقي \$200\.00 للوصول لـVIP 2/.test(h.$("accProg").textContent) && /^0(\.0)?%$/.test(h.$("accFill").style.width), "a new customer: 0 of 200"); }
   /* ---- Firebase missing ---- */
   { const h = open({ noFirebase: true }); await sleep(100); h.$("btnMenu").click();
     ok(/تعذّر تحميل تسجيل الدخول/.test(h.$("accMsg").textContent) && !h.$("btnGoogle"), "if the sign-in library cannot load the panel says so");

@@ -84,6 +84,9 @@ body.lock{overflow:hidden}
 .who .em{color:var(--muted);font-size:.95rem;word-break:break-all}
 .acc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:2px solid var(--line)}
 .vipbadge{background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:2px 14px}
+.track{height:14px;border:2px solid var(--edge);border-radius:8px;background:var(--pic);overflow:hidden;margin:6px 0 6px}
+.fill{height:100%;background:var(--tape)}
+.prog{color:var(--ink);font-size:.98rem;line-height:1.6}
 .msg{min-height:1.4em;margin-top:6px;font-size:.98rem;color:var(--ink)}
 .msg.err{color:var(--ink);border:2px solid var(--edge);border-radius:8px;padding:8px 10px;background:var(--pic)}
 </style>
@@ -240,9 +243,16 @@ function renderDrawer(){
   b.append(
     el('div', { class: 'who' }, el('div', { class: 'n2', id: 'accName', text: c.name }), el('div', { class: 'em', id: 'accEmail', dir: 'ltr', text: c.email })),
     el('div', { class: 'acc-row' }, el('span', { text: 'مستوى VIP' }), el('span', { class: 'vipbadge', id: 'accVip', text: 'VIP ' + c.vip })),
+    progBox(c),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
     el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
   );
+}
+function progBox(c){
+  const max = c.sizeUsd === null || c.sizeUsd === undefined, pct = max ? 100 : Math.max(0, Math.min(100, c.progressUsd / c.sizeUsd * 100));
+  const fill = el('div', { class: 'fill', id: 'accFill' }); fill.style.width = pct.toFixed(1) + '%';
+  return el('div', { class: 'accprog', style: 'padding:6px 0 12px;' }, el('div', { class: 'track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct)), 'aria-label': 'تقدّمك للمستوى الجاي' }, fill),
+    el('div', { class: 'prog', id: 'accProg', text: max ? 'وصلت لأعلى مستوى 🎉' : ('تقدّمك ' + fmtUsd(c.progressUsd) + ' من ' + fmtUsd(c.sizeUsd) + ' · باقي ' + fmtUsd(c.remainingUsd) + ' للوصول لـVIP ' + c.nextVip) }));
 }
 async function loadCustomer(){
   ACC = 'loading'; renderDrawer();
