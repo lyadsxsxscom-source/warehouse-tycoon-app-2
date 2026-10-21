@@ -1231,7 +1231,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
 }
 async function storeAllNodes(env) { return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data })); }
 function storeSorted(list) { return [...list].sort((a, b) => ((Number(a.sort) || 0) - (Number(b.sort) || 0)) || a.id.localeCompare(b.id)); }
@@ -1240,7 +1240,7 @@ function storeTree(nodes) {
   const kids = new Map();
   for (const n of nodes) { if (n.enabled === false) continue; const k = String(n.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(n); }
   const build = (pid) => storeSorted(kids.get(pid) || []).map(n => {
-    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices;
+    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier;
     if (n.type === "item") { const pr = storePricesOf(n); if (!pr.length) return null; o.priceUsd = pr[0]; return o; }      // السعر العام = VIP 1، وأسعار VIP الباقية ما بتنعرض للعامة
     const children = build(n.id); return children.length ? { ...o, children } : null;      // مجلد فاضي ما بينعرض بالصفحة العامة
   }).filter(Boolean);
@@ -1376,6 +1376,26 @@ async function handleAdminStore(request, env) {
           return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
+    }
+    if (b.action === "supplier_get") { const w = await storeLoadSupplier(env); return jsonResponse({ ok: true, hasKey: !!env.FAZER_API_KEY, ...w }, 200); }
+    if (b.action === "supplier_save") {
+      const cfg = storeParseSupplier(b.cfg), at = Date.now();
+      await fsCommit(env, [{ update: { name: docName(env, "config/storeSupplier"), fields: objToFields({ ...cfg, updatedAt: at }) } }]);
+      return jsonResponse({ ok: true, cfg, configured: true, updatedAt: at, hasKey: !!env.FAZER_API_KEY }, 200);
+    }
+    if (b.action === "supplier_status") return jsonResponse({ ok: true, status: await storeSupplierStatus(env) }, 200);
+    if (b.action === "supplier_categories") return jsonResponse({ ok: true, categories: await storeSupplierCategories(env, b.q) }, 200);
+    if (b.action === "supplier_offers") {
+      const cid = String(b.categoryId || ""); if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(cid)) throw new ApiError("bad_request", "طلب غلط.");
+      return jsonResponse({ ok: true, ...(await storeSupplierOffers(env, cid)) }, 200);
+    }
+    if (b.action === "supplier_link") {            // ربط منتج بخيار عند FazerCards (أو فك الربط)؛ بره محرّر المنتج حتى ما ينمسح بالغلط
+      const it = nodes.find(n => n.id === String(b.id || ""));
+      if (!it) throw new ApiError("not_found", "هالمنتج مو موجود.", 404);
+      if (it.type !== "item") throw new ApiError("bad_request", "الربط للمنتجات بس (مو للمجلدات).");
+      const link = storeParseSupplierLink(b.link === undefined ? null : b.link);
+      await fsCommit(env, [{ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ supplier: link, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["supplier", "updatedAt"] }, currentDocument: { exists: true } }]);
+      return out(await storeAllNodes(env));
     }
     if (b.action === "wallet_get") { const w = await storeLoadWallet(env); return jsonResponse({ ok: true, ...w }, 200); }
     if (b.action === "wallet_save") {
@@ -1614,6 +1634,64 @@ async function storeLoadWallet(env) {
   return { cfg: { ...STORE_WALLET_DEFAULTS }, configured: false, updatedAt: 0 };
 }
 const storeWalletView = (cfg) => ({ pointsPerUsd: cfg.pointsPerUsd, minTopupUsd: cfg.minTopupUsd, maxTopupUsd: cfg.maxTopupUsd });
+// ===== مورّد التنفيذ: FazerCards (الخطوة 7أ: قراءة فقط، بدون أي طلب شراء) =====
+// المفتاح secret بـCloudflare اسمه FAZER_API_KEY (مو بالكود ولا بالأدمن، وما بيرجع بأي جواب أبداً). الإعدادات بـconfig/storeSupplier.
+const FZR_BASE = "https://api.fzr.cards/api/v2";
+const STORE_SUPPLIER_DEFAULTS = { enabled: false, minMarginPct: 5, dailyCapUsd: 100 };
+function storeParseSupplier(o) {
+  o = o || {}; const num = (v, d) => (v === undefined || v === "" || v === null ? d : Number(v));
+  const w = { enabled: o.enabled === true, minMarginPct: num(o.minMarginPct, STORE_SUPPLIER_DEFAULTS.minMarginPct), dailyCapUsd: num(o.dailyCapUsd, STORE_SUPPLIER_DEFAULTS.dailyCapUsd) };
+  if (!Number.isFinite(w.minMarginPct) || w.minMarginPct < 0 || w.minMarginPct > 90) throw new ApiError("bad_supplier", "أقل هامش ربح من 0% لـ90%.");
+  if (!Number.isFinite(w.dailyCapUsd) || w.dailyCapUsd < 1 || w.dailyCapUsd > 100000) throw new ApiError("bad_supplier", "السقف اليومي من 1$ لـ100,000$ (لإيقاف التنفيذ التلقائي طفّي الخيار).");
+  w.minMarginPct = r2(w.minMarginPct); w.dailyCapUsd = r2(w.dailyCapUsd);
+  return w;
+}
+async function storeLoadSupplier(env) {
+  const d = await fsGetDoc(env, "config/storeSupplier");
+  if (d.exists && d.data) { try { return { cfg: storeParseSupplier(d.data), configured: true, updatedAt: Number(d.data.updatedAt) || 0 }; } catch (e) {} }
+  return { cfg: { ...STORE_SUPPLIER_DEFAULTS }, configured: false, updatedAt: 0 };
+}
+async function fzrCall(env, method, path, body, headers) {
+  if (!env.FAZER_API_KEY) throw new ApiError("no_key", "مفتاح FazerCards مو مضاف. أضفه كـSecret باسم FAZER_API_KEY بـCloudflare.", 400);
+  let res, j = {};
+  try {
+    res = await fetch(FZR_BASE + path, { method, headers: { "X-API-Key": env.FAZER_API_KEY, "Content-Type": "application/json", ...(headers || {}) }, body: body ? JSON.stringify(body) : undefined, signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
+  } catch (e) { throw new ApiError("supplier_unreachable", "تعذّر الوصول لـFazerCards. جرّب بعد شوي.", 502); }
+  try { j = await res.json(); } catch (e) {}
+  if (!res.ok || j.ok === false) {
+    const st = res.status, why = st === 401 ? "المفتاح غير صالح." : st === 403 ? "الخدمة غير مفعّلة بخطتك أو الحساب محظور (ممكن لأنه ما في اشتراك فعّال)." : st === 429 ? "طلبات كتير، جرّب بعد شوي." : cleanText(j.error || "", 160) || "خطأ " + st;
+    throw new ApiError("supplier_error", "FazerCards: " + why, 502);
+  }
+  return j;
+}
+const fzrNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+async function storeSupplierStatus(env) {
+  const me = await fzrCall(env, "GET", "/me"), bal = await fzrCall(env, "GET", "/balance");
+  return { login: cleanText(me.login, 60), plan: cleanText(me.plan, 20), planExpiresAt: cleanText(me.planExpiresAt, 40), planAutoRenew: me.planAutoRenew === true, subscriptionActive: me.subscriptionActive === true, balanceUsd: fzrNum(bal.balance), currency: cleanText(bal.currency, 8) || "USD" };
+}
+async function storeSupplierCategories(env, q) {
+  const out = []; let cursor = "";
+  for (let i = 0; i < 6; i++) {
+    const j = await fzrCall(env, "GET", "/topups?limit=100" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+    for (const it of Array.isArray(j.items) ? j.items : []) { const id = String(it.category_id || ""); if (/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) out.push({ categoryId: id, name: cleanText(it.name, 80) }); }
+    cursor = j.meta && j.meta.has_more && j.meta.next_cursor ? String(j.meta.next_cursor) : ""; if (!cursor) break;
+  }
+  const f = cleanText(q, 60).toLowerCase();
+  return (f ? out.filter(c => (c.name + " " + c.categoryId).toLowerCase().includes(f)) : out).slice(0, 100);
+}
+async function storeSupplierOffers(env, categoryId) {
+  const j = await fzrCall(env, "GET", "/topups/offers?category_id=" + encodeURIComponent(categoryId));
+  return { categoryId, name: cleanText(j.name, 80), offers: (Array.isArray(j.offers) ? j.offers : []).map(o => ({ offerId: String(o.offer_id || ""), name: cleanText(o.name, 80), priceUsd: fzrNum(o.price_usd) })).filter(o => /^[A-Za-z0-9_.:-]{1,80}$/.test(o.offerId) && o.priceUsd !== null), fields: (Array.isArray(j.fields) ? j.fields : []).map(f => ({ key: cleanText(f.key, 30), label: cleanText(f.label, 60), type: cleanText(f.type, 20) })) };
+}
+function storeParseSupplierLink(raw) {
+  if (raw === null) return null;
+  if (!raw || typeof raw !== "object") throw new ApiError("bad_supplier_link", "رابط FazerCards غلط.");
+  const idRe = /^[A-Za-z0-9_.:-]{1,80}$/, categoryId = String(raw.categoryId || ""), offerId = String(raw.offerId || ""), playerField = raw.playerField === undefined || raw.playerField === "" ? "player_id" : String(raw.playerField);
+  if (!idRe.test(categoryId) || !idRe.test(offerId)) throw new ApiError("bad_supplier_link", "اختار القسم والخيار من FazerCards.");
+  if (!/^[a-z_]{1,30}$/.test(playerField)) throw new ApiError("bad_supplier_link", "اسم حقل الـID غلط.");
+  const costUsd = raw.costUsd === undefined || raw.costUsd === null ? 0 : Number(raw.costUsd);
+  return { provider: "fazercards", categoryId, offerId, playerField, offerName: cleanText(raw.offerName, 80), costUsd: Number.isFinite(costUsd) && costUsd >= 0 && costUsd < 100000 ? r4(costUsd) : 0 };
+}
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);

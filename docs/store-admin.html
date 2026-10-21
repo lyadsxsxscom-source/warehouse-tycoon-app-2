@@ -101,6 +101,15 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .ord form input{padding:7px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;width:100%}
 .ord img.proof{max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--line)}
 .ord .ev{margin-top:6px;font-size:.8rem;color:var(--dim)}
+.spbox{background:#12281F;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.spbox ol{margin:6px 0;padding-inline-start:20px;line-height:1.9;font-size:.9rem}
+.spwarn{border:1px solid var(--tape);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:.9rem;line-height:1.8}
+.spbad{color:#ffd48a;font-weight:700}
+.sprow .tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.sprow .tools button,.spch button.opt{padding:5px 10px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
+.spch{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
+.spch input{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;margin-bottom:6px}
+.spch button.opt{display:block;width:100%;text-align:start;margin-top:6px}
 #ordBadge{background:var(--err);color:#fff;border-radius:999px;padding:0 7px;font-size:.78rem;margin-inline-start:4px}
 #custFilter,#ordFilter{padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
 #ordSearch{flex:1;min-width:160px;padding:9px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
@@ -130,6 +139,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <button class="tab" id="tabPayments">💳 طرق الدفع</button>
       <button class="tab" id="tabOrders">📦 الطلبات <span id="ordBadge" hidden></span></button>
       <button class="tab" id="tabCustomers">👥 الزباين وVIP</button>
+      <button class="tab" id="tabSupplier">🔗 FazerCards</button>
     </div>
     <div class="card" id="viewCatalog">
       <div class="crumbs" id="crumbs"></div>
@@ -139,6 +149,24 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       </div>
       <div id="listMsg" role="alert"></div>
       <div id="list"></div>
+    </div>
+    <div class="card" id="viewSupplier" hidden>
+      <div class="h">الاتصال مع FazerCards</div>
+      <div id="spKeyBox"></div>
+      <div class="bar"><button id="btnSpCheck">🔌 فحص الاتصال (الخطة والرصيد)</button></div>
+      <div id="spStatus" role="status" style="min-height:1.4em;font-size:.92rem;line-height:1.9;"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="h">إعدادات التنفيذ التلقائي</div>
+      <div class="hint">هالإعدادات بتتحفظ هلق <b>وبتشتغل بالخطوة الجاية (7ج)</b>. <b>هلق ما في أي شراء تلقائي</b> ولا أي خصم من رصيدك عند FazerCards.</div>
+      <label style="display:flex;gap:8px;align-items:center;margin-bottom:8px;"><input type="checkbox" id="spEnabled"> فعّل التنفيذ التلقائي (لما تجهز)</label>
+      <div class="vrow"><label for="spMargin">أقل هامش ربح %</label><input type="number" id="spMargin" min="0" max="90" step="0.01" inputmode="decimal"></div>
+      <div class="vrow"><label for="spCap">سقف يومي ($)</label><input type="number" id="spCap" min="1" step="0.01" inputmode="decimal"></div>
+      <div class="bar"><button id="btnSpSave">حفظ</button></div>
+      <div id="spMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="h">ربط المنتجات مع FazerCards</div>
+      <div class="hint">لكل منتج: اختار القسم والخيار عندهم (مثلاً PUBG Mobile ← 660 UC). بتشوف <b>الهامش</b> قبل ما تربط. الربط ما بيغيّر ولا بيشتري شي.</div>
+      <div id="spItems"></div>
     </div>
     <div class="card" id="viewOrders" hidden>
       <div class="h">الطلبات <span id="ordCount" style="color:var(--dim);font-weight:400;"></span></div>
@@ -381,13 +409,14 @@ $('edSave').onclick = async () => {
 
 // ===== التبويبات =====
 function showTab(which){
-  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders';
+  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders'; $('viewSupplier').hidden = which !== 'supplier'; $('tabSupplier').classList.toggle('active', which === 'supplier');
   $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers'); $('tabOrders').classList.toggle('active', which === 'orders');
   if(which === 'orders') loadOrders();
+  if(which === 'supplier'){ loadSupplier(); loadCatalog().then(renderSpItems); }
   if(which === 'payments'){ loadMethods(); loadWallet(); }
   if(which === 'customers'){ loadWallet(); loadVip(); loadCustomers(); }
 }
-$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers'); $('tabOrders').onclick = () => showTab('orders');
+$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers'); $('tabOrders').onclick = () => showTab('orders'); $('tabSupplier').onclick = () => showTab('supplier');
 
 // ===== طرق الدفع =====
 let METHODS = [];
@@ -683,6 +712,103 @@ $('ordList').addEventListener('click', async e => {
     });
     card.insertBefore(f, card.querySelector('.ev'));
   }
+});
+
+// ===== FazerCards: الاتصال، الإعدادات، وربط المنتجات (قراءة فقط) =====
+let SP = { hasKey: false, cfg: { enabled: false, minMarginPct: 5, dailyCapUsd: 100 }, ch: null };
+const marginOf = (price, cost) => (price > 0 && cost > 0) ? (price - cost) / price * 100 : null;
+const pctTxt = m => m === null ? '—' : m.toFixed(1) + '%';
+function renderKeyBox(){
+  const b = $('spKeyBox'); b.textContent = '';
+  if(SP.hasKey){ b.append(el('div', { class: 'sm', id: 'spKeyOk', text: 'المفتاح: موجود ✅ (محفوظ كـSecret بـCloudflare، وما بيظهر هون أبداً)' })); return; }
+  const box = el('div', { class: 'spbox', id: 'spKeyMissing' }, el('div', { style: 'font-weight:700;', text: 'المفتاح: مو مضاف ⚠️' }),
+    el('ol', {}, el('li', { text: 'بلوحة FazerCards: Profile ← API ← أنشئ مفتاح جديد.' }), el('li', { text: 'بـCloudflare: Workers & Pages ← morning-lake-dfd1 ← Settings ← Variables and Secrets ← Add.' }), el('li', { text: 'النوع Secret، الاسم FAZER_API_KEY، والقيمة هي المفتاح. اضغط Deploy.' }), el('li', { text: 'رجع هون واضغط "فحص الاتصال".' })),
+    el('div', { class: 'spwarn', text: '⚠️ لا تبعت المفتاح لأي حدا، ولا لي. إذا انكشف بأي لقطة، ولّد مفتاح جديد.' }));
+  b.append(box);
+}
+async function loadSupplier(){
+  $('spMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'supplier_get' }); SP.hasKey = !!j.hasKey; SP.cfg = j.cfg;
+    $('spEnabled').checked = !!j.cfg.enabled; $('spMargin').value = j.cfg.minMarginPct; $('spCap').value = j.cfg.dailyCapUsd;
+    renderKeyBox(); renderSpItems();
+  }catch(e){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = 'تعذّر التحميل: ' + e.message; }
+}
+$('btnSpSave').onclick = async () => {
+  $('btnSpSave').disabled = true; $('spMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'supplier_save', cfg: { enabled: $('spEnabled').checked, minMarginPct: Number($('spMargin').value), dailyCapUsd: Number($('spCap').value) } });
+    SP.cfg = j.cfg; $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = 'انحفظ ✓ (بيشتغل بالخطوة الجاية)'; renderSpItems();
+  }catch(e){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = e.message; }
+  $('btnSpSave').disabled = false;
+};
+$('btnSpCheck').onclick = async () => {
+  const box = $('spStatus'); box.textContent = 'عم نفحص...'; box.style.color = 'var(--dim)'; $('btnSpCheck').disabled = true;
+  try{
+    const j = await storeApi({ action: 'supplier_status' }), st = j.status; box.textContent = ''; box.style.color = 'var(--ink)';
+    const line = (t) => box.append(el('div', { text: t }));
+    line('الحساب: ' + st.login + ' · الخطة: ' + st.plan);
+    line('الاشتراك: ' + (st.subscriptionActive ? 'فعّال ✅' : 'غير فعّال ⚠️') + (st.planExpiresAt ? ' · ينتهي ' + dmy(st.planExpiresAt) : '') + ' · تجديد تلقائي: ' + (st.planAutoRenew ? 'نعم' : 'لا'));
+    line('رصيدك عند FazerCards: ' + (st.balanceUsd === null ? 'غير معروف' : usd4(st.balanceUsd)));
+    if(!st.subscriptionActive) box.append(el('div', { class: 'spwarn', id: 'spInactive', text: '⚠️ الاشتراك غير فعّال: ممكن الخدمة تتوقف وطلباتك ترجع 403. اسأل الدعم أو فعّل خطة.' }));
+    else if(st.planExpiresAt){ const days = Math.ceil((new Date(st.planExpiresAt).getTime() - Date.now()) / 86400000); if(days <= 3) box.append(el('div', { class: 'spwarn', id: 'spExpiring', text: '⚠️ الاشتراك بينتهي خلال ' + Math.max(0, days) + ' يوم' + (st.planAutoRenew ? '' : ' وما فيه تجديد تلقائي') + '.' })); }
+  }catch(e){ box.style.color = 'var(--err)'; box.textContent = e.message; }
+  $('btnSpCheck').disabled = false;
+};
+function renderSpItems(){
+  const box = $('spItems'); if(!box) return; box.textContent = '';
+  const items = NODES.filter(n => n.type === 'item'); if(!items.length){ box.append(el('div', { class: 'empty', id: 'spEmpty', text: 'ما في منتجات. ضيف منتجات بتبويب الكتالوج.' })); return; }
+  const minM = Number(SP.cfg.minMarginPct) || 0;
+  items.forEach(n => {
+    const p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1, path = pathOf(n.id).map(x => x.name).join(' › ');
+    const row = el('div', { class: 'cust sprow', 'data-sp': n.id }, el('div', { class: 'nm', text: path }), el('div', { class: 'sm', text: 'سعرك: VIP 1 ' + (p1 ? usd4(p1) : '—') + ' · VIP 10 ' + (p10 ? usd4(p10) : '—') }));
+    if(n.supplier){
+      const m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd), low = (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM);
+      row.append(el('div', { class: 'sm', 'data-link': n.id, text: '🔗 ' + (n.supplier.offerName || n.supplier.offerId) + ' · تكلفتهم ' + (n.supplier.costUsd ? usd4(n.supplier.costUsd) : 'غير معروفة') + ' · هامش VIP 1: ' + pctTxt(m1) + ' · VIP 10: ' + pctTxt(m10) }));
+      if(low) row.append(el('div', { class: 'sm spbad', 'data-low': n.id, text: '⚠️ الهامش تحت الحد (' + minM + '%): ما رح يتنفّذ تلقائياً. ارفع السعر أو غيّر الحد.' }));
+    } else row.append(el('div', { class: 'sm', text: 'غير مربوط' }));
+    const t = el('div', { class: 'tools' }, el('button', { 'data-spact': 'choose', 'data-id': n.id, text: n.supplier ? '✏️ تغيير' : '🔗 ربط' }));
+    if(n.supplier){ t.append(el('button', { 'data-spact': 'cost', 'data-id': n.id, text: '🔄 حدّث التكلفة' }), el('button', { 'data-spact': 'unlink', 'data-id': n.id, text: '✂️ فك الربط' })); }
+    row.append(t);
+    if(SP.ch && SP.ch.id === n.id) row.append(renderChooser(n));
+    box.append(row);
+  });
+}
+function renderChooser(n){
+  const ch = SP.ch, wrap = el('div', { class: 'spch', 'data-chooser': n.id });
+  if(ch.step === 'cat'){
+    const inp = el('input', { type: 'search', id: 'spSearch', placeholder: 'ابحث عن اللعبة عند FazerCards (مثلاً PUBG)', value: ch.q || '' });
+    wrap.append(inp, el('button', { 'data-spact': 'search', 'data-id': n.id, text: '🔎 ابحث' }));
+    if(ch.msg) wrap.append(el('div', { class: 'sm', id: 'spChMsg', text: ch.msg }));
+    (ch.cats || []).forEach(c => wrap.append(el('button', { class: 'opt', 'data-spact': 'cat', 'data-id': n.id, 'data-cat': c.categoryId, 'data-name': c.name, text: c.name + ' · ' + c.categoryId })));
+  } else {
+    wrap.append(el('div', { class: 'sm', text: ch.catName + ' — اختار الخيار:' }), el('button', { class: 'opt', 'data-spact': 'back', 'data-id': n.id, text: '← رجوع للأقسام' }));
+    const p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1;
+    (ch.offers || []).forEach(o => wrap.append(el('button', { class: 'opt', 'data-spact': 'offer', 'data-id': n.id, 'data-offer': o.offerId, text: o.name + ' · تكلفتهم ' + usd4(o.priceUsd) + ' · هامش VIP 1: ' + pctTxt(marginOf(p1, o.priceUsd)) + ' · VIP 10: ' + pctTxt(marginOf(p10, o.priceUsd)) })));
+    if(ch.msg) wrap.append(el('div', { class: 'sm', id: 'spChMsg', text: ch.msg }));
+  }
+  return wrap;
+}
+$('spItems').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-spact]'); if(!b) return; const act = b.dataset.spact, id = b.dataset.id, n = NODES.find(x => x.id === id);
+  $('spMsg').textContent = '';
+  try{
+    if(act === 'choose'){ SP.ch = SP.ch && SP.ch.id === id ? null : { id, step: 'cat', cats: [], q: '', msg: '' }; renderSpItems(); return; }
+    if(act === 'search'){ const q = $('spSearch').value.trim(); SP.ch.q = q; SP.ch.msg = 'عم نبحث...'; renderSpItems(); try{ SP.ch.cats = (await storeApi({ action: 'supplier_categories', q })).categories; SP.ch.msg = SP.ch.cats.length ? '' : 'ما لقينا شي.'; }catch(err){ SP.ch.msg = err.message; } renderSpItems(); return; }
+    if(act === 'cat'){ SP.ch.msg = 'عم نجيب الخيارات...'; renderSpItems(); try{ const j = await storeApi({ action: 'supplier_offers', categoryId: b.dataset.cat }); SP.ch = { id, step: 'off', catId: b.dataset.cat, catName: j.name || b.dataset.name, offers: j.offers, fields: j.fields, msg: j.offers.length ? '' : 'ما في خيارات بهالقسم.' }; }catch(err){ SP.ch.msg = err.message; } renderSpItems(); return; }
+    if(act === 'back'){ SP.ch = { id, step: 'cat', cats: [], q: '', msg: '' }; renderSpItems(); return; }
+    if(act === 'offer'){
+      const o = SP.ch.offers.find(x => x.offerId === b.dataset.offer), f = (SP.ch.fields || []).find(x => /id/i.test(x.key)) || (SP.ch.fields || [])[0];
+      NODES = (await storeApi({ action: 'supplier_link', id, link: { categoryId: SP.ch.catId, offerId: o.offerId, playerField: f ? f.key : 'player_id', offerName: o.name, costUsd: o.priceUsd } })).nodes; SP.ch = null; renderSpItems(); return;
+    }
+    if(act === 'unlink'){ if(!window.confirm('فك ربط "' + n.name + '" مع FazerCards؟')) return; NODES = (await storeApi({ action: 'supplier_link', id, link: null })).nodes; renderSpItems(); return; }
+    if(act === 'cost'){
+      const j = await storeApi({ action: 'supplier_offers', categoryId: n.supplier.categoryId }), o = j.offers.find(x => x.offerId === n.supplier.offerId);
+      if(!o){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = 'هالخيار ما عاد موجود عند FazerCards. اختار غيره.'; return; }
+      NODES = (await storeApi({ action: 'supplier_link', id, link: { ...n.supplier, offerName: o.name, costUsd: o.priceUsd } })).nodes; renderSpItems();
+      $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = 'تحدّثت التكلفة: ' + usd4(o.priceUsd);
+    }
+  }catch(err){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = err.message; }
 });
 </script>
 </body>
