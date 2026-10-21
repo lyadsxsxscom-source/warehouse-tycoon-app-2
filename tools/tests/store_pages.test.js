@@ -12,10 +12,10 @@ const pub = new JSDOM(pubHtml).window.document;
 ok(pub.documentElement.lang === "ar" && pub.documentElement.dir === "rtl", "public page: Arabic, right-to-left");
 ok(/Yardova/.test(pub.title) && /متجر/.test(pub.title), "public page: has a proper title");
 ok(/noindex/.test(pub.querySelector('meta[name="robots"]').content), "public page: kept out of search engines until it is ready");
-ok(/قيد الإنشاء/.test(pub.body.textContent) && !!pub.getElementById("catalog") && /ما في منتجات/.test(pub.getElementById("catalog").textContent), "public page: says it is under construction and shows an empty catalog");
+ok(!!pub.getElementById("catalog") && !!pub.getElementById("crumbs"), "public page: has the catalog area and the path bar");
 ok([...pub.querySelectorAll("a")].some(a => a.getAttribute("href") === "/"), "public page: has a way back to the site");
-ok(pub.querySelectorAll("script, form, input, button, [onclick]").length === 0, "public page: no scripts, forms or inputs yet (it is empty)");
-ok(!/undefined|null|\[object/.test(pub.body.textContent), "public page: no leftover template text");
+const pubScripts = [...pub.querySelectorAll("script")]; ok(pubScripts.length === 1 && !pubScripts[0].src && pub.querySelectorAll("form, input, [onclick]").length === 0, "public page: one inline script only (no external scripts), no forms");
+ok(!/undefined|null|\[object/.test(pub.querySelector("main").textContent), "public page: no leftover template text");
 ok(!/\/store/.test(read("site/index.html")) && !/\/store/.test(read("site/sitemap.xml")), "public page: not linked from the home page and not in the sitemap");
 ok(/href="\/icon-192\.png"/.test(pubHtml) && fs.existsSync(path.join(ROOT, "site/icon-192.png")) && fs.existsSync(path.join(ROOT, "site/favicon.ico")), "public page: its icons exist");
 

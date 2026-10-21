@@ -37,6 +37,25 @@ a{color:inherit}
 .tag p{margin:0}
 main{padding-block:32px}
 .empty{background:var(--panel);border:2px dashed var(--line);border-radius:10px;padding:28px;color:var(--muted);text-align:center}
+[hidden]{display:none!important}
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 16px;font-size:.95rem}
+.crumbs a{color:var(--teal);font-weight:600;cursor:pointer;text-decoration:none;background:none;border:0;padding:0;font:inherit}
+.crumbs .sep{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (min-width:640px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (min-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.card{display:flex;flex-direction:column;background:var(--panel);border:2px solid #10211C;border-radius:14px;overflow:hidden;text-align:center;font:inherit;color:inherit;padding:0;box-shadow:4px 4px 0 #10211C}
+button.card{cursor:pointer}
+button.card:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #10211C}
+.card .pic{aspect-ratio:1/1;background:var(--paper);display:flex;align-items:center;justify-content:center;font-size:2.6rem;overflow:hidden}
+.card .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.card .body{padding:10px 8px 12px}
+.card .nm{font-family:var(--f-head);font-weight:700;line-height:1.35;word-break:break-word}
+.card .pr{margin-top:6px;display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:2px 12px;direction:ltr}
+.card .soon{display:block;margin-top:8px;color:var(--muted);font-size:.85rem}
+.state{padding:28px;text-align:center;color:var(--muted)}
+.state button{margin-top:12px;font:inherit;font-weight:600;border:2px solid #10211C;background:var(--tape);color:#10211C;border-radius:8px;padding:8px 18px;cursor:pointer}
+.skel{height:160px;border-radius:14px;background:linear-gradient(90deg,var(--line),transparent,var(--line));opacity:.5}
 footer{padding-block:24px;color:var(--muted);font-size:.9rem}
 </style>
 </head>
@@ -51,13 +70,82 @@ footer{padding-block:24px;color:var(--muted);font-size:.9rem}
   <div class="wrap in">
     <div class="tag">
       <h1>متجر شحن الألعاب</h1>
-      <p>الصفحة قيد الإنشاء. رجعلنا قريباً.</p>
+      <p>اختار القسم وشوف الأسعار.</p>
     </div>
   </div>
 </section>
 <main class="wrap" id="app">
-  <div class="empty" id="catalog">ما في منتجات هلق.</div>
+  <nav class="crumbs" id="crumbs" aria-label="المسار"></nav>
+  <div id="catalog" aria-live="polite"></div>
 </main>
 <footer class="wrap">© Yardova</footer>
+<script>
+// متجر الشدات (الخطوة 2): بيعرض الشجرة اللي بنيتها بالأدمن (أقسام بصور ← منتجات بأسعارها). بدون طلبات بعد.
+const API = 'https://postback.ly-ad.de';
+let TREE = null;
+const $ = id => document.getElementById(id);
+function el(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  for(const k in (attrs || {})){ if(k === 'text') e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]); }
+  kids.forEach(x => e.append(x)); return e;
+}
+const fmtPrice = n => Number(n).toLocaleString('en-US') + ' ل.س';
+function imgSrc(u){ return typeof u === 'string' && /^\/store\/img\/[A-Za-z0-9_-]+(\?v=\d+)?$/.test(u) ? API + u : ''; }   // بس صور من سيرفرنا
+function findPath(nodes, id, trail){
+  for(const n of nodes){
+    if(n.id === id) return [...trail, n];
+    if(n.children){ const r = findPath(n.children, id, [...trail, n]); if(r) return r; }
+  }
+  return null;
+}
+function pic(n, icon){
+  const box = el('div', { class: 'pic' });
+  const src = imgSrc(n.imageUrl);
+  if(src){ const im = el('img', { src, alt: '', loading: 'lazy' }); im.onerror = () => { box.textContent = icon; }; box.append(im); } else box.textContent = icon;
+  return box;
+}
+function folderCard(n){
+  const b = el('button', { class: 'card', type: 'button', 'data-go': n.id, 'aria-label': n.name }, pic(n, '📁'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name })));
+  return b;
+}
+function itemCard(n){
+  return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), el('span', { class: 'pr', text: fmtPrice(n.price) }), el('span', { class: 'soon', text: 'الطلب قريباً' })));
+}
+function render(){
+  const box = $('catalog'), cr = $('crumbs'); box.textContent = ''; cr.textContent = '';
+  if(TREE === null) return;
+  const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
+  let trail = id ? findPath(TREE, id, []) : [];
+  let note = '';
+  if(id && !trail){ trail = []; note = 'هالقسم مو موجود.'; }
+  const cur = trail.length ? trail[trail.length - 1] : null;
+  if(cur && cur.type === 'item') trail = trail.slice(0, -1);
+  const nodes = cur && cur.type === 'folder' ? cur.children : (trail.length ? trail[trail.length - 1].children : TREE);
+  cr.append(trail.length ? el('a', { href: '#', text: 'الرئيسية' }) : el('b', { text: 'الرئيسية' }));
+  trail.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === trail.length - 1 ? el('b', { text: n.name }) : el('a', { href: '#/' + encodeURIComponent(n.id), text: n.name })); });
+  document.title = (trail.length ? trail[trail.length - 1].name + ' | ' : '') + 'متجر الشدات | Yardova';
+  if(note) box.append(el('div', { class: 'state', id: 'noteMsg', text: note }));
+  if(!nodes || !nodes.length){ box.append(el('div', { class: 'empty', id: 'emptyNote', text: 'ما في منتجات هلق.' })); return; }
+  const grid = el('div', { class: 'grid' });
+  nodes.forEach(n => grid.append(n.type === 'folder' ? folderCard(n) : itemCard(n)));
+  box.append(grid);
+}
+async function load(){
+  const box = $('catalog'); box.textContent = '';
+  const g = el('div', { class: 'grid', id: 'loading' }); for(let i = 0; i < 4; i++) g.append(el('div', { class: 'skel' })); box.append(g);
+  try{
+    const res = await fetch(API + '/store/catalog'); const j = await res.json();
+    if(!res.ok || !j.ok || !Array.isArray(j.items)) throw new Error('bad');
+    TREE = j.items; render();
+  }catch(e){
+    box.textContent = '';
+    const st = el('div', { class: 'state', id: 'errState' }, el('div', { text: 'تعذّر تحميل المتجر. تأكد من الإنترنت وجرّب كمان مرة.' }), el('button', { id: 'btnRetry', type: 'button', text: 'إعادة المحاولة' }));
+    box.append(st); $('btnRetry').onclick = load;
+  }
+}
+$('catalog').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if(b){ location.hash = '#/' + encodeURIComponent(b.dataset.go); window.scrollTo(0, 0); } });
+window.addEventListener('hashchange', render);
+load();
+</script>
 </body>
 </html>
