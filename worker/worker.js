@@ -1231,7 +1231,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
 }
 async function storeAllNodes(env) { return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data })); }
 function storeSorted(list) { return [...list].sort((a, b) => ((Number(a.sort) || 0) - (Number(b.sort) || 0)) || a.id.localeCompare(b.id)); }
@@ -1389,6 +1389,7 @@ async function handleAdminStore(request, env) {
       const cid = String(b.categoryId || ""); if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(cid)) throw new ApiError("bad_request", "طلب غلط.");
       return jsonResponse({ ok: true, ...(await storeSupplierOffers(env, cid)) }, 200);
     }
+    if (b.action === "supplier_validators") return jsonResponse({ ok: true, validators: (await storeSupplierValidators(env)).map(v => ({ categoryId: v.categoryId, name: v.name })) }, 200);
     if (b.action === "supplier_link") {            // ربط منتج بخيار عند FazerCards (أو فك الربط)؛ بره محرّر المنتج حتى ما ينمسح بالغلط
       const it = nodes.find(n => n.id === String(b.id || ""));
       if (!it) throw new ApiError("not_found", "هالمنتج مو موجود.", 404);
@@ -1683,6 +1684,27 @@ async function storeSupplierOffers(env, categoryId) {
   const j = await fzrCall(env, "GET", "/topups/offers?category_id=" + encodeURIComponent(categoryId));
   return { categoryId, name: cleanText(j.name, 80), offers: (Array.isArray(j.offers) ? j.offers : []).map(o => ({ offerId: String(o.offer_id || ""), name: cleanText(o.name, 80), priceUsd: fzrNum(o.price_usd) })).filter(o => /^[A-Za-z0-9_.:-]{1,80}$/.test(o.offerId) && o.priceUsd !== null), fields: (Array.isArray(j.fields) ? j.fields : []).map(f => ({ key: cleanText(f.key, 30), label: cleanText(f.label, 60), type: cleanText(f.type, 20) })) };
 }
+// ===== التحقق من الـPlayer ID قبل الشراء (الخطوة 7ب): قراءة بس، ما بيخصم شي =====
+// FazerCards عندها لائحة ألعاب بتدعم التحقق (category_id مختلف عن قسم الشحن)، فبنطابقها بالاسم (أو بمعرّف محفوظ مع الربط).
+let FZR_VALIDATORS = { at: 0, items: [] };
+async function storeSupplierValidators(env) {
+  if (Date.now() - FZR_VALIDATORS.at < 600000 && FZR_VALIDATORS.items.length) return FZR_VALIDATORS.items;
+  const j = await fzrCall(env, "GET", "/topups/validate-id");
+  const items = (Array.isArray(j.items) ? j.items : []).map(x => ({ categoryId: String(x.category_id || ""), name: cleanText(x.name, 80), fields: (Array.isArray(x.fields) ? x.fields : []).map(f => cleanText(f.key, 30)).filter(Boolean) })).filter(x => /^[A-Za-z0-9_.:-]{1,80}$/.test(x.categoryId));
+  FZR_VALIDATORS = { at: Date.now(), items }; return items;
+}
+const fzrNorm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function storeFindValidator(items, link) {
+  if (link.validateCategoryId) return items.find(v => v.categoryId === link.validateCategoryId) || null;
+  const n = fzrNorm(link.categoryName); return n ? items.find(v => fzrNorm(v.name) === n) || null : null;
+}
+async function storeRateHit(env, uid, name, max, windowSec) {
+  const path = "storeRate/" + name + "_" + uid, now = Date.now(), d = await fsGetDoc(env, path);
+  let start = d.exists ? Number(d.data.start) || 0 : 0, n = d.exists ? Number(d.data.n) || 0 : 0;
+  if (!start || now - start > windowSec * 1000) { start = now; n = 0; }
+  if (n >= max) throw new ApiError("rate_limited", "عملت تحقق كتير. جرّب بعد شوي.", 429);
+  await fsCommit(env, [{ update: { name: docName(env, path), fields: objToFields({ start, n: n + 1 }) } }]);
+}
 function storeParseSupplierLink(raw) {
   if (raw === null) return null;
   if (!raw || typeof raw !== "object") throw new ApiError("bad_supplier_link", "رابط FazerCards غلط.");
@@ -1690,7 +1712,9 @@ function storeParseSupplierLink(raw) {
   if (!idRe.test(categoryId) || !idRe.test(offerId)) throw new ApiError("bad_supplier_link", "اختار القسم والخيار من FazerCards.");
   if (!/^[a-z_]{1,30}$/.test(playerField)) throw new ApiError("bad_supplier_link", "اسم حقل الـID غلط.");
   const costUsd = raw.costUsd === undefined || raw.costUsd === null ? 0 : Number(raw.costUsd);
-  return { provider: "fazercards", categoryId, offerId, playerField, offerName: cleanText(raw.offerName, 80), costUsd: Number.isFinite(costUsd) && costUsd >= 0 && costUsd < 100000 ? r4(costUsd) : 0 };
+  const vid = raw.validateCategoryId === undefined || raw.validateCategoryId === null || raw.validateCategoryId === "" ? "" : String(raw.validateCategoryId);
+  if (vid && !idRe.test(vid)) throw new ApiError("bad_supplier_link", "معرّف التحقق غلط.");
+  return { provider: "fazercards", categoryId, offerId, playerField, categoryName: cleanText(raw.categoryName, 80), validateCategoryId: vid, offerName: cleanText(raw.offerName, 80), costUsd: Number.isFinite(costUsd) && costUsd >= 0 && costUsd < 100000 ? r4(costUsd) : 0 };
 }
 async function handleStoreMe(request, env) {
   try {
@@ -1820,6 +1844,25 @@ async function handleStoreOrderApi(request, env, action) {
           if (!e.conflict || attempt === 2) throw e;
           const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, again.data, now, false) }, 200);
         }
+      }
+    }
+    if (action === "validate") {
+      const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
+      if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
+      const link = item.supplier && item.supplier.offerId ? item.supplier : null;
+      if (!link || !env.FAZER_API_KEY) return jsonResponse({ ok: true, supported: false }, 200);          // المنتج مو مربوط: ما في تحقق (الشراء عادي)
+      const playerId = String(b.playerId == null ? "" : b.playerId).trim();
+      if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
+      await storeRateHit(env, uid, "validate", 30, 3600);
+      try {
+        const v = storeFindValidator(await storeSupplierValidators(env), link);
+        if (!v) return jsonResponse({ ok: true, supported: false }, 200);
+        const key = v.fields.includes(link.playerField) ? link.playerField : (v.fields[0] || "player_id");
+        const j = await fzrCall(env, "POST", "/topups/validate-id", { category_id: v.categoryId, fields: { [key]: playerId } });
+        return jsonResponse({ ok: true, supported: true, available: true, valid: j.valid === true, playerName: cleanText(j.player_name, 60), region: cleanText(j.region, 20) }, 200);
+      } catch (e) {
+        if (e instanceof ApiError && (e.code === "supplier_error" || e.code === "supplier_unreachable")) return jsonResponse({ ok: true, supported: true, available: false }, 200);     // المورّد مو متاح: ما منمنع الشراء
+        throw e;
       }
     }
     if (action === "prices") {            // أسعار كل المنتجات الظاهرة بمستوى VIP تبع الزبون (بتتحسب بالسيرفر)
@@ -2930,7 +2973,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/topup/quote", "/store/topup", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);

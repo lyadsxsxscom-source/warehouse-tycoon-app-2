@@ -11,7 +11,7 @@ const METHOD = { id: "sham", name: "شام كاش", currency: "ل.س", decimals:
 const mkOrder = (o) => ({ id: "o1", kind: "order", code: "T-1001", itemId: "n1", itemName: "60 UC", itemPath: "PUBG › 60 UC", playerId: "5123456789", vip: 1, priceUsd: 0.92, method: { id: "", name: "", currency: "", decimals: 0, account: "", instructions: "" }, amount: 0, status: "processing", createdAt: NOW, quoteEndsAt: 0, quoteExpired: false, proof: null, rejectReason: "", doneAt: 0, ...o });
 const mkTop = (o) => ({ id: "d1", kind: "topup", code: "D-1001", itemId: "", itemName: "إيداع رصيد", itemPath: "إيداع رصيد", playerId: "", vip: 1, priceUsd: 10, method: METHOD, amount: 1425, status: "awaiting_payment", createdAt: NOW, quoteEndsAt: NOW + 30 * 60000, quoteExpired: false, proof: null, rejectReason: "", doneAt: 0, ...o });
 function open(opts = {}) {
-  const h = { calls: [], authCb: null, copied: "", canvas: [], big: false, confirmAnswer: true, balance: opts.balance === undefined ? 12.5 : opts.balance, orders: opts.orders || [], prices: opts.prices || { n1: 0.92, n2: 9.26 }, vip: opts.vip || 1, fail: {}, quotes: 0 };
+  const h = { calls: [], authCb: null, copied: "", canvas: [], big: false, confirmAnswer: true, balance: opts.balance === undefined ? 12.5 : opts.balance, orders: opts.orders || [], prices: opts.prices || { n1: 0.92, n2: 9.26 }, vip: opts.vip || 1, fail: {}, quotes: 0, validateFn: () => ({ supported: false }), validateDelay: 0 };
   h.dom = new JSDOM(html, { url: "https://yardova.ly-ad.de/store/#/nA", runScripts: "dangerously", pretendToBeVisual: true, beforeParse(w) {
     w.scrollTo = () => {}; w.confirm = () => h.confirmAnswer;
     Object.defineProperty(w.navigator, "clipboard", { value: { writeText: async (t) => { if (h.clipFail) throw new Error("denied"); h.copied = t; } }, configurable: true });
@@ -26,6 +26,7 @@ function open(opts = {}) {
       if (u === "/store/me") return R({ ok: true, customer: { id: "u1", name: "Ali", email: "ali@x.com", vip: h.vip, spentUsd: 0, balanceUsd: h.balance, progressUsd: 0, sizeUsd: 200, remainingUsd: 200, nextVip: 2, createdAt: 1 }, wallet: { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000 } });
       if (u === "/store/prices") return R({ ok: true, vip: h.vip, prices: h.prices });
       if (u === "/store/quote") { h.quotes++; const p = h.prices[body.itemId]; return R({ ok: true, quote: { itemId: body.itemId, name: "60 UC", vip: h.vip, priceUsd: p, balanceUsd: h.balance, enough: h.balance + 1e-9 >= p, shortUsd: Math.max(0, Math.round((p - h.balance) * 10000) / 10000) } }); }
+      if (u === "/store/validate-id") { if (h.validateDelay) await sleep(h.validateDelay(body)); return R({ ok: true, ...h.validateFn(body) }); }
       if (u === "/store/orders") return R({ ok: true, orders: h.orders });
       if (u === "/store/order") { const p = h.prices[body.itemId]; if (h.balance + 1e-9 < p) return R({ ok: false, error: "insufficient_balance", message: "رصيدك " + h.balance + "$ وسعر الطلب " + p + "$. اشحن رصيدك أول.", balanceUsd: h.balance, priceUsd: p, shortUsd: Math.round((p - h.balance) * 10000) / 10000 }, 400); h.balance = Math.round((h.balance - p) * 10000) / 10000; const o2 = mkOrder({ playerId: body.playerId, itemId: body.itemId, priceUsd: p }); h.orders = [o2, ...h.orders]; return R({ ok: true, order: o2, balanceUsd: h.balance }); }
       if (u === "/store/topup/quote") { const a = body.amountUsd; return R({ ok: true, quote: { amountUsd: a, validMinutes: 30, minUsd: 5, maxUsd: 1000, methods: [{ id: "sham", name: "شام كاش", currency: "ل.س", decimals: 0, amount: Math.round(a * 142.5) }, { id: "usdt", name: "USDT", currency: "USDT", decimals: 2, amount: Math.round(a * 1.015 * 100) / 100 }] } }); }
@@ -156,6 +157,40 @@ const lock = (h) => h.d.body.classList.contains("lock");
   { const h = open(); await sleep(60); await h.signIn(); h.$("btnTopup").click(); await sleep(150); h.authCb(null); await sleep(40); ok(h.$("osheet").hidden && !h.$("btnTopup"), "signing out while the sheet is open closes it and removes the balance"); }
   { const h = open(); await sleep(60); h.$ && h.d.querySelector(".cta"); h.unit("pts").click(); await sleep(20); h.orderBtn("n1").click(); await sleep(30); ok(!h.$("drawer").hidden && /سجّل دخول عشان تطلب/.test(h.$("accMsg").textContent), "signed out, points mode: the order button still asks him to sign in"); }
 
+  /* ---- checking the Player ID before buying ---- */
+  { const h = open(); await sleep(60); await h.signIn(); const $ = h.$; const nV = () => h.count("/store/validate-id");
+    h.validateFn = (b) => b.playerId === "999999999" ? { supported: true, available: true, valid: false } : { supported: true, available: true, valid: true, playerName: "Player Nick", region: "EU" };
+    h.orderBtn("n1").click(); await sleep(150);
+    h.type($("osPid"), "12"); await sleep(800); ok(nV() === 0 && $("osIdCheck").textContent === "", "a short ID is not checked (nothing is sent)");
+    h.type($("osPid"), "<b>123"); await sleep(800); ok(nV() === 0, "nor an ID with symbols");
+    h.type($("osPid"), "5123456789"); ok($("osIdCheck").textContent === "", "while he is typing nothing is shown"); await sleep(300); ok(nV() === 0, "(no call yet: it waits for him to stop typing)");
+    await sleep(600); ok(nV() === 1 && h.last("/store/validate-id").body.itemId === "n1" && h.last("/store/validate-id").body.playerId === "5123456789" && h.last("/store/validate-id").auth === "Bearer TOKEN" && $("osIdCheck").textContent === "✔ اللاعب: Player Nick · EU — تأكد إنه حسابك.", "after a short pause it checks once and shows the player's name and region: 'is this your account?'");
+    h.type($("osPid"), "5123456780"); ok($("osIdCheck").textContent === "", "changing the ID clears the old result at once"); await sleep(900); ok(nV() === 2 && /Player Nick/.test($("osIdCheck").textContent), "and checks the new one");
+    /* a wrong ID blocks buying */
+    h.type($("osPid"), "999999999"); await sleep(900); ok($("osIdCheck").textContent === "❌ ما لقينا حساب بهالـID. تأكد منه.", "an ID that does not exist: a clear red message");
+    const nO = h.count("/store/order"); $("osSubmit").click(); await sleep(60); ok(h.count("/store/order") === nO && /ما لقينا حساب بهالـID. تأكد منه وجرّب كمان مرة/.test($("osMsg").textContent) && !$("osSubmit").disabled, "pressing 'buy' with an unknown ID is blocked (no order, no charge) and tells him why");
+    h.type($("osPid"), "5123456789"); await sleep(900); $("osSubmit").click(); await sleep(150); ok(h.count("/store/order") === nO + 1 && $("osTitle").textContent === "طلبك T-1001", "after he fixes the ID the order goes through"); h.key("Escape"); }
+  { const h = open(); await sleep(60); await h.signIn(); const $ = h.$;
+    h.validateFn = () => ({ supported: true, available: false });
+    h.orderBtn("n1").click(); await sleep(150); h.type($("osPid"), "5123456789"); await sleep(900);
+    ok(/ما قدرنا نتحقق هلق/.test($("osIdCheck").textContent) && /ما في استرجاع إذا كان غلط/.test($("osIdCheck").textContent), "if FazerCards cannot check right now, he is told to check the ID himself (and that wrong IDs are not refunded)");
+    $("osSubmit").click(); await sleep(150); ok(h.count("/store/order") === 1, "and he can still buy (an outage never stops a sale)"); h.key("Escape"); }
+  { const h = open(); await sleep(60); await h.signIn(); const $ = h.$; h.validateFn = () => ({ supported: false });
+    h.orderBtn("n1").click(); await sleep(150); h.type($("osPid"), "5123456789"); await sleep(900); const n1 = h.count("/store/validate-id");
+    ok(n1 === 1 && $("osIdCheck").textContent === "", "a product that cannot be checked: one call, and nothing is shown");
+    h.type($("osPid"), "5123456780"); await sleep(900); ok(h.count("/store/validate-id") === 1, "it never asks again for that product (no wasted calls)");
+    $("osSubmit").click(); await sleep(150); ok(h.count("/store/order") === 1, "buying works as normal"); h.key("Escape"); }
+  { const h = open(); await sleep(60); await h.signIn(); const $ = h.$; h.validateFn = (b) => ({ supported: true, available: true, valid: true, playerName: "Nick-" + b.playerId });
+    h.validateDelay = (b) => b.playerId === "1111111111" ? 700 : 20;
+    h.orderBtn("n1").click(); await sleep(150); h.type($("osPid"), "1111111111"); await sleep(750); h.type($("osPid"), "2222222222"); await sleep(750);
+    ok(/Nick-2222222222/.test($("osIdCheck").textContent) && !/Nick-1111111111/.test($("osIdCheck").textContent), "a slow answer for an OLD ID never replaces the result for the new one"); await sleep(600); ok(!/Nick-1111111111/.test($("osIdCheck").textContent), "(even after it arrives late)"); h.key("Escape"); }
+  { const h = open(); await sleep(60); await h.signIn(); const $ = h.$; h.validateFn = (b) => b.playerId === "999999999" ? { supported: true, available: true, valid: false } : { supported: true, available: true, valid: true, playerName: "Quick Nick" };
+    h.validateDelay = () => 100;
+    h.orderBtn("n1").click(); await sleep(150); h.type($("osPid"), "999999999"); $("osSubmit").click(); await sleep(400);
+    ok(h.count("/store/order") === 0 && h.count("/store/validate-id") === 1 && /ما لقينا حساب/.test($("osMsg").textContent), "pressing 'buy' straight after typing (before the pause) checks first and blocks a wrong ID");
+    h.type($("osPid"), "5123456789"); $("osSubmit").click(); await sleep(500); ok(h.count("/store/order") === 1 && h.count("/store/validate-id") === 2, "and for a good ID it checks first and then buys (once)"); h.key("Escape"); }
+  { const h = open(); await sleep(60); await h.signIn(); const $ = h.$; h.validateFn = () => ({ supported: true, available: true, valid: true, playerName: "X" }); h.validateDelay = () => 300;
+    h.orderBtn("n1").click(); await sleep(150); h.type($("osPid"), "5123456789"); await sleep(750); h.key("Escape"); await sleep(500); ok($("osheet").hidden, "closing the sheet while a check is running is harmless"); }
   /* ---- my orders ---- */
   { const h = open({ orders: [mkOrder(), mkTop({ id: "d2", code: "D-1002", status: "done", priceUsd: 50 }), mkOrder({ id: "o3", code: "T-0999", status: "rejected", rejectReason: "wrong ID" }), mkTop({ id: "d4", code: "D-1000", status: "expired" }), mkOrder({ id: "o5", code: "T-0998", status: "done", itemName: "660 UC", priceUsd: 9.26 })] }); await sleep(60); await h.signIn(); h.$("btnMenu").click();
     const rows = [...h.d.querySelectorAll("#myOrders .myrow")];

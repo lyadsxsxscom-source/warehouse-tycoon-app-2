@@ -63,7 +63,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
     sup.calls.push({ url: String(url), method: opts && opts.method, headers: (opts && opts.headers) || {}, body: opts && opts.body });
     if (sup.fail === "network") throw new Error("boom");
     const path = String(url).replace("https://api.fzr.cards/api/v2", ""); const key = path.split("?")[0];
-    const r = sup.routes[path] || sup.routes[key];
+    const r = sup.routes[(opts && opts.method || "GET") + " " + key] || sup.routes[path] || sup.routes[key];
     if (!r) return { ok: false, status: 404, json: async () => ({ ok: false, error: "not found" }) };
     if (r.badJson) return { ok: true, status: 200, json: async () => { throw new Error("bad json"); } };
     return { ok: (r.status || 200) < 400, status: r.status || 200, json: async () => r.body };
@@ -127,8 +127,53 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   r = await link("i660", { categoryId: "cat_pubgm_1", offerId: "offer_660uc", playerField: "uid" }); ok(r.json.nodes.find(x => x.id === "i660").supplier.playerField === "uid" && r.json.nodes.find(x => x.id === "i660").supplier.costUsd === 0, "the link can be changed (another field name; no cost given means 0)");
   r = await link("i660", null); ok(r.status === 200 && r.json.nodes.find(x => x.id === "i660").supplier === null, "unlinking removes it");
 
+  /* ---- E2) the games FazerCards can check an ID for ---- */
+  const resetVal = () => vm.runInContext("FZR_VALIDATORS = { at: 0, items: [] }", c);
+  sup.routes["GET /topups/validate-id"] = { body: { ok: true, items: [{ category_id: "pubg_mobile", name: "PUBG Mobile", fields: [{ key: "player_id", label: "Player ID", type: "text" }] }, { category_id: "free_fire", name: "<b>Free Fire</b>", fields: [{ key: "uid", label: "UID", type: "text" }] }, { category_id: "bad id!", name: "x", fields: [] }] } };
+  resetVal(); const nv0 = sup.calls.length; r = await adm({ action: "supplier_validators" });
+  ok(r.status === 200 && r.json.validators.map(v => v.categoryId + ":" + v.name).join() === "pubg_mobile:PUBG Mobile,free_fire:Free Fire", "the list of games that support ID checking (invalid ids dropped, names cleaned)");
+  r = await adm({ action: "supplier_validators" }); ok(sup.calls.length === nv0 + 1, "it is remembered for 10 minutes (the second request did not call FazerCards)");
+  ok((await adm({ action: "supplier_validators" }, "u1")).status === 401, "admin-only");
+  link2 = null;
+  r = await adm({ action: "supplier_link", id: "i660", link: { categoryId: "cat_pubgm_1", offerId: "offer_660uc", categoryName: "<b>PUBG Mobile</b>", validateCategoryId: "pubg_mobile", costUsd: 8.76 } });
+  ok(r.json.nodes.find(x => x.id === "i660").supplier.categoryName === "PUBG Mobile" && r.json.nodes.find(x => x.id === "i660").supplier.validateCategoryId === "pubg_mobile", "a link can also keep the game's name and the ID-check category");
+  r = await adm({ action: "supplier_link", id: "i660", link: { categoryId: "cat_pubgm_1", offerId: "offer_660uc", validateCategoryId: "bad id!" } }); ok(r.status === 400 && r.json.error === "bad_supplier_link", "an invalid ID-check category is refused");
+
+  /* ---- E3) a customer checks his Player ID before buying ---- */
+  const vid = (itemId, playerId, tk = "u1") => callApi("/store/validate-id", { itemId, playerId }, tk);
+  put("storeNodes/iFree", { parentId: "nP", type: "item", name: "Free diamonds", enabled: true, sort: 3, prices: P10([1]), supplier: { provider: "fazercards", categoryId: "cat_ff", offerId: "o_ff", playerField: "player_id", categoryName: "Free Fire", validateCategoryId: "", offerName: "d", costUsd: 0.5 } });
+  put("storeNodes/iNoMatch", { parentId: "nP", type: "item", name: "Other game", enabled: true, sort: 4, prices: P10([1]), supplier: { provider: "fazercards", categoryId: "cat_x", offerId: "o_x", playerField: "player_id", categoryName: "Unknown Game", validateCategoryId: "", offerName: "d", costUsd: 0.5 } });
+  put("storeNodes/iHidden", { parentId: "nP", type: "item", name: "hidden", enabled: false, sort: 5, prices: P10([1]), supplier: { provider: "fazercards", categoryId: "c", offerId: "o", playerField: "player_id", categoryName: "PUBG Mobile", validateCategoryId: "", offerName: "d", costUsd: 0.5 } });
+  r = await callApi("/store/validate-id", { itemId: "i660", playerId: "123456789" }, null); ok(r.status === 401, "checking an ID needs a sign-in");
+  r = await vid("ghost", "123456789"); ok(r.status === 404 && r.json.error === "no_item", "an unknown product is a 404"); r = await vid("iHidden", "123456789"); ok(r.status === 404, "so is a hidden one");
+  const beforeUnlinked = sup.calls.length; r = await vid("i60", "123456789"); ok(r.status === 200 && r.json.supported === false && Object.keys(r.json).sort().join() === "ok,supported" && sup.calls.length === beforeUnlinked, "a product that is not linked: 'not supported' and FazerCards is not called (buying works as normal)");
+  for (const [pid, label] of [["12", "too short"], ["", "empty"], ["<b>1234</b>", "HTML"], ["a".repeat(41), "too long"], ["12\n345", "a line break"]]) { const n = sup.calls.length; r = await vid("i660", pid); ok(r.status === 400 && r.json.error === "bad_player" && sup.calls.length === n, "refused Player ID: " + label + " (nobody is called)"); }
+  sup.routes["POST /topups/validate-id"] = { body: { ok: true, category_id: "pubg_mobile", valid: true, player_name: "<i>Player Nick</i>", region: "EU" } };
+  const nA = sup.calls.length; r = await vid("i660", "5123456789");
+  ok(r.status === 200 && r.json.supported === true && r.json.available === true && r.json.valid === true && r.json.playerName === "Player Nick" && r.json.region === "EU" && Object.keys(r.json).sort().join() === "available,ok,playerName,region,supported,valid", "a valid ID: the player's name and region (cleaned), and nothing else");
+  const post = sup.calls.slice(nA).find(x => x.method === "POST"); ok(post.url === "https://api.fzr.cards/api/v2/topups/validate-id" && post.headers["X-API-Key"] === KEY && JSON.parse(post.body).category_id === "pubg_mobile" && JSON.parse(post.body).fields.player_id === "5123456789", "what was sent: the ID-check category and the ID in the field the game expects, with the key in the header");
+  sup.routes["POST /topups/validate-id"].body = { ok: true, valid: false }; r = await vid("i660", "5123456789"); ok(r.json.valid === false && r.json.playerName === "" && r.json.available === true, "an ID that does not exist: valid false");
+  const nB = sup.calls.length; r = await vid("i660", "5123456789"); ok(sup.calls.slice(nB).filter(x => x.method === "GET").length === 0, "the list of supported games is not fetched again (remembered)");
+  sup.routes["POST /topups/validate-id"].body = { ok: true, valid: true, player_name: "FF Player" }; const nC = sup.calls.length; r = await vid("iFree", "9988776655");
+  ok(r.json.valid === true && r.json.playerName === "FF Player" && JSON.parse(sup.calls.slice(nC).find(x => x.method === "POST").body).category_id === "free_fire" && JSON.parse(sup.calls.slice(nC).find(x => x.method === "POST").body).fields.uid === "9988776655", "a game matched by NAME: and if the saved field name does not exist for that game, its own first field (uid) is used");
+  r = await vid("iNoMatch", "123456789"); ok(r.status === 200 && r.json.supported === false, "a game FazerCards cannot check: 'not supported'");
+  for (const [st2, label] of [[403, "403 (inactive subscription)"], [500, "500"], [429, "429"]]) { sup.routes["POST /topups/validate-id"] = { status: st2, body: { ok: false, error: "x" } }; r = await vid("i660", "5123456789"); ok(r.status === 200 && r.json.supported === true && r.json.available === false && !("valid" in r.json), "if FazerCards answers " + label + " the customer is told 'cannot check right now' (never an error page, never a block)"); }
+  sup.fail = "network"; r = await vid("i660", "5123456789"); sup.fail = null; ok(r.status === 200 && r.json.available === false, "a network failure is also just 'cannot check'");
+  keyOff(); const nD = sup.calls.length; r = await vid("i660", "5123456789"); ok(r.json.supported === false && sup.calls.length === nD, "with no key nothing is checked and buying works as normal"); keyOn();
+  sup.routes["POST /topups/validate-id"] = { body: { ok: true, valid: true, player_name: "N" } };
+  /* the limit */
+  mkRate = (uid) => { for (const k of [...store.keys()]) if (k.startsWith("storeRate/")) store.delete(k); };
+  mkRate(); TOKS.u9 = { sub: "u9", email: "n@x.com" }; let lastOk = 0; for (let i = 0; i < 30; i++) { r = await vid("i660", "5123456789", "u9"); if (r.status === 200) lastOk++; }
+  ok(lastOk === 30, "30 checks an hour are allowed"); r = await vid("i660", "5123456789", "u9"); ok(r.status === 429 && r.json.error === "rate_limited" && /جرّب بعد شوي/.test(r.json.message), "the 31st is refused (so nobody can use this to scan IDs)");
+  r = await vid("i660", "5123456789", "u1"); ok(r.status === 200, "another customer is not affected");
+  const rk = get("storeRate/validate_u9"); put("storeRate/validate_u9", { ...rk, start: Date.now() - 3700 * 1000 }); r = await vid("i660", "5123456789", "u9"); ok(r.status === 200 && get("storeRate/validate_u9").n === 1, "after an hour the count starts again");
+  const nE = sup.calls.length; r = await vid("i660", "12", "u9"); ok(r.status === 400, "(a bad ID does not use up the allowance or call anybody)"); ok(get("storeRate/validate_u9").n === 1 && sup.calls.length === nE, "...");
+  ok(!JSON.stringify(r.json).includes(KEY), "the key never appears in any answer");
+  var link2;
+
   /* ---- F) the key never leaks and nobody else is called ---- */
-  ok(sup.calls.every(x => x.url.startsWith("https://api.fzr.cards/api/v2/")) && sup.calls.every(x => x.method === "GET"), "everything sent to FazerCards went to its API and was read-only (GET): nothing was bought or changed");
+  ok(sup.calls.every(x => x.url.startsWith("https://api.fzr.cards/api/v2/")) && sup.calls.every(x => x.method === "GET" || (x.method === "POST" && x.url.endsWith("/topups/validate-id"))), "everything sent to FazerCards went to its API and was read-only: reads, plus the ID check; nothing was ever bought or changed (no /topups/order call)");
+  ok(!sup.calls.some(x => /\/topups\/order/.test(x.url)), "(and no order was ever placed)");
   ok(!JSON.stringify([...store.values()]).includes(KEY), "the key is not stored anywhere in the database");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });

@@ -715,7 +715,8 @@ $('ordList').addEventListener('click', async e => {
 });
 
 // ===== FazerCards: الاتصال، الإعدادات، وربط المنتجات (قراءة فقط) =====
-let SP = { hasKey: false, cfg: { enabled: false, minMarginPct: 5, dailyCapUsd: 100 }, ch: null };
+let SP = { hasKey: false, cfg: { enabled: false, minMarginPct: 5, dailyCapUsd: 100 }, ch: null, validators: null };
+const fzrNorm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const marginOf = (price, cost) => (price > 0 && cost > 0) ? (price - cost) / price * 100 : null;
 const pctTxt = m => m === null ? '—' : m.toFixed(1) + '%';
 function renderKeyBox(){
@@ -766,6 +767,7 @@ function renderSpItems(){
     if(n.supplier){
       const m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd), low = (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM);
       row.append(el('div', { class: 'sm', 'data-link': n.id, text: '🔗 ' + (n.supplier.offerName || n.supplier.offerId) + ' · تكلفتهم ' + (n.supplier.costUsd ? usd4(n.supplier.costUsd) : 'غير معروفة') + ' · هامش VIP 1: ' + pctTxt(m1) + ' · VIP 10: ' + pctTxt(m10) }));
+      row.append(el('div', { class: 'sm', 'data-val': n.id, text: n.supplier.validateCategoryId ? '🆔 التحقق من الـID: متاح ✔' : (n.supplier.categoryName ? '🆔 التحقق من الـID: غير متاح لهاللعبة' : '🆔 التحقق من الـID: أعد الربط لتفعيله') }));
       if(low) row.append(el('div', { class: 'sm spbad', 'data-low': n.id, text: '⚠️ الهامش تحت الحد (' + minM + '%): ما رح يتنفّذ تلقائياً. ارفع السعر أو غيّر الحد.' }));
     } else row.append(el('div', { class: 'sm', text: 'غير مربوط' }));
     const t = el('div', { class: 'tools' }, el('button', { 'data-spact': 'choose', 'data-id': n.id, text: n.supplier ? '✏️ تغيير' : '🔗 ربط' }));
@@ -783,7 +785,7 @@ function renderChooser(n){
     if(ch.msg) wrap.append(el('div', { class: 'sm', id: 'spChMsg', text: ch.msg }));
     (ch.cats || []).forEach(c => wrap.append(el('button', { class: 'opt', 'data-spact': 'cat', 'data-id': n.id, 'data-cat': c.categoryId, 'data-name': c.name, text: c.name + ' · ' + c.categoryId })));
   } else {
-    wrap.append(el('div', { class: 'sm', text: ch.catName + ' — اختار الخيار:' }), el('button', { class: 'opt', 'data-spact': 'back', 'data-id': n.id, text: '← رجوع للأقسام' }));
+    wrap.append(el('div', { class: 'sm', text: ch.catName + ' — اختار الخيار:' }), el('div', { class: 'sm', id: 'spVal', text: ch.vmatch ? '🆔 ✔ التحقق من الـPlayer ID متاح لهاللعبة (الزبون بيشوف اسم اللاعب قبل ما يشتري).' : '🆔 ⚠️ هاللعبة ما بتدعم التحقق من الـID عند FazerCards (الشراء بيضل عادي بدون تحقق).' }), el('button', { class: 'opt', 'data-spact': 'back', 'data-id': n.id, text: '← رجوع للأقسام' }));
     const p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1;
     (ch.offers || []).forEach(o => wrap.append(el('button', { class: 'opt', 'data-spact': 'offer', 'data-id': n.id, 'data-offer': o.offerId, text: o.name + ' · تكلفتهم ' + usd4(o.priceUsd) + ' · هامش VIP 1: ' + pctTxt(marginOf(p1, o.priceUsd)) + ' · VIP 10: ' + pctTxt(marginOf(p10, o.priceUsd)) })));
     if(ch.msg) wrap.append(el('div', { class: 'sm', id: 'spChMsg', text: ch.msg }));
@@ -796,11 +798,20 @@ $('spItems').addEventListener('click', async e => {
   try{
     if(act === 'choose'){ SP.ch = SP.ch && SP.ch.id === id ? null : { id, step: 'cat', cats: [], q: '', msg: '' }; renderSpItems(); return; }
     if(act === 'search'){ const q = $('spSearch').value.trim(); SP.ch.q = q; SP.ch.msg = 'عم نبحث...'; renderSpItems(); try{ SP.ch.cats = (await storeApi({ action: 'supplier_categories', q })).categories; SP.ch.msg = SP.ch.cats.length ? '' : 'ما لقينا شي.'; }catch(err){ SP.ch.msg = err.message; } renderSpItems(); return; }
-    if(act === 'cat'){ SP.ch.msg = 'عم نجيب الخيارات...'; renderSpItems(); try{ const j = await storeApi({ action: 'supplier_offers', categoryId: b.dataset.cat }); SP.ch = { id, step: 'off', catId: b.dataset.cat, catName: j.name || b.dataset.name, offers: j.offers, fields: j.fields, msg: j.offers.length ? '' : 'ما في خيارات بهالقسم.' }; }catch(err){ SP.ch.msg = err.message; } renderSpItems(); return; }
+    if(act === 'cat'){
+      SP.ch.msg = 'عم نجيب الخيارات...'; renderSpItems();
+      try{
+        const j = await storeApi({ action: 'supplier_offers', categoryId: b.dataset.cat });
+        if(!SP.validators){ try{ SP.validators = (await storeApi({ action: 'supplier_validators' })).validators; }catch(e){ SP.validators = []; } }
+        const nm = j.name || b.dataset.name, vm = SP.validators.find(v => fzrNorm(v.name) === fzrNorm(nm));
+        SP.ch = { id, step: 'off', catId: b.dataset.cat, catName: nm, vmatch: vm ? vm.categoryId : '', offers: j.offers, fields: j.fields, msg: j.offers.length ? '' : 'ما في خيارات بهالقسم.' };
+      }catch(err){ SP.ch.msg = err.message; }
+      renderSpItems(); return;
+    }
     if(act === 'back'){ SP.ch = { id, step: 'cat', cats: [], q: '', msg: '' }; renderSpItems(); return; }
     if(act === 'offer'){
       const o = SP.ch.offers.find(x => x.offerId === b.dataset.offer), f = (SP.ch.fields || []).find(x => /id/i.test(x.key)) || (SP.ch.fields || [])[0];
-      NODES = (await storeApi({ action: 'supplier_link', id, link: { categoryId: SP.ch.catId, offerId: o.offerId, playerField: f ? f.key : 'player_id', offerName: o.name, costUsd: o.priceUsd } })).nodes; SP.ch = null; renderSpItems(); return;
+      NODES = (await storeApi({ action: 'supplier_link', id, link: { categoryId: SP.ch.catId, offerId: o.offerId, playerField: f ? f.key : 'player_id', categoryName: SP.ch.catName, validateCategoryId: SP.ch.vmatch || '', offerName: o.name, costUsd: o.priceUsd } })).nodes; SP.ch = null; renderSpItems(); return;
     }
     if(act === 'unlink'){ if(!window.confirm('فك ربط "' + n.name + '" مع FazerCards؟')) return; NODES = (await storeApi({ action: 'supplier_link', id, link: null })).nodes; renderSpItems(); return; }
     if(act === 'cost'){
