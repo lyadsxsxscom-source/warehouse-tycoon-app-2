@@ -11,57 +11,61 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800&family=Reem+Kufi:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --teal:#17564A; --teal-d:#0F3B33; --tape:#F4C21F; --ink:#10211C; --paper:#F3F5EE; --line:#C9D4CC; --muted:#4A5E57; --panel:#FFFFFF;
+  --teal:#17564A; --teal-d:#0F3B33; --tape:#F4C21F;
+  --paper:#F3F5EE; --panel:#FFFFFF; --ink:#10211C; --muted:#41554E; --line:#B8C8BF;
+  --link:#0F4A3F; --edge:#10211C; --shadow:#10211C; --pic:#E6ECE6;
   --f-stencil:"Big Shoulders Stencil Display",Impact,"Arial Narrow",sans-serif;
-  --f-head:"Reem Kufi","Segoe UI",Tahoma,sans-serif;
-  --f-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;
+  --f-text:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;     /* خط القراءة: للأسماء والعناوين والأسعار */
 }
-@media (prefers-color-scheme: dark){ :root{ --paper:#0E1B17; --panel:#16302A; --ink:#EAF0EC; --line:#2A4A42; --muted:#A8BDB5; } }
+@media (prefers-color-scheme: dark){ :root{
+  --paper:#0B1613; --panel:#1C3B33; --ink:#F4F8F5; --muted:#C3D4CC; --line:#4A7569;
+  --link:#F4C21F; --edge:#8FC2B3; --shadow:#04100C; --pic:#14292A;
+} }
 *,*::before,*::after{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.75}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-text);font-size:18px;line-height:1.8;word-spacing:.08em}
 a{color:inherit}
 :focus-visible{outline:3px solid var(--tape);outline-offset:3px;border-radius:4px}
-.wrap{width:min(960px,100% - 40px);margin-inline:auto}
-.top{background:var(--teal-d);color:#F3F5EE}
+.wrap{width:min(960px,100% - 32px);margin-inline:auto}
+.top{background:var(--teal-d);color:#F4F8F5}
 .top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:12px}
 .brand{font-family:var(--f-stencil);font-weight:800;font-size:1.55rem;letter-spacing:.12em;text-decoration:none;direction:ltr}
-.top .back{font-size:.95rem;text-decoration:none;border:1.5px solid #5E8A7E;border-radius:999px;padding:4px 14px}
-.door{background:var(--teal);color:#F3F5EE;background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 3px,rgba(0,0,0,0) 3px 26px)}
+.top .back{font-size:1rem;text-decoration:none;border:2px solid #8FC2B3;border-radius:999px;padding:5px 16px}
+.door{background:var(--teal);color:#F4F8F5;background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.16) 0 3px,rgba(0,0,0,0) 3px 26px)}
 .door::before,.door::after{content:"";display:block;height:14px;background:repeating-linear-gradient(-45deg,var(--tape) 0 16px,#10211C 16px 32px)}
-.door .in{padding-block:clamp(36px,8vw,72px)}
-.tag{background:var(--paper);color:var(--ink);max-width:640px;padding:clamp(20px,4vw,34px);border:2px solid #10211C;box-shadow:8px 8px 0 #10211C}
-.tag h1{font-family:var(--f-head);font-weight:700;font-size:clamp(1.55rem,4.6vw,2.35rem);line-height:1.25;margin:0 0 12px}
-.tag p{margin:0}
-main{padding-block:32px}
-.empty{background:var(--panel);border:2px dashed var(--line);border-radius:10px;padding:28px;color:var(--muted);text-align:center}
+.door .in{padding-block:clamp(32px,7vw,64px)}
+.tag{background:var(--panel);color:var(--ink);max-width:640px;padding:clamp(20px,4vw,32px);border:3px solid var(--edge);box-shadow:8px 8px 0 var(--shadow)}
+.tag h1{font-family:var(--f-text);font-weight:700;font-size:clamp(1.7rem,6vw,2.4rem);line-height:1.35;margin:0 0 10px;word-spacing:.18em}
+.tag p{margin:0;font-size:1.1rem;color:var(--ink)}
+main{padding-block:26px 36px}
 [hidden]{display:none!important}
-.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 16px;font-size:.95rem}
-.crumbs a{color:var(--teal);font-weight:600;cursor:pointer;text-decoration:none;background:none;border:0;padding:0;font:inherit}
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 16px;font-size:1.05rem}
+.crumbs a{color:var(--link);font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:4px;background:none;border:0;padding:0;font:inherit}
+.crumbs b{font-weight:700}
 .crumbs .sep{color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.methods{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 20px}
+.methods .lb{color:var(--muted);font-size:1rem}
+.chip{font:inherit;font-weight:700;font-size:1rem;border:2px solid var(--edge);background:var(--panel);color:var(--ink);border-radius:999px;padding:6px 18px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--tape);color:#10211C;border-color:#10211C}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 @media (min-width:640px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (min-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-.card{display:flex;flex-direction:column;background:var(--panel);border:2px solid #10211C;border-radius:14px;overflow:hidden;text-align:center;font:inherit;color:inherit;padding:0;box-shadow:4px 4px 0 #10211C}
+.card{display:flex;flex-direction:column;background:var(--panel);border:3px solid var(--edge);border-radius:14px;overflow:hidden;text-align:center;font:inherit;color:var(--ink);padding:0;box-shadow:5px 5px 0 var(--shadow)}
 button.card{cursor:pointer}
-button.card:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #10211C}
-.card .pic{aspect-ratio:1/1;background:var(--paper);display:flex;align-items:center;justify-content:center;font-size:2.6rem;overflow:hidden}
+button.card:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--shadow)}
+.card .pic{aspect-ratio:1/1;background:var(--pic);display:flex;align-items:center;justify-content:center;font-size:3rem;overflow:hidden}
 .card .pic img{width:100%;height:100%;object-fit:cover;display:block}
-.card .body{padding:10px 8px 12px}
-.card .nm{font-family:var(--f-head);font-weight:700;line-height:1.35;word-break:break-word}
-.card .pr{margin-top:6px;display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:2px 12px;direction:ltr}
-.card .soon{display:block;margin-top:8px;color:var(--muted);font-size:.85rem}
-.methods{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 18px}
-.methods .lb{color:var(--muted);font-size:.9rem}
-.chip{font:inherit;font-weight:600;border:2px solid #10211C;background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 14px;cursor:pointer}
-.chip[aria-pressed="true"]{background:var(--tape);color:#10211C}
-.card .pr small{display:block;font-weight:400;font-size:.78rem;opacity:.8}
-.state{padding:28px;text-align:center;color:var(--muted)}
-.state button{margin-top:12px;font:inherit;font-weight:600;border:2px solid #10211C;background:var(--tape);color:#10211C;border-radius:8px;padding:8px 18px;cursor:pointer}
-.skel{height:160px;border-radius:14px;background:linear-gradient(90deg,var(--line),transparent,var(--line));opacity:.5}
-footer{padding-block:24px;color:var(--muted);font-size:.9rem}
+.card .body{padding:12px 10px 14px;border-top:3px solid var(--edge)}
+.card .nm{font-family:var(--f-text);font-weight:700;font-size:1.12rem;line-height:1.45;color:var(--ink);word-break:break-word}
+.card .pr{margin-top:8px;display:inline-block;background:var(--tape);color:#10211C;font-weight:700;font-size:1.05rem;border-radius:999px;padding:3px 14px;direction:ltr}
+.card .pr small{display:block;font-weight:600;font-size:.82rem;color:#10211C}
+.card .soon{display:block;margin-top:8px;color:var(--muted);font-size:.9rem}
+.state,.empty{background:var(--panel);border:2px dashed var(--line);border-radius:12px;padding:28px;color:var(--ink);text-align:center;font-size:1.05rem}
+.state button{margin-top:12px;font:inherit;font-weight:700;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:8px 20px;cursor:pointer}
+.skel{height:170px;border-radius:14px;background:linear-gradient(90deg,var(--line),transparent,var(--line));opacity:.5}
+footer{padding-block:24px;color:var(--muted);font-size:1rem}
 </style>
 </head>
 <body>
