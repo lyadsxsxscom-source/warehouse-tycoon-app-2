@@ -1698,41 +1698,6 @@ async function handleStoreOrderApi(request, env, action) {
       }
       }
     }
-    if (action === "convert") {
-      const { cfg } = await storeLoadWallet(env), dir = String(b.direction || "");
-      if (dir !== "points_to_usd" && dir !== "usd_to_points") throw new ApiError("bad_request", "طلب غلط.");
-      const amountUsd = r2(Number(b.amountUsd));
-      if (!Number.isFinite(amountUsd) || amountUsd < cfg.minConvertUsd || amountUsd > 10000) throw new ApiError("bad_amount", `أقل مبلغ للتحويل ${cfg.minConvertUsd}$.`);
-      const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
-      const lid = "c" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeLedger/" + lid);
-      if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, result: { direction: dir, amountUsd: Number(dup.data.amountUsd), points: Number(dup.data.points) } }, 200); }
-      const gd = await fsGetDoc(env, "players/" + uid);
-      if (!gd.exists) throw new ApiError("no_game", "افتح لعبة ياردوفا مرة بنفس الحساب أول (حتى يتفعّل رصيد النقاط).");
-      const out = await mutatePlayer(env, uid, async (p, now2) => {
-        const cd = await fsGetDoc(env, "storeCustomers/" + uid);
-        if (!cd.exists) throw new ApiError("no_account", "افتح حسابك أول (من ☰) وجرّب كمان مرة.");
-        const bal = r2(Number(cd.data.balanceUsd) || 0); let upd, pts, dUsd, dPts;
-        if (dir === "points_to_usd") {
-          if ((Number(p.activeDays) || 0) < cfg.minActiveDays) throw new ApiError("not_active_enough", `لازم ${cfg.minActiveDays} أيام نشاط بياردوفا قبل ما تحوّل نقاط لدولار (عندك ${Number(p.activeDays) || 0}).`);
-          pts = Math.ceil(amountUsd * cfg.pointsPerUsdSell - 1e-9);
-          if ((Number(p.points) || 0) < pts) throw new ApiError("not_enough_points", `بدك ${pts} نقطة وعندك ${Math.floor(Number(p.points) || 0)}.`);
-          const start = Number(cd.data.p2uWindowStart) || 0, inWin = start && now2 - start < STORE_WEEK_MS, used = inWin ? Number(cd.data.p2uWindowUsd) || 0 : 0;
-          if (cfg.weeklyCapUsd > 0 && used + amountUsd > cfg.weeklyCapUsd + 1e-9) throw new ApiError("weekly_cap", `الحد الأسبوعي لتحويل النقاط ${cfg.weeklyCapUsd}$، وباقي لك ${r2(Math.max(0, cfg.weeklyCapUsd - used))}$.`);
-          p.points = (Number(p.points) || 0) - pts; dUsd = amountUsd; dPts = -pts;
-          upd = { balanceUsd: r2(bal + amountUsd), p2uWindowStart: inWin ? start : now2, p2uWindowUsd: r2(used + amountUsd) };
-        } else {
-          if (bal + 1e-9 < amountUsd) throw new ApiError("insufficient_balance", `رصيدك ${bal}$ وما بيكفي.`);
-          pts = Math.floor(amountUsd * cfg.pointsPerUsdBuy + 1e-9);
-          if (pts < 1) throw new ApiError("bad_amount", "المبلغ صغير: ما بيعطي ولا نقطة.");
-          p.points = (Number(p.points) || 0) + pts; dUsd = -amountUsd; dPts = pts; upd = { balanceUsd: r2(bal - amountUsd) };
-        }
-        return { writes: [
-          { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: cd.updateTime } },
-          { update: { name: docName(env, "storeLedger/" + lid), fields: objToFields({ uid, type: dir, amountUsd: dUsd, points: dPts, balanceAfter: upd.balanceUsd, ref: reqId, note: "", at: now2, by: "customer" }) }, currentDocument: { exists: false } },
-        ], result: { direction: dir, amountUsd: dUsd, points: dPts, balanceUsd: upd.balanceUsd } };
-      });
-      return jsonResponse({ ok: true, result: { ...out.result, pointsBalance: Math.floor(Number(out.p.points) || 0) } }, 200);
-    }
     if (action === "prices") {            // أسعار كل المنتجات الظاهرة بمستوى VIP تبع الزبون (بتتحسب بالسيرفر)
       const nodes = await storeAllNodes(env), { vip } = await storeCustomerCtx(env, uid), prices = {};
       for (const n of nodes) { const it = storeVisibleItem(nodes, n.id); if (it) { const pr = storePricesOf(it); prices[it.id] = pr[Math.min(vip, pr.length) - 1]; } }
@@ -2840,7 +2805,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/convert", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);

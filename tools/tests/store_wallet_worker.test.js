@@ -1,4 +1,4 @@
-// اختبارات السيرفر: محفظة المتجر (6أ): رصيد دولار، تحويل نقاط ↔ دولار، إعدادات الأدمن، تعديل الرصيد، السجل
+// اختبارات السيرفر: محفظة المتجر (6أ): رصيد دولار، إعدادات الأدمن، تعديل الرصيد، السجل
 // التشغيل: node tools/tests/store_wallet_worker.test.js
 const vm = require("vm"), fs = require("fs"), path = require("path");
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m); } else console.log("ok:", m); };
@@ -74,58 +74,6 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(m.customer.balanceUsd === 0 && m.wallet.pointsPerUsdSell === 900 && m.wallet.pointsPerUsdBuy === 700 && m.wallet.weeklyCapUsd === 10 && m.wallet.weeklyLeftUsd === 10 && m.wallet.weeklyUsedUsd === 0 && m.wallet.game.has === false && m.wallet.game.points === 0, "/store/me carries the balance, the current rates and limits, and says he has no game account yet");
   mkP("u1", { points: 5000.9, activeDays: 10 }); m = await me("u1"); ok(m.wallet.game.has === true && m.wallet.game.points === 5000 && m.wallet.game.activeDays === 10, "with a game account it shows his points (whole numbers) and active days");
 
-  /* ---- C) points -> dollars ---- */
-  mkP("u1", { points: 5000, activeDays: 10, totalPointsEarned: 7777, adsWatched: 12 });
-  r = await conv("points_to_usd", 2);
-  ok(r.status === 200 && r.json.result.direction === "points_to_usd" && r.json.result.amountUsd === 2 && r.json.result.points === -1800 && r.json.result.balanceUsd === 2 && r.json.result.pointsBalance === 3200 && bal("u1") === 2 && pts("u1") === 3200, "$2 costs 1,800 points at 900 per dollar: balance $2, points 3,200");
-  ok(get("players/u1").totalPointsEarned === 7777 && get("players/u1").adsWatched === 12, "the game's other numbers (points earned, ads) are never touched");
-  const lg = ledger("u1"); ok(lg.length === 1 && lg[0].type === "points_to_usd" && lg[0].amountUsd === 2 && lg[0].points === -1800 && lg[0].balanceAfter === 2 && lg[0].by === "customer" && lg[0].at > 0, "the ledger records it (amount, points, balance after, who, when)");
-  m = await me("u1"); ok(m.wallet.weeklyUsedUsd === 2 && m.wallet.weeklyLeftUsd === 8 && m.wallet.windowEndsAt > Date.now() + 6 * DAY, "the weekly allowance now shows $2 used, $8 left, and when the week ends");
-  r = await conv("points_to_usd", 1.01); ok(r.json.result.points === -Math.ceil(1.01 * 900 - 1e-9) && r.json.result.points === -909 && bal("u1") === 3.01, "points are rounded UP in your favour (1.01 x 900 = 909)");
-  mkP("u1", { points: 100, activeDays: 10 }); r = await conv("points_to_usd", 1); ok(r.status === 400 && r.json.error === "not_enough_points" && /900/.test(r.json.message) && /100/.test(r.json.message) && bal("u1") === 3.01 && pts("u1") === 100, "not enough points: refused, nothing changes");
-  mkP("u1", { points: 50000, activeDays: 2 }); r = await conv("points_to_usd", 1); ok(r.status === 400 && r.json.error === "not_active_enough" && /3/.test(r.json.message), "fewer active days than required: refused");
-  mkP("u1", { points: 50000, activeDays: 10 });
-  r = await conv("points_to_usd", 7); ok(r.status === 400 && r.json.error === "weekly_cap" && /10/.test(r.json.message) && /6\.99/.test(r.json.message), "over the weekly cap: refused with what is left ($6.99)");
-  r = await conv("points_to_usd", 6.99); ok(r.status === 200 && bal("u1") === 10, "exactly the amount left is allowed");
-  r = await conv("points_to_usd", 1); ok(r.status === 400 && r.json.error === "weekly_cap", "then the week is used up");
-  const g0 = get("storeCustomers/u1"); put("storeCustomers/u1", { ...g0, p2uWindowStart: Date.now() - 8 * DAY }); r = await conv("points_to_usd", 1); ok(r.status === 200 && get("storeCustomers/u1").p2uWindowUsd === 1 && get("storeCustomers/u1").p2uWindowStart > Date.now() - 5000, "after 7 days a fresh week starts");
-  await adm({ action: "wallet_save", cfg: { ...good, weeklyCapUsd: 0 } }); r = await conv("points_to_usd", 20); ok(r.status === 200, "with the cap set to 0 there is no weekly limit"); await adm({ action: "wallet_save", cfg: good });
-  await adm({ action: "wallet_save", cfg: { ...good, minActiveDays: 0 } }); mkP("u1", { points: 50000, activeDays: 0 }); r = await conv("points_to_usd", 1); ok(r.status === 200 || r.json.error === "weekly_cap", "with 0 required days the rule is off"); await adm({ action: "wallet_save", cfg: good });
-  const b0 = bal("u1"), p0 = pts("u1");
-  for (const [d, a, label, code] of [["points_to_usd", 0.5, "below the minimum", "bad_amount"], ["points_to_usd", 20000, "above the maximum", "bad_amount"], ["points_to_usd", "abc", "text", "bad_amount"], ["points_to_usd", null, "empty", "bad_amount"], ["sideways", 5, "an unknown direction", "bad_request"]]) { r = await conv(d, a); ok(r.status === 400 && r.json.error === code, "refused: " + label); }
-  for (const bad of ["", "short", "has space in it!", "x".repeat(65)]) { r = await callApi("/store/convert", { direction: "points_to_usd", amountUsd: 1, reqId: bad }, "u1"); ok(r.status === 400 && r.json.error === "bad_request", "refused request id: " + JSON.stringify(bad.slice(0, 10))); }
-  ok(bal("u1") === b0 && pts("u1") === p0, "none of those changed anything");
-
-  /* ---- D) dollars -> points ---- */
-  mkC("u2", { balanceUsd: 10 }); mkP("u2", { points: 100, activeDays: 0, totalPointsEarned: 50 });
-  r = await conv("usd_to_points", 3, "u2"); ok(r.status === 200 && r.json.result.points === 2100 && r.json.result.amountUsd === -3 && r.json.result.balanceUsd === 7 && r.json.result.pointsBalance === 2200 && bal("u2") === 7 && pts("u2") === 2200, "$3 buys 2,100 points at 700 per dollar: balance $7, points 2,200");
-  ok(get("players/u2").totalPointsEarned === 50, "bought points do not count as points earned by playing");
-  ok(r.status === 200 && ledger("u2")[0].type === "usd_to_points" && ledger("u2")[0].amountUsd === -3 && ledger("u2")[0].points === 2100, "and it is in the ledger");
-  r = await conv("usd_to_points", 20, "u2"); ok(r.status === 400 && r.json.error === "insufficient_balance" && bal("u2") === 7 && pts("u2") === 2200, "not enough balance: refused, nothing changes");
-  r = await conv("usd_to_points", 1.5, "u2"); ok(r.status === 200 && r.json.result.points === 1050, "$1.5 gives 1,050 points");
-  await adm({ action: "wallet_save", cfg: { ...good, pointsPerUsdBuy: 1, minConvertUsd: 0.01 } }); r = await conv("usd_to_points", 0.01, "u2"); ok(r.status === 400 && r.json.error === "bad_amount" && /ولا نقطة/.test(r.json.message), "an amount too small to buy a single point is refused"); await adm({ action: "wallet_save", cfg: good });
-  ok(r.status === 400 && true, "(setup)");
-  /* the loop loses money for the customer */
-  mkC("u6", { balanceUsd: 1 }); TOKS.u6 = { sub: "u6", name: "Loop", email: "l@x.com" }; mkP("u6", { points: 0, activeDays: 10 });
-  await conv("usd_to_points", 1, "u6"); const back = await conv("points_to_usd", 1, "u6"); ok(back.status === 400 && back.json.error === "not_enough_points", "round trip: $1 buys 700 points, and 700 points cannot buy back $1 (900 needed): no profit loop");
-
-  /* ---- E) pressing twice ---- */
-  mkC("u2", { balanceUsd: 100 }); mkP("u2", { points: 0, activeDays: 10 }); const same = rid(); const pb = pts("u2");
-  const a1 = await conv("usd_to_points", 5, "u2", same), a2 = await conv("usd_to_points", 5, "u2", same);
-  ok(a1.status === 200 && a2.status === 200 && a2.json.duplicate === true && pts("u2") === pb + 3500 && bal("u2") === 95 && ledger("u2").filter(x => x.ref === same).length === 1 && a2.json.result.points === 3500, "the same request sent twice (a double tap or a retry) is applied once");
-  r = await conv("usd_to_points", 5, "u2"); ok(bal("u2") === 90, "a new request is a new conversion");
-  mkC("u1", { ...get("storeCustomers/u1"), balanceUsd: 100 }); const x1 = await conv("usd_to_points", 5, "u1", same); ok(x1.status === 200 && !x1.json.duplicate, "another customer with the same request id gets his own conversion");
-
-  /* ---- F) accounts that cannot convert ---- */
-  mkC("u3", { balanceUsd: 10 }); r = await conv("usd_to_points", 1, "u3"); ok(r.status === 400 && r.json.error === "no_game" && !store.has("players/u3"), "a customer who never opened the game cannot convert, and no game account is created behind his back");
-  mkP("u4", { points: 5000, activeDays: 10 }); r = await conv("points_to_usd", 1, "u4"); ok(r.status === 400 && r.json.error === "no_account" && !store.has("storeCustomers/u4") && pts("u4") === 5000, "a player with no store account is told to open it first and loses nothing");
-  mkC("u5", { balanceUsd: 10 }); mkP("u5", { points: 5000, activeDays: 10, suspended: true }); r = await conv("usd_to_points", 1, "u5"); ok(r.status === 403 && r.json.error === "account_suspended" && bal("u5") === 10, "a suspended game account cannot convert");
-  ok((await callApi("/store/convert", { direction: "usd_to_points", amountUsd: 1, reqId: rid() }, null)).status === 401, "signing in is required");
-
-  /* ---- G) two changes at the same moment ---- */
-  mkC("u2", { balanceUsd: 50 }); mkP("u2", { points: 0, activeDays: 10 }); injectConflictOn = "storeCustomers/u2";
-  r = await conv("usd_to_points", 10, "u2"); ok(r.status === 200 && bal("u2") === 40 && pts("u2") === 7000 && ledger("u2").filter(x => x.amountUsd === -10).length >= 1, "if the balance changes at the same moment, it retries and applies once");
-
   /* ---- H) the admin changes a balance ---- */
   mkC("c1", {}); const adj = (uid, d, note, tk = "admin") => adm({ action: "customer_balance", uid, deltaUsd: d, note }, tk);
   r = await adj("c1", 50, "deposit by Sham Cash"); ok(r.status === 200 && r.json.customer.balanceUsd === 50 && bal("c1") === 50, "adding balance by hand (a deposit that happened outside the site)");
@@ -134,13 +82,8 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   for (const [d, label] of [[0, "zero"], ["abc", "text"], [null, "empty"], [200000, "huge"], [-200000, "huge negative"]]) { r = await adj("c1", d); ok(r.status === 400 && r.json.error === "bad_delta", "refused amount: " + label); }
   ok((await adj("ghost", 5)).status === 404 && (await adj("a/b", 5)).status === 400 && (await adj("c1", 5, "", "u1")).status === 401, "unknown customer, bad id, and non-admins are refused");
   r = await adm({ action: "customer_ledger", uid: "c1" }); ok(r.json.ledger.length === 2 && r.json.ledger[0].type === "adjust" && r.json.ledger[0].by === "admin" && r.json.ledger.map(x => x.note).sort().join("|") === "correction|deposit by Sham Cash", "every change is in the customer's ledger (type, amount, note, who)");
-  r = await adm({ action: "customer_ledger", uid: "u1" }); ok(r.json.ledger.length >= 3 && r.json.ledger.some(x => x.type === "points_to_usd" && x.points < 0) && r.json.ledger.some(x => x.type === "usd_to_points"), "his conversions show in the same ledger, with the points");
-  r = await adm({ action: "customers_list", q: "c1" }); ok(r.json.customers[0].balanceUsd === 30, "the customers list shows each balance");
+    r = await adm({ action: "customers_list", q: "c1" }); ok(r.json.customers[0].balanceUsd === 30, "the customers list shows each balance");
 
-  /* ---- I) never mixed with the game's withdrawable balance ---- */
-  mkC("u8", { balanceUsd: 20 }); TOKS.u8 = { sub: "u8", name: "Eight", email: "e@x.com" }; mkP("u8", { points: 5000, balanceUsd: 12.34 });
-  await conv("usd_to_points", 5, "u8"); await conv("points_to_usd", 1, "u8");
-  ok(get("players/u8").balanceUsd === 12.34 && bal("u8") === 16, "converting never touches the game's own (withdrawable) dollar balance: it stays $12.34, the store balance moves on its own");
-  ok([...store.keys()].filter(k => k.startsWith("players/")).every(k => !Object.keys(get(k)).includes("storeBalanceUsd")), "and no game account gets any store balance field");
+  ok((await callApi("/store/convert", { direction: "usd_to_points", amountUsd: 1, reqId: "req-00000001" }, "u1")).status !== 200, "there is no conversion with the game's points any more (that endpoint was removed)");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });
