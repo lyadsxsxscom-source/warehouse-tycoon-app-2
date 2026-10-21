@@ -54,7 +54,7 @@ const d = dom.window.document, $ = id => d.getElementById(id), vis = id => $(id)
   ok(vis("gate") && !vis("panel") && /مو مشرف/.test($("gateMsg").textContent) && events.signOut === 1, "admin page: a signed-in non-admin is refused and signed out");
   authCb({ uid: "09DZoXtB6afGTGHtFghiUx5t71N2", email: "admin@x.com" }); await sleep(20);
   ok(!vis("gate") && vis("panel") && $("who").textContent === "admin@x.com", "admin page: the admin sees the panel with his email");
-  await sleep(50); const tabsNow = [...d.querySelectorAll("#tabs .tab")]; ok(tabsNow.length === 3 && /الكتالوج/.test(tabsNow[0].textContent) && /طرق الدفع/.test(tabsNow[1].textContent) && /الزباين/.test(tabsNow[2].textContent) && /فاضي/.test($("emptyNote").textContent), "admin page: the catalog, payment-methods and customers tabs, the catalog empty at first");
+  await sleep(50); const tabsNow = [...d.querySelectorAll("#tabs .tab")]; ok(tabsNow.length === 4 && /الكتالوج/.test(tabsNow[0].textContent) && /طرق الدفع/.test(tabsNow[1].textContent) && /الطلبات/.test(tabsNow[2].textContent) && /الزباين/.test(tabsNow[3].textContent) && /فاضي/.test($("emptyNote").textContent), "admin page: the catalog, payment-methods, orders and customers tabs, the catalog empty at first");
   $("btnLogout").click(); await sleep(20); ok(events.signOut === 2, "admin page: sign out works");
   authCb(null); ok(vis("gate") && !vis("panel"), "admin page: after signing out the panel is hidden again");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);

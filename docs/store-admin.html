@@ -86,7 +86,25 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .mer .mt button{padding:4px 9px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
 .cust form select{padding:7px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;width:100%}
 .cust form label{display:block;color:var(--dim);font-size:.78rem;margin-bottom:2px}
-#custFilter{padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;margin-bottom:10px}
+.ord{background:#12281F;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.ord .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ord .code{font-weight:700;font-size:1.05rem;user-select:all}
+.ord .sm{color:var(--dim);font-size:.85rem;line-height:1.7}
+.ord .pill{border-radius:999px;padding:1px 12px;font-size:.8rem;font-weight:700;white-space:nowrap;background:#243b33;color:var(--ink)}
+.ord .pill.payment_submitted{background:var(--tape);color:#10211C}
+.ord .pill.done{background:#1f6b3a;color:#fff}
+.ord .pill.rejected,.ord .pill.refunded{background:#7a2a20;color:#fff}
+.ord .late{color:#ffd48a;font-weight:700}
+.ord .tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.ord .tools button{padding:5px 10px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
+.ord form{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:8px}
+.ord form input{padding:7px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;width:100%}
+.ord img.proof{max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--line)}
+.ord .ev{margin-top:6px;font-size:.8rem;color:var(--dim)}
+#ordBadge{background:var(--err);color:#fff;border-radius:999px;padding:0 7px;font-size:.78rem;margin-inline-start:4px}
+#custFilter,#ordFilter{padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+#ordSearch{flex:1;min-width:160px;padding:9px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+#custFilter{margin-bottom:10px}
 #custSearch{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;margin:8px 0 12px}
 </style>
 </head>
@@ -110,6 +128,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
     <div class="tabs" id="tabs">
       <button class="tab active" id="tabCatalog">📁 الكتالوج</button>
       <button class="tab" id="tabPayments">💳 طرق الدفع</button>
+      <button class="tab" id="tabOrders">📦 الطلبات <span id="ordBadge" hidden></span></button>
       <button class="tab" id="tabCustomers">👥 الزباين وVIP</button>
     </div>
     <div class="card" id="viewCatalog">
@@ -120,6 +139,19 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       </div>
       <div id="listMsg" role="alert"></div>
       <div id="list"></div>
+    </div>
+    <div class="card" id="viewOrders" hidden>
+      <div class="h">الطلبات <span id="ordCount" style="color:var(--dim);font-weight:400;"></span></div>
+      <div class="bar" style="align-items:center;">
+        <select id="ordFilter" aria-label="تصفية الطلبات">
+          <option value="payment_submitted">دفع مرسل (بانتظارك)</option><option value="open">كل المفتوحة</option><option value="all">كل الطلبات</option>
+          <option value="done">منفّذة</option><option value="rejected">مرفوضة</option><option value="refunded">مسترجعة</option><option value="cancelled">ملغاة</option><option value="expired">منتهية</option>
+        </select>
+        <input type="search" id="ordSearch" placeholder="🔎 رقم الطلب، الاسم، الإيميل، Player ID، المنتج">
+        <button id="btnOrdRefresh" title="تحديث">🔄</button>
+      </div>
+      <div id="ordMsg" role="alert" style="color:var(--err);min-height:1.2em;font-size:.92rem;"></div>
+      <div id="ordList"></div>
     </div>
     <div class="card" id="viewCustomers" hidden>
       <div class="h">مستويات VIP</div>
@@ -196,7 +228,7 @@ fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
-    loadCatalog();
+    loadCatalog(); refreshOrderBadge();
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
     gateMsg.textContent = 'هالحساب مو مشرف.';
@@ -337,12 +369,13 @@ $('edSave').onclick = async () => {
 
 // ===== التبويبات =====
 function showTab(which){
-  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers';
-  $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers');
+  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders';
+  $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers'); $('tabOrders').classList.toggle('active', which === 'orders');
+  if(which === 'orders') loadOrders();
   if(which === 'payments') loadMethods();
   if(which === 'customers'){ loadVip(); loadCustomers(); }
 }
-$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers');
+$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers'); $('tabOrders').onclick = () => showTab('orders');
 
 // ===== طرق الدفع =====
 let METHODS = [];
@@ -359,7 +392,7 @@ function renderMethods(){
     const inp = (f, label, type, extra) => { const w = el('div', {}, el('label', { text: label })); const x = el('input', Object.assign({ type, 'data-i': i, 'data-f': f }, extra || {})); x.value = m[f] === undefined ? '' : m[f]; w.append(x); return w; };
     const dec = el('select', { 'data-i': i, 'data-f': 'decimals' }); [0, 1, 2, 3, 4].forEach(d => { const o = el('option', { value: d, text: String(d) }); dec.append(o); }); dec.value = String(m.decimals);
     const decW = el('div', {}, el('label', { text: 'خانات عشرية' }), dec);
-    const g = el('div', { class: 'g' }, inp('name', 'الاسم', 'text', { maxlength: 30 }), inp('currency', 'رمز العملة', 'text', { maxlength: 8 }), inp('rate', 'سعر الصرف (لكل 1$)', 'number', { step: 'any', min: '0', inputmode: 'decimal' }), inp('feePct', 'نسبة إضافية %', 'number', { step: '0.1', min: '0', max: '50', inputmode: 'decimal' }), decW);
+    const g = el('div', { class: 'g' }, inp('name', 'الاسم', 'text', { maxlength: 30 }), inp('currency', 'رمز العملة', 'text', { maxlength: 8 }), inp('rate', 'سعر الصرف (لكل 1$)', 'number', { step: 'any', min: '0', inputmode: 'decimal' }), inp('feePct', 'نسبة إضافية %', 'number', { step: '0.1', min: '0', max: '50', inputmode: 'decimal' }), decW, inp('account', 'حساب/عنوان الدفع (بيظهر للزبون بالطلب)', 'text', { maxlength: 120, dir: 'ltr' }), inp('instructions', 'تعليمات للزبون', 'text', { maxlength: 300 }));
     const en = el('input', { type: 'checkbox', 'data-i': i, 'data-f': 'enabled' }); en.checked = m.enabled !== false;
     const up = el('button', { 'data-pm': 'up', 'data-i': i, text: '▲' }); if(i === 0) up.disabled = true;
     const down = el('button', { 'data-pm': 'down', 'data-i': i, text: '▼' }); if(i === METHODS.length - 1) down.disabled = true;
@@ -386,9 +419,9 @@ $('pmList').addEventListener('click', e => {
   else { const j = b.dataset.pm === 'up' ? i - 1 : i + 1; [METHODS[i], METHODS[j]] = [METHODS[j], METHODS[i]]; }
   renderMethods();
 });
-$('btnAddMethod').onclick = () => { if(METHODS.length >= 8){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = 'الحد الأقصى 8 طرق دفع.'; return; } METHODS.push({ name: '', currency: '', rate: '', decimals: 2, feePct: 0, enabled: true }); renderMethods(); };
+$('btnAddMethod').onclick = () => { if(METHODS.length >= 8){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = 'الحد الأقصى 8 طرق دفع.'; return; } METHODS.push({ name: '', currency: '', rate: '', decimals: 2, feePct: 0, enabled: true, account: '', instructions: '' }); renderMethods(); };
 $('btnSaveMethods').onclick = async () => {
-  const body = { action: 'payments_save', methods: METHODS.map(m => ({ id: m.id, name: String(m.name || '').trim(), currency: String(m.currency || '').trim(), rate: m.rate === '' ? 0 : Number(m.rate), decimals: Number(m.decimals), feePct: m.feePct === '' ? 0 : Number(m.feePct), enabled: m.enabled !== false })) };
+  const body = { action: 'payments_save', methods: METHODS.map(m => ({ id: m.id, name: String(m.name || '').trim(), currency: String(m.currency || '').trim(), rate: m.rate === '' ? 0 : Number(m.rate), decimals: Number(m.decimals), feePct: m.feePct === '' ? 0 : Number(m.feePct), enabled: m.enabled !== false, account: String(m.account || '').trim(), instructions: String(m.instructions || '').trim() })) };
   $('btnSaveMethods').disabled = true; $('pmMsg').textContent = '';
   try{
     const j = await storeApi(body); METHODS = j.methods.map(m => ({ ...m })); renderMethods();
@@ -519,6 +552,85 @@ $('custList').addEventListener('click', async e => {
       if(!all.length) box.textContent = 'ما في تعديلات.';
       all.forEach(x => box.append(el('div', { text: new Date(x.at).toLocaleString('en-GB') + ' · ' + x.text })));
     }catch(err){ box.textContent = 'تعذّر: ' + err.message; }
+  }
+});
+
+// ===== الطلبات =====
+const ST_LABEL = { awaiting_payment: 'بانتظار الدفع', payment_submitted: 'دفع مرسل', done: 'منفّذ', rejected: 'مرفوض', cancelled: 'ملغى', refunded: 'مسترجع', expired: 'منتهي' };
+const FILTER_COUNT = { payment_submitted: c => c.payment_submitted || 0, open: c => (c.payment_submitted || 0) + (c.awaiting_payment || 0), all: (c, t) => t, done: c => c.done || 0, rejected: c => c.rejected || 0, refunded: c => c.refunded || 0, cancelled: c => c.cancelled || 0, expired: c => c.expired || 0 };
+let ORDERS = [], ORD_TIMER = null;
+function amountText(o){ const d = Number(o.method.decimals) || 0; return Number(o.amount).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + o.method.currency; }
+function updateOrderBadge(counts){ const n = (counts && counts.payment_submitted) || 0, b = $('ordBadge'); b.textContent = String(n); b.hidden = !n; }
+function updateFilterLabels(counts, total){
+  [...$('ordFilter').options].forEach(o => { const base = o.dataset.base || (o.dataset.base = o.textContent); const f = FILTER_COUNT[o.value]; o.textContent = base + ' (' + (f ? f(counts, total) : 0) + ')'; });
+}
+async function loadOrders(){
+  $('ordMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'orders_list', status: $('ordFilter').value, q: $('ordSearch').value.trim() });
+    ORDERS = j.orders; updateOrderBadge(j.counts); updateFilterLabels(j.counts, j.total); $('ordCount').textContent = '(' + j.orders.length + ')'; renderOrders();
+  }catch(e){ $('ordMsg').textContent = 'تعذّر تحميل الطلبات: ' + e.message; }
+}
+async function refreshOrderBadge(){ try{ const j = await storeApi({ action: 'orders_list', status: 'payment_submitted' }); updateOrderBadge(j.counts); }catch(e){} }
+function renderOrders(){
+  const box = $('ordList'); box.textContent = '';
+  if(!ORDERS.length){ box.append(el('div', { class: 'empty', id: 'ordEmpty', text: 'ما في طلبات هون.' })); return; }
+  ORDERS.forEach(o => {
+    const sub = (t) => el('div', { class: 'sm', text: t });
+    const card = el('div', { class: 'ord', 'data-ord': o.id },
+      el('div', { class: 'top' }, el('span', { class: 'code', text: o.code }), el('span', { class: 'pill ' + o.status, text: ST_LABEL[o.status] || o.status })),
+      el('div', { class: 'nm', style: 'margin-top:4px;font-weight:700;word-break:break-word;', text: (o.itemPath || o.itemName) }),
+      sub('Player ID: ' + o.playerId), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
+      sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
+      sub('أُنشئ: ' + new Date(o.createdAt).toLocaleString('en-GB') + (o.doneAt ? ' · نُفّذ: ' + new Date(o.doneAt).toLocaleString('en-GB') : '')));
+    if(o.proof){
+      const pr = el('div', { class: 'sm', 'data-proof': o.id, text: 'الإيصال: ' + (o.proof.ref || '—') + (o.proof.hasImage ? ' · فيه صورة' : '') + ' · أُرسل ' + new Date(o.proof.submittedAt).toLocaleString('en-GB') });
+      card.append(pr);
+      if(o.proof.late) card.append(el('div', { class: 'sm late', text: '⚠️ متأخر: وصل بعد انتهاء صلاحية السعر (30 دقيقة)، السعر ممكن تغيّر. قرّر.' }));
+    } else if(o.status === 'awaiting_payment') card.append(sub('لسا ما أرسل دفع.'));
+    if(o.rejectReason) card.append(sub('سبب الرفض: ' + o.rejectReason));
+    if(o.adminNote) card.append(sub('ملاحظتك: ' + o.adminNote));
+    const t = el('div', { class: 'tools' });
+    if(o.proof && o.proof.hasImage) t.append(el('button', { 'data-oact': 'proof', 'data-id': o.id, text: '🧾 عرض الإيصال' }));
+    if(['awaiting_payment', 'payment_submitted', 'expired'].includes(o.status)){ t.append(el('button', { 'data-oact': 'done', 'data-id': o.id, text: '✅ تم التنفيذ' }), el('button', { 'data-oact': 'reject', 'data-id': o.id, text: '❌ رفض' })); }
+    if(o.status === 'done') t.append(el('button', { 'data-oact': 'refund', 'data-id': o.id, text: '↩️ استرجاع' }));
+    t.append(el('button', { 'data-oact': 'events', 'data-id': o.id, text: '📜 السجل' }));
+    card.append(t, el('div', { class: 'ev', 'data-ev': o.id }));
+    box.append(card);
+  });
+}
+$('ordFilter').addEventListener('change', loadOrders);
+$('ordSearch').addEventListener('input', () => { clearTimeout(ORD_TIMER); ORD_TIMER = setTimeout(loadOrders, 300); });
+$('btnOrdRefresh').onclick = loadOrders;
+$('ordList').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-oact]'); if(!b) return;
+  const id = b.dataset.id, o = ORDERS.find(x => x.id === id), card = document.querySelector('[data-ord="' + id + '"]'); $('ordMsg').textContent = '';
+  if(b.dataset.oact === 'proof'){
+    const ex = card.querySelector('img.proof'); if(ex){ ex.remove(); return; }
+    try{
+      const j = await storeApi({ action: 'order_proof', id });
+      if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/.test(j.image || '')){ $('ordMsg').textContent = 'ما في صورة لهالطلب.'; return; }
+      const img = el('img', { class: 'proof', alt: 'إيصال ' + o.code }); img.src = j.image; card.insertBefore(img, card.querySelector('.tools'));
+    }catch(err){ $('ordMsg').textContent = err.message; }
+  } else if(b.dataset.oact === 'events'){
+    const box = card.querySelector('[data-ev]'); if(box.textContent){ box.textContent = ''; return; }
+    const EV = { created: 'أُنشئ', proof: 'أرسل إيصال', cancelled: 'ألغى الزبون', done: 'تم التنفيذ', rejected: 'رُفض', refunded: 'استرجاع' };
+    (o.events || []).slice().reverse().forEach(x => box.append(el('div', { text: new Date(x.at).toLocaleString('en-GB') + ' · ' + (EV[x.action] || x.action) + ' (' + (x.by === 'admin' ? 'إنت' : 'الزبون') + ')' + (x.note ? ' · ' + x.note : '') })));
+    if(!box.textContent) box.textContent = 'ما في سجل.';
+  } else {
+    if(card.querySelector('form')){ card.querySelector('form').remove(); return; }
+    const act = b.dataset.oact, isReject = act === 'reject';
+    const input = el('input', { type: 'text', maxlength: '200', 'data-f': 'note', placeholder: isReject ? 'سبب الرفض (إجباري، بيوصل للزبون)' : 'ملاحظة (اختياري)' });
+    const f = el('form', {}, input, el('button', { type: 'submit', text: act === 'done' ? 'تأكيد التنفيذ' : isReject ? 'رفض' : 'استرجاع' }), el('div', { 'data-f': 'err', style: 'grid-column:1/-1;color:var(--err);font-size:.85rem;' }));
+    f.addEventListener('submit', async ev => {
+      ev.preventDefault(); const note = input.value.trim(), errEl = f.querySelector('[data-f="err"]'); errEl.textContent = '';
+      if(isReject && !note){ errEl.textContent = 'اكتب سبب الرفض.'; return; }
+      const msg = act === 'done' ? 'تأكيد تنفيذ ' + o.code + '؟ بيتحسب ' + usd(o.priceUsd) + ' بصرف الزبون.' : act === 'refund' ? 'استرجاع ' + o.code + '؟ بيتنقص ' + usd(o.priceUsd) + ' من صرف الزبون.' : 'رفض ' + o.code + '؟';
+      if(!window.confirm(msg)) return;
+      try{ await storeApi(isReject ? { action: 'order_reject', id, reason: note } : { action: act === 'done' ? 'order_done' : 'order_refund', id, note }); await loadOrders(); }
+      catch(err){ errEl.textContent = err.message; }
+    });
+    card.insertBefore(f, card.querySelector('.ev'));
   }
 });
 </script>
