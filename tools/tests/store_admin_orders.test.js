@@ -5,7 +5,7 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m)
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const html = fs.readFileSync(path.join(__dirname, "../../docs/store-admin.html"), "utf8").replace(/<script src="[^"]+"><\/script>\s*/g, "");
 const ADMIN = "09DZoXtB6afGTGHtFghiUx5t71N2";
-const calls = []; let authCb = null, failNext = null, confirmAnswer = true, confirmTexts = [], proofImage = "data:image/png;base64,iVBORw0KGgo=";
+const calls = [], intervals = []; let authCb = null, failNext = null, confirmAnswer = true, confirmTexts = [], proofImage = "data:image/png;base64,iVBORw0KGgo=";
 const NOW = Date.now();
 const mk = (id, code, status, o) => ({ id, code, status, itemId: "i1", itemName: "60 UC", itemPath: "PUBG › فوري › 60 UC", playerId: "5123456789", vip: 1, priceUsd: 0.92, method: { id: "sham", name: "شام كاش", currency: "ل.س", decimals: 0, account: "0932", instructions: "" }, amount: 131, createdAt: NOW - 3600000, quoteEndsAt: NOW - 1800000, quoteExpired: false, proof: null, rejectReason: "", doneAt: 0, uid: "u-" + id, name: "Ali " + id, email: id + "@x.com", adminNote: "", events: [{ at: NOW - 3600000, action: "created", by: "customer", note: "" }], ...o });
 let ORD = [
@@ -32,6 +32,7 @@ const dom = new JSDOM(html, { url: "https://example.test/store-admin.html", runS
   const auth = () => ({ currentUser: { uid: ADMIN, email: "a@x.com", getIdToken: async () => "TOKEN" }, onAuthStateChanged(cb) { authCb = cb; }, signInWithPopup() { return Promise.resolve(); }, signOut() {} });
   auth.GoogleAuthProvider = function () {}; w.firebase = { initializeApp() {}, auth };
   w.confirm = (t) => { confirmTexts.push(t); return confirmAnswer; };
+  const realSet = w.setInterval.bind(w); w.setInterval = (fn, ms) => { intervals.push({ fn, ms }); return realSet(() => {}, 1e9); };
   w.fetch = async (url, o) => { const body = JSON.parse(o.body); calls.push({ auth: o.headers.Authorization, body }); const r = server(body); return { ok: r.st < 400, status: r.st, json: async () => r.j }; };
 } });
 const d = dom.window.document, $ = id => d.getElementById(id);
@@ -42,6 +43,7 @@ const setFilter = async v => { $("ordFilter").value = v; $("ordFilter").dispatch
 (async () => {
   await sleep(100); authCb({ uid: ADMIN, email: "a@x.com" }); await sleep(150);
   ok(!$("ordBadge").hidden && $("ordBadge").textContent === "2" && calls.some(c => c.body.action === "orders_list" && c.body.status === "payment_submitted"), "right after signing in the tab shows a red number: 2 payments are waiting for you");
+  ok(intervals.some(i => i.ms === 60000), "the red number refreshes itself every minute"); const bc = calls.length; intervals.find(i => i.ms === 60000).fn(); await sleep(60); ok(calls.length > bc && calls[calls.length - 1].body.action === "orders_list" && calls[calls.length - 1].body.status === "payment_submitted", "(and that refresh asks only for the payments waiting for you)");
   $("tabOrders").click(); await sleep(150);
   ok(!$("viewOrders").hidden && $("viewCatalog").hidden && $("tabOrders").classList.contains("active") && $("ordFilter").value === "payment_submitted" && codes().join() === "T-1005,T-1004", "the tab opens on 'payment sent' (the ones waiting for you), newest first");
   ok([...$("ordFilter").options].map(o => o.textContent).join("|").includes("دفع مرسل (بانتظارك) (2)") && /كل المفتوحة \(3\)/.test($("ordFilter").textContent) && /كل الطلبات \(5\)/.test($("ordFilter").textContent) && /منفّذة \(1\)/.test($("ordFilter").textContent), "the filter shows how many orders are in each state");

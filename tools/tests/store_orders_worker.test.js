@@ -50,6 +50,8 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   const adm = (body, token = "admin") => callApi("/admin/store", body, token);
   const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const NOW = Date.now(), DAY = 86400000;
+  const pushes = []; let pushFails = false; c.sendPush = async (e, uid, type, params) => { if (pushFails) throw new Error("fcm down"); pushes.push({ uid, type, params }); };
+  const PUSH_TEXT = vm.runInContext("PUSH_TEXT", c);
   const mkC = (uid, o) => put("storeCustomers/" + uid, { name: uid, email: uid + "@x.com", spentUsd: 0, createdAt: 1, lastSeenAt: 1, ...o });
   const P10 = (a) => Array.from({ length: 10 }, (_, i) => a[Math.min(i, a.length - 1)]);
   put("storeNodes/nP", { parentId: "", type: "folder", name: "PUBG", enabled: true, sort: 1 });
@@ -141,6 +143,16 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   r = await pf(old.id, { ref: "TX-old" }, "u2"); ok(r.status === 400 && /انتهت صلاحية/.test(r.json.message), "after 24 hours an unpaid order has expired and takes no proof");
   r = await callApi("/store/orders", {}, "u2"); ok(r.json.orders.find(x => x.id === old.id).status === "expired", "it is listed as expired");
 
+  /* ---- E2) notifications to you when a payment arrives ---- */
+  { const lastP = () => pushes[pushes.length - 1];
+    ok(pushes.length >= 1 && pushes.some(x => x.uid === ADMIN && x.type === "store_proof" && x.params.code === "T-1001" && x.params.item === "60 UC" && x.params.amount === "131 ل.س" && x.params.late === false && x.params.player === "123456789"), "when a customer sends a payment, YOU get a push: the order code, the product, the amount in his currency, and the Player ID");
+    const lt = pushes.find(x => x.params && x.params.code === late.code && x.type === "store_proof"); ok(lt && lt.params.late === true && lt.uid === ADMIN, "a payment that arrived after the price window is marked late in the push");
+    mkC("u6", {}); TOKS.u6 = { sub: "u6", name: "Six", email: "six@x.com" };
+    pushFails = true; const pn = (await order("iOne", "sham", "24242", "u6")).json.order; r = await pf(pn.id, { ref: "TX-push-fail" }, "u6"); pushFails = false;
+    ok(r.status === 200 && r.json.order.status === "payment_submitted", "if the notification service is down the customer's payment is still accepted");
+    const refused = pushes.length; r = await pf(pn.id, {}, "u6"); r = await pf("ghost", { ref: "x" }, "u6"); r = await pf(pn.id, { ref: "x", image: "http://x/y.png" }, "u6");
+    ok(pushes.length === refused, "a refused payment (nothing sent, unknown order, bad picture) sends you no notification"); }
+
   /* ---- F) cancelling ---- */
   const cn = (await order("iOne", "sham", "51515", "u2")).json.order;
   r = await callApi("/store/order/cancel", { orderId: cn.id }, "u1"); ok(r.status === 404, "nobody can cancel someone else's order");
@@ -198,6 +210,21 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   mkC("u5", { spentUsd: 0.5 }); TOKS.u5 = { sub: "u5", email: "u5@x.com" }; const lo = (await order("iOne", "sham", "13131", "u5")).json.order; await done(lo.id); put("storeCustomers/u5", { ...get("storeCustomers/u5"), spentUsd: 0.4 }); await adm({ action: "order_refund", id: lo.id });
   ok(get("storeCustomers/u5").spentUsd === 0, "spending never goes below zero");
   function r2(x) { return Math.round(x * 100) / 100; }
+
+  /* ---- J2) notifications to the customer ---- */
+  { const p0 = pushes.length;
+    mkC("u7", {}); TOKS.u7 = { sub: "u7", name: "Seven", email: "seven@x.com" }; const n1 = (await order("iOne", "sham", "35353", "u7")).json.order; await adm({ action: "order_done", id: n1.id });
+    const d1 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_done"); ok(d1 && d1.params.code === n1.code && d1.params.item === "edge", "marking done sends the customer a push with the code and the product");
+    const n2 = (await order("iOne", "sham", "36363", "u7")).json.order; await adm({ action: "order_reject", id: n2.id, reason: "no payment received" });
+    const d2 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_rejected"); ok(d2 && d2.params.reason === "no payment received" && d2.params.code === n2.code, "rejecting sends it with the reason");
+    await adm({ action: "order_refund", id: n1.id, note: "wrong ID" });
+    const d3 = pushes.slice(p0).find(x => x.uid === "u7" && x.type === "store_refunded"); ok(d3 && d3.params.note === "wrong ID", "a refund sends one too");
+    const before2 = pushes.length; await adm({ action: "order_done", id: n2.id }); await adm({ action: "order_refund", id: n2.id }); await adm({ action: "order_reject", id: n1.id, reason: "x" }); ok(pushes.length === before2, "refused admin actions send nothing");
+    pushFails = true; const n3 = (await order("iOne", "sham", "37373", "u7")).json.order; r = await adm({ action: "order_done", id: n3.id }); pushFails = false; ok(r.status === 200 && get("storeOrders/" + n3.id).status === "done", "if the notification service is down the order is still marked done");
+    const T = (t, l, p) => PUSH_TEXT[t][l](p);
+    ok(T("store_proof", "ar", { code: "T-1", item: "60 UC", amount: "131 ل.س", late: false })[1] === "T-1 · 60 UC · 131 ل.س" && /متأخر/.test(T("store_proof", "ar", { code: "T-1", item: "x", amount: "1", late: true })[1]) && /late/.test(T("store_proof", "en", { code: "T-1", item: "x", amount: "1", late: true })[1]) && /geç/.test(T("store_proof", "tr", { code: "T-1", item: "x", amount: "1", late: true })[1]), "the texts exist in Arabic, Turkish and English, with the 'late' warning");
+    ok(["ar", "tr", "en"].every(l => ["store_done", "store_rejected", "store_refunded", "store_proof"].every(t => { const x = T(t, l, { code: "T-1", item: "60 UC", reason: "r", note: "n", amount: "1", late: false }); return typeof x[0] === "string" && x[0] && typeof x[1] === "string" && x[1].includes("T-1"); })), "every notification has a title and a body with the order code in every language");
+    ok(vm.runInContext("PUSH_PREF.store_done", c) === "orders" && vm.runInContext("PUSH_PREF.store_proof", c) === "orders", "they follow the 'orders' notification setting of the user"); }
 
   /* ---- K) the payment details ---- */
   r = await adm({ action: "payments_save", methods: [{ ...METHODS[0], instructions: "<b>حوّل</b> " + "x".repeat(400), account: "A".repeat(200) }] });

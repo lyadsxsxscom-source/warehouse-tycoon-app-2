@@ -229,6 +229,7 @@ fbAuth.onAuthStateChanged(user => {
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
     loadCatalog(); refreshOrderBadge();
+    if(!window.__ordTick) window.__ordTick = setInterval(refreshOrderBadge, 60000);        // الرقم الأحمر بيتحدّث كل دقيقة
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
     gateMsg.textContent = 'هالحساب مو مشرف.';

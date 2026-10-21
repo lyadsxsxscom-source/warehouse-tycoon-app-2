@@ -513,6 +513,26 @@ const PUSH_TEXT = {
   },
 };
 for (const t of ["withdraw_ok", "withdraw_rejected"]) for (const l of ["ar", "tr", "en"]) { const f = PUSH_TEXT[t][l]; PUSH_TEXT[t][l] = (p) => { const r = f(p); return p.code ? [r[0], r[1] + "\n" + ({ ar: "رقم الطلب", tr: "Talep no", en: "Request no" })[l] + ": " + p.code] : r; }; }
+PUSH_TEXT.store_proof = {       // للأدمن: زبون أرسل دفع
+  ar: (p) => ["📦 دفع جديد بانتظارك", `${p.code} · ${p.item} · ${p.amount}${p.late ? " · ⚠️ متأخر" : ""}`],
+  tr: (p) => ["📦 Yeni ödeme seni bekliyor", `${p.code} · ${p.item} · ${p.amount}${p.late ? " · ⚠️ geç" : ""}`],
+  en: (p) => ["📦 New payment waiting for you", `${p.code} · ${p.item} · ${p.amount}${p.late ? " · ⚠️ late" : ""}`],
+};
+PUSH_TEXT.store_done = {
+  ar: (p) => ["تم تنفيذ طلبك ✅", `طلبك ${p.code} (${p.item}) تنفّذ. تأكد من حسابك باللعبة.`],
+  tr: (p) => ["Siparişin tamamlandı ✅", `${p.code} (${p.item}) siparişin tamamlandı. Oyun hesabını kontrol et.`],
+  en: (p) => ["Your order is done ✅", `Your order ${p.code} (${p.item}) is complete. Check your game account.`],
+};
+PUSH_TEXT.store_rejected = {
+  ar: (p) => ["طلبك انرفض", `${p.code} (${p.item}): ${p.reason}`],
+  tr: (p) => ["Siparişin reddedildi", `${p.code} (${p.item}): ${p.reason}`],
+  en: (p) => ["Your order was declined", `${p.code} (${p.item}): ${p.reason}`],
+};
+PUSH_TEXT.store_refunded = {
+  ar: (p) => ["تم استرجاع طلبك", `طلبك ${p.code} (${p.item}) انسترجع.${p.note ? " " + p.note : ""}`],
+  tr: (p) => ["Siparişin iade edildi", `${p.code} (${p.item}) siparişin iade edildi.${p.note ? " " + p.note : ""}`],
+  en: (p) => ["Your order was refunded", `Your order ${p.code} (${p.item}) was refunded.${p.note ? " " + p.note : ""}`],
+};
 PUSH_TEXT.inactive_remind = {
   ar: (p) => ["اشتقنالك! 👋", `صرلك ${p.days} يوم ما فتحت Yardova. ارجع وكمّل لعبك.`],
   tr: (p) => ["Seni özledik! 👋", `${p.days} gündür Yardova'yı açmadın. Dön ve oynamaya devam et.`],
@@ -539,7 +559,7 @@ PUSH_TEXT.shop_rejected = {
   en: (p) => ["Your order was declined", `${p.points} points were refunded. Check your in-game mail.`],
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -1325,7 +1345,14 @@ async function handleAdminStore(request, env) {
           const plan = storeSpendPlan(env, o.uid, cd.data, delta, (delta > 0 ? "طلب " : "مرتجع ") + o.code, "order", now2);
           writes.push({ update: { name: docName(env, "storeCustomers/" + o.uid), fields: objToFields(plan.upd) }, updateMask: { fieldPaths: Object.keys(plan.upd) }, currentDocument: { updateTime: cd.updateTime } }, ...plan.writes);
         }
-        try { await fsCommit(env, writes); return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200); }
+        try {
+          await fsCommit(env, writes);
+          const np = { code: String(o.code || ""), item: String(o.itemName || "") };
+          if (b.action === "order_done") await storeNotify(env, o.uid, "store_done", np);
+          else if (b.action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
+          else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
+          return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200);
+        }
         catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
@@ -1576,6 +1603,8 @@ function storeOrderOut(id, o, now, admin) {
   return out;
 }
 const storeEvent = (o, action, by, note, at) => [...(Array.isArray(o.events) ? o.events : []), { at, action, by, note: note || "" }].slice(-20);
+async function storeNotify(env, uid, type, params) { try { await sendPush(env, uid, type, params); } catch (e) { console.warn({ message: "store notify failed", type, error: String(e.message || e) }); } }
+const storeAmountText = (o) => Number(o.amount).toLocaleString("en-US", { minimumFractionDigits: Number(o.decimals) || 0, maximumFractionDigits: Number(o.decimals) || 0 }) + " " + String(o.currency || "");
 async function handleStoreOrderApi(request, env, action) {
   try {
     const user = await requireUser(request);
@@ -1639,6 +1668,7 @@ async function handleStoreOrderApi(request, env, action) {
       const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
       if (image) writes.push({ update: { name: docName(env, "storeProofs/" + id), fields: objToFields({ data: image, ver: now }) } });
       await fsCommit(env, writes);
+      await storeNotify(env, ADMIN_UID, "store_proof", { code: o.code, item: o.itemName, amount: storeAmountText(o), late: proof.late, player: o.playerId });
       return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now, false) }, 200);
     }
     throw new ApiError("bad_action", "طلب غلط.", 404);
