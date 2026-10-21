@@ -1694,9 +1694,18 @@ async function storeSupplierValidators(env) {
   FZR_VALIDATORS = { at: Date.now(), items }; return items;
 }
 const fzrNorm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// مطابقة اسم قسم الشحن (مثل "PUBG Mobile (Auto)") مع لعبة بلائحة التحقق (مثل "PUBG Mobile"): نفس الاسم أول، وإلا الأدق اللي موجود جوّا الاسم؛ وإذا غامض ما منخمّن
+function fzrMatchValidator(items, name) {
+  const n = fzrNorm(name); if (!n) return null;
+  const exact = items.find(v => fzrNorm(v.name) === n); if (exact) return exact;
+  const cands = items.filter(v => { const vn = fzrNorm(v.name); return vn && (n.includes(vn) || vn.includes(n)); }).sort((a, b) => fzrNorm(b.name).length - fzrNorm(a.name).length);
+  if (!cands.length) return null;
+  if (cands.length > 1 && fzrNorm(cands[0].name).length === fzrNorm(cands[1].name).length) return null;
+  return cands[0];
+}
 function storeFindValidator(items, link) {
   if (link.validateCategoryId) return items.find(v => v.categoryId === link.validateCategoryId) || null;
-  const n = fzrNorm(link.categoryName); return n ? items.find(v => fzrNorm(v.name) === n) || null : null;
+  return fzrMatchValidator(items, link.categoryName);
 }
 async function storeRateHit(env, uid, name, max, windowSec) {
   const path = "storeRate/" + name + "_" + uid, now = Date.now(), d = await fsGetDoc(env, path);
