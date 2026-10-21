@@ -1272,7 +1272,7 @@ async function handleAdminStore(request, env) {
       const { sizes } = await storeLoadVipSizes(env), q = cleanText(b.q, 60).toLowerCase();
       let rows = (await fsRunQuery(env, "storeCustomers", null, 500, 0)).map(r => ({ ...storeCustomerOut(r.id, r.data, sizes, { admin: true }), lastSeenAt: Number(r.data.lastSeenAt) || 0 }));
       const total = rows.length;
-      if (q) rows = rows.filter(x => (x.name + " " + x.email).toLowerCase().includes(q));
+      if (q) rows = rows.filter(x => (x.name + " " + x.email + " " + x.id).toLowerCase().includes(q));      // بالاسم أو الإيميل أو المعرّف (رسالة التاجر بتحمل المعرّف)
       rows.sort((a, c2) => c2.lastSeenAt - a.lastSeenAt || a.id.localeCompare(c2.id));
       return jsonResponse({ ok: true, total, customers: rows.slice(0, 200) }, 200);
     }

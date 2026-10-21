@@ -87,6 +87,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(r.json.customers[1].vip === 10 && r.json.customers[1].sizeUsd === null, "a customer at the top level has no next target");
   r = await adm({ action: "customers_list", q: "TRADE" }); ok(r.json.customers.length === 1 && r.json.customers[0].name === "Omar" && r.json.total === 3, "search finds by email (not case sensitive)");
   r = await adm({ action: "customers_list", q: "sara" }); ok(r.json.customers.length === 1, "or by name");
+  r = await adm({ action: "customers_list", q: "c2" }); ok(r.json.customers.length === 1 && r.json.customers[0].name === "Omar", "or by the account id (the merchant message carries it)");
   r = await adm({ action: "customers_list", q: "nobody" }); ok(r.json.customers.length === 0 && r.json.total === 3, "no match gives an empty list");
   ok(!JSON.stringify((await adm({ action: "customers_list" })).json).includes("token"), "nothing secret in the list");
 

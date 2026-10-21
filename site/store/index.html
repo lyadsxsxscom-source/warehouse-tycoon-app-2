@@ -88,6 +88,11 @@ body.lock{overflow:hidden}
 .fill{height:100%;background:var(--tape)}
 .prog{color:var(--ink);font-size:.98rem;line-height:1.6}
 .mnote{border:2px dashed var(--edge);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.98rem;line-height:1.7}
+.cta{border:3px dashed var(--edge);border-radius:14px;padding:18px 16px;background:var(--panel);text-align:center;margin-block:10px 4px}
+.cta h2{margin:0 0 6px;font-size:1.25rem}
+.cta p{margin:0 0 12px}
+.cta-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:10px}
+.cta-btn{display:inline-block;min-width:140px;font:inherit;font-weight:700;font-size:1.05rem;text-align:center;text-decoration:none;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:10px 18px}
 .msg{min-height:1.4em;margin-top:6px;font-size:.98rem;color:var(--ink)}
 .msg.err{color:var(--ink);border:2px solid var(--edge);border-radius:8px;padding:8px 10px;background:var(--pic)}
 </style>
@@ -115,6 +120,17 @@ body.lock{overflow:hidden}
   <div class="methods" id="methods" hidden></div>
   <div id="catalog" aria-live="polite"></div>
 </main>
+<section class="wrap" id="merchantCta" aria-labelledby="mcTitle">
+  <div class="cta">
+    <h2 id="mcTitle">هل أنت تاجر؟ تواصل معنا</h2>
+    <p>بدك أسعار الجملة؟ تواصل معنا وبننقل حسابك لمستوى VIP أعلى حسب حجم صرفك الشهري.</p>
+    <div class="cta-btns">
+      <a class="cta-btn" id="ctaTg" href="https://t.me/IBRAHEEM932" target="_blank" rel="noopener noreferrer">✈️ تلغرام</a>
+      <a class="cta-btn" id="ctaWa" href="https://wa.me/963932867131" target="_blank" rel="noopener noreferrer">💬 واتساب</a>
+    </div>
+    <p class="hint" id="ctaHint">للأفضل سجّل دخول أول (من ☰) حتى نعرف حسابك بسرعة.</p>
+  </div>
+</section>
 <footer class="wrap">© Yardova</footer>
 <div class="scrim" id="scrim" hidden></div>
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drTitle" hidden>
@@ -229,6 +245,7 @@ function authMsg(err){
   return 'تعذّر الدخول. جرّب كمان مرة.';
 }
 function renderDrawer(){
+  renderCta();
   const b = $('drBody'); b.textContent = '';
   if(!auth){ b.append(el('div', { class: 'msg err', id: 'accMsg', text: 'تعذّر تحميل تسجيل الدخول. حدّث الصفحة وجرّب كمان مرة.' })); return; }
   if(!USER){
@@ -247,6 +264,7 @@ function renderDrawer(){
     progBox(c),
     merchantNote(c),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
+    el('button', { class: 'btn-ghost', id: 'btnMerchant', type: 'button', text: '🏪 هل أنت تاجر؟ تواصل معنا' }),
     el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
   );
 }
@@ -300,9 +318,27 @@ $('drBody').addEventListener('click', async e => {
     ACC_MSG = ''; b.disabled = true;
     try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
     catch(err){ ACC_MSG = authMsg(err); renderDrawer(); }
-  } else if(b.id === 'btnLogout'){ try{ await auth.signOut(); }catch(err){} }
+  } else if(b.id === 'btnMerchant'){ closeDrawer(); $('merchantCta').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctaTg').focus(); }
+  else if(b.id === 'btnLogout'){ try{ await auth.signOut(); }catch(err){} }
   else if(b.id === 'btnRetryAcc'){ loadCustomer(); }
 });
+
+
+// ===== زر التاجر: بيفتح تلغرام/واتساب برسالة جاهزة، ومعها معرّف حسابه وإيميله إذا مسجّل دخول =====
+const CONTACT = { tg: 'IBRAHEEM932', wa: '963932867131' };
+function ctaMessage(){
+  const lines = ['مرحباً، أنا تاجر وبدي أسعار الجملة بمتجر ياردوفا.'];
+  if(USER && ACC === 'ok' && CUSTOMER){ lines.push('معرّف حسابي: ' + CUSTOMER.id); if(CUSTOMER.email) lines.push('الإيميل: ' + CUSTOMER.email); }
+  lines.push('صرفي الشهري المتوقع بالدولار: ');
+  return lines.join('\n');
+}
+function renderCta(){
+  const t = encodeURIComponent(ctaMessage());
+  $('ctaTg').href = 'https://t.me/' + CONTACT.tg + '?text=' + t;
+  $('ctaWa').href = 'https://wa.me/' + CONTACT.wa + '?text=' + t;
+  $('ctaHint').hidden = !!(USER && ACC === 'ok' && CUSTOMER);
+}
+renderCta();
 if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; if(u) loadCustomer(); else renderDrawer(); });
 
 </script>
