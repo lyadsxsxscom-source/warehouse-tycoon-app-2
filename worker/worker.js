@@ -1188,8 +1188,25 @@ async function handleWannadsPostback(request, env, ctx) {
 // storeNodes/{id}: { parentId ("" = الجذر), type: folder|item, name, price (ل.س), enabled, sort, imageVer }، والصورة بمستند لحاله storeImages/{id} (حتى ما تنقل الصور مع كل قراءة).
 // الأدمن بيبني الشجرة (/admin/store)، والصفحة العامة بتقرأ الشجرة المفعّلة بس (/store/catalog) والصور (/store/img/{id}).
 const STORE_MAX_DEPTH = 4, STORE_MAX_NODES = 300, STORE_IMG_MAX = 280000;
+const STORE_VIP_LEVELS = 10;
+function storePricesOf(n) { return Array.isArray(n.prices) ? n.prices.map(Number).filter(x => Number.isFinite(x) && x > 0) : []; }
+// أسعار VIP 1..10 بالدولار: VIP 1 لازم يكون موجود، والباقي إذا ترك فاضي بياخد سعر المستوى اللي قبله، والمستوى الأعلى ما بيكون أغلى
+function storeParsePrices(raw) {
+  if (!Array.isArray(raw)) throw new ApiError("bad_price", "اكتب سعر VIP 1 (السعر الأساسي).");
+  const out = [];
+  for (let i = 0; i < STORE_VIP_LEVELS; i++) {
+    const v = raw[i], blank = v === undefined || v === null || v === "";
+    if (blank) { if (i === 0) throw new ApiError("bad_price", "اكتب سعر VIP 1 (السعر الأساسي)."); out.push(out[i - 1]); continue; }
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0 || n > 1000000) throw new ApiError("bad_price", `سعر VIP ${i + 1} لازم يكون رقم أكبر من 0 بالدولار.`);
+    const r = Math.round(n * 10000) / 10000;
+    if (i > 0 && r > out[i - 1]) throw new ApiError("bad_vip_order", `سعر VIP ${i + 1} لازم يكون أقل من سعر VIP ${i} أو يساويه.`);
+    out.push(r);
+  }
+  return out;
+}
 function storeNodeOut(n) {
-  return { id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), price: Number(n.price) || 0, enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
+  return { id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
 }
 async function storeAllNodes(env) { return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data })); }
 function storeSorted(list) { return [...list].sort((a, b) => ((Number(a.sort) || 0) - (Number(b.sort) || 0)) || a.id.localeCompare(b.id)); }
@@ -1198,15 +1215,38 @@ function storeTree(nodes) {
   const kids = new Map();
   for (const n of nodes) { if (n.enabled === false) continue; const k = String(n.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(n); }
   const build = (pid) => storeSorted(kids.get(pid) || []).map(n => {
-    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage;
-    if (n.type === "item") return o;
+    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices;
+    if (n.type === "item") { const pr = storePricesOf(n); if (!pr.length) return null; o.priceUsd = pr[0]; return o; }      // السعر العام = VIP 1، وأسعار VIP الباقية ما بتنعرض للعامة
     const children = build(n.id); return children.length ? { ...o, children } : null;      // مجلد فاضي ما بينعرض بالصفحة العامة
   }).filter(Boolean);
   return build("");
 }
+// طرق الدفع: كل طريقة إلها سعر صرف (وحدات من عملتها لكل 1 دولار) + نسبة إضافية اختيارية. بتتغيّر من الأدمن لما السعر يتقلّب، والصفحة العامة بتحسب منه.
+async function storeLoadMethods(env) { const d = await fsGetDoc(env, "config/storePayments"); return d.exists && d.data && Array.isArray(d.data.methods) ? d.data.methods : []; }
+function storeParseMethods(raw) {
+  if (!Array.isArray(raw) || raw.length > 8) throw new ApiError("bad_methods", "الحد الأقصى 8 طرق دفع.");
+  const seen = new Set();
+  return raw.map((m, i) => {
+    m = m || {};
+    const name = cleanText(m.name, 30), currency = cleanText(m.currency, 8);
+    if (!name) throw new ApiError("bad_method", `طريقة الدفع رقم ${i + 1}: اكتب اسم.`);
+    if (!currency) throw new ApiError("bad_method", `"${name}": اكتب رمز العملة (مثلاً ل.س أو USDT).`);
+    const rate = Number(m.rate);
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 1000000000) throw new ApiError("bad_rate", `"${name}": سعر الصرف لازم يكون رقم أكبر من 0.`);
+    const decimals = m.decimals === undefined || m.decimals === "" ? 2 : Number(m.decimals);
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 4) throw new ApiError("bad_method", `"${name}": عدد الخانات العشرية من 0 لـ4.`);
+    const feePct = m.feePct === undefined || m.feePct === "" || m.feePct === null ? 0 : Number(m.feePct);
+    if (!Number.isFinite(feePct) || feePct < 0 || feePct > 50) throw new ApiError("bad_method", `"${name}": النسبة الإضافية من 0 لـ50.`);
+    let id = typeof m.id === "string" && /^[a-z0-9_-]{1,24}$/.test(m.id) ? m.id : "m" + randomId().slice(0, 8);
+    while (seen.has(id)) id = "m" + randomId().slice(0, 8);
+    seen.add(id);
+    return { id, name, currency, rate: Math.round(rate * 1000000) / 1000000, decimals, feePct: Math.round(feePct * 100) / 100, enabled: m.enabled !== false };
+  });
+}
 async function handleStoreCatalog(env) {
   const tree = storeTree(await storeAllNodes(env));
-  const r = jsonResponse({ ok: true, items: tree }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
+  const methods = (await storeLoadMethods(env)).filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, rate: m.rate, decimals: m.decimals, feePct: m.feePct }));
+  const r = jsonResponse({ ok: true, items: tree, methods }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
 }
 async function handleStoreImage(env, id) {
   const d = id ? await fsGetDoc(env, "storeImages/" + id) : { exists: false };
@@ -1222,14 +1262,17 @@ async function handleAdminStore(request, env) {
     const nodes = await storeAllNodes(env);
     const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: STORE_MAX_NODES } }, 200);
     if (b.action === "list") return out(nodes);
+    if (b.action === "payments_get") { const d = await fsGetDoc(env, "config/storePayments"); return jsonResponse({ ok: true, methods: await storeLoadMethods(env), updatedAt: d.exists && d.data ? Number(d.data.updatedAt) || 0 : 0 }, 200); }
+    if (b.action === "payments_save") {
+      const methods = storeParseMethods(b.methods), at = Date.now();
+      await fsCommit(env, [{ update: { name: docName(env, "config/storePayments"), fields: objToFields({ methods, updatedAt: at }) } }]);
+      return jsonResponse({ ok: true, methods, updatedAt: at }, 200);
+    }
     const now = Date.now();
     if (b.action === "save") {
       const existing = b.id ? nodes.find(n => n.id === validId(String(b.id))) : null;
       if (b.id && !existing) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
       const name = cleanText(b.name, 60); if (!name) throw new ApiError("bad_name", "اكتب اسم.");
-      let price = Number(b.price == null || b.price === "" ? 0 : b.price);
-      if (!Number.isFinite(price) || price < 0 || price > 100000000) throw new ApiError("bad_price", "السعر لازم يكون رقم بين 0 و100,000,000.");
-      price = Math.round(price);
       const enabled = b.enabled !== false;
       let image; // undefined = ما منغيّر، "" = منحذف، data URL = منحط
       if (b.image !== undefined) {
@@ -1237,19 +1280,22 @@ async function handleAdminStore(request, env) {
         else if (typeof b.image === "string" && b.image.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image)) image = b.image;
         else throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير.");
       }
+      const kind = existing ? existing.type : (b.type === "item" ? "item" : b.type === "folder" ? "folder" : null);
+      if (!kind) throw new ApiError("bad_type", "النوع لازم مجلد أو منتج.");
+      const prices = kind === "item" ? storeParsePrices(b.prices) : null;
       let id, writes = [], node;
       if (existing) {
-        id = existing.id; node = { name, price, enabled, updatedAt: now };
+        id = existing.id; node = { name, enabled, updatedAt: now, ...(prices ? { prices } : {}) };
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, updateMask: { fieldPaths: Object.keys(node) }, currentDocument: { exists: true } });
       } else {
-        const type = b.type === "item" ? "item" : b.type === "folder" ? "folder" : null; if (!type) throw new ApiError("bad_type", "النوع لازم مجلد أو منتج.");
+        const type = kind;
         const parentId = b.parentId ? validId(String(b.parentId)) : "";
         if (b.parentId && !parentId) throw new ApiError("bad_parent", "المجلد الأب غلط.");
         if (parentId) { const par = nodes.find(n => n.id === parentId); if (!par || par.type !== "folder") throw new ApiError("bad_parent", "لازم تضيف داخل مجلد."); if (storeDepth(nodes, parentId) + 1 > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات.`); }
         if (nodes.length >= STORE_MAX_NODES) throw new ApiError("too_many", `وصلت للحد الأقصى (${STORE_MAX_NODES} عنصر).`);
         const sibs = nodes.filter(n => String(n.parentId || "") === parentId);
         id = "n" + randomId().slice(0, 12);
-        node = { parentId, type, name, price, enabled, sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
+        node = { parentId, type, name, enabled, ...(prices ? { prices } : {}), sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, currentDocument: { exists: false } });
       }
       if (image !== undefined) {

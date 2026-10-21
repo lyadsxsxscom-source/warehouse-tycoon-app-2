@@ -10,12 +10,16 @@ const calls = []; let authCb = null, serverFail = null, confirmAnswer = true, ca
 let NODES = [], seq = 0;
 const out = () => ({ ok: true, nodes: NODES.map(n => ({ ...n })), max: { depth: 4, nodes: 300 } });
 const sorted = (pid) => NODES.filter(n => n.parentId === pid).sort((a, b) => a.sort - b.sort);
+let METHODS_DB = [], methodsFail = null;
+const fill = (pr) => { const o = []; for (let i = 0; i < 10; i++) o.push(pr[i] === null || pr[i] === undefined || pr[i] === "" ? o[i - 1] : pr[i]); return o; };
 function server(body) {
+  if (body.action === "payments_get") return { st: 200, j: { ok: true, methods: METHODS_DB.map(m => ({ ...m })), updatedAt: METHODS_DB.length ? 1792000000000 : 0 } };
+  if (body.action === "payments_save") { if (methodsFail) return { st: 400, j: { ok: false, error: "bad_rate", message: methodsFail } }; METHODS_DB = body.methods.map((m, i) => ({ ...m, id: m.id || "m" + (i + 1) + "x" })); return { st: 200, j: { ok: true, methods: METHODS_DB.map(m => ({ ...m })), updatedAt: 1792000000001 } }; }
   if (serverFail) return { st: serverFail, j: { ok: false, error: "server_error", message: serverFail === 400 ? "أقصى عمق 4 مستويات." : undefined } };
   if (body.action === "list") return { st: 200, j: out() };
   if (body.action === "save") {
-    if (body.id) { const n = NODES.find(x => x.id === body.id); Object.assign(n, { name: body.name, price: body.price, enabled: body.enabled }); if (body.image !== undefined) { n.hasImage = !!body.image; n.imageUrl = body.image ? "/store/img/" + n.id + "?v=" + (++seq) : ""; } }
-    else { const sibs = sorted(body.parentId); NODES.push({ id: "n" + (++seq), parentId: body.parentId, type: body.type, name: body.name, price: body.price, enabled: body.enabled, sort: sibs.length + 1, hasImage: !!body.image, imageUrl: body.image ? "/store/img/n" + seq + "?v=1" : "" }); }
+    if (body.id) { const n = NODES.find(x => x.id === body.id); Object.assign(n, { name: body.name, enabled: body.enabled }); if (body.prices) n.prices = fill(body.prices); if (body.image !== undefined) { n.hasImage = !!body.image; n.imageUrl = body.image ? "/store/img/" + n.id + "?v=" + (++seq) : ""; } }
+    else { const sibs = sorted(body.parentId); NODES.push({ id: "n" + (++seq), parentId: body.parentId, type: body.type, name: body.name, prices: body.type === "item" ? fill(body.prices) : [], enabled: body.enabled, sort: sibs.length + 1, hasImage: !!body.image, imageUrl: body.image ? "/store/img/n" + seq + "?v=1" : "" }); }
     return { st: 200, j: out() };
   }
   if (body.action === "delete") { if (NODES.some(x => x.parentId === body.id)) return { st: 400, j: { ok: false, error: "has_children", message: "المجلد مش فاضي. احذف اللي جواته أول." } }; NODES = NODES.filter(x => x.id !== body.id); return { st: 200, j: out() }; }
@@ -35,7 +39,7 @@ const d = dom.window.document, $ = id => d.getElementById(id);
 const rows = () => [...d.querySelectorAll("#list .row")];
 const names = () => rows().map(r => r.querySelector(".nm").firstChild.textContent);
 const crumbs = () => $("crumbs").textContent.replace(/\s+/g, "");
-const addNode = async (kind, name, price, extra) => { $(kind === "folder" ? "btnAddFolder" : "btnAddItem").click(); $("edName").value = name; $("edPrice").value = price === undefined ? "" : price; if (extra) extra(); $("edSave").click(); await sleep(60); };
+const addNode = async (kind, name, price, extra) => { $(kind === "folder" ? "btnAddFolder" : "btnAddItem").click(); $("edName").value = name; if (kind === "item") $("edPrice").value = price === undefined ? "" : price; if (extra) extra(); $("edSave").click(); await sleep(60); };
 const lastSave = () => calls.filter(c => c.body.action === "save").pop();
 (async () => {
   await sleep(100); authCb({ uid: ADMIN, email: "a@x.com" }); await sleep(120);
@@ -43,11 +47,11 @@ const lastSave = () => calls.filter(c => c.body.action === "save").pop();
   ok($("btnAddFolder") && $("btnAddItem") && $("editor").hidden, "there are 'add folder' and 'add product' buttons, and the editor is closed");
 
   /* ---- add a folder ---- */
-  $("btnAddFolder").click(); ok(!$("editor").hidden && /مجلد جديد/.test($("edTitle").textContent) && /اختياري/.test($("edPriceHint").textContent), "'add folder' opens the editor (price is optional for folders)");
+  $("btnAddFolder").click(); ok(!$("editor").hidden && /مجلد جديد/.test($("edTitle").textContent) && $("edPriceBox").hidden, "'add folder' opens the editor (a folder has no price)");
   $("edSave").click(); await sleep(30); ok(/اكتب اسم/.test($("edMsg").textContent) && !calls.some(c => c.body.action === "save"), "saving without a name is refused on the screen");
   $("edCancel").click(); ok($("editor").hidden, "cancel closes it");
   await addNode("folder", "PUBG");
-  ok(lastSave().body.type === "folder" && lastSave().body.parentId === "" && lastSave().body.name === "PUBG" && lastSave().body.price === 0 && lastSave().body.enabled === true && !("image" in lastSave().body), "a root folder is saved (no image sent when none chosen)");
+  ok(lastSave().body.type === "folder" && lastSave().body.parentId === "" && lastSave().body.name === "PUBG" && !("prices" in lastSave().body) && lastSave().body.enabled === true && !("image" in lastSave().body), "a root folder is saved (no image sent when none chosen)");
   ok($("editor").hidden && names().join() === "PUBG" && /📁/.test(rows()[0].querySelector(".thumb").textContent) && /مجلد · 0 عنصر/.test(rows()[0].textContent), "it appears in the list with a folder icon");
 
   /* ---- go inside, nest ---- */
@@ -55,8 +59,12 @@ const lastSave = () => calls.filter(c => c.body.action === "save").pop();
   ok(crumbs() === "الرئيسية›PUBG" && /هالمجلد فاضي/.test($("emptyNote").textContent), "opening a folder shows the path and an empty-folder note");
   await addNode("folder", "فوري"); ok(lastSave().body.parentId === NODES.find(n => n.name === "PUBG").id, "a folder added inside is saved under the open folder");
   rows()[0].querySelector(".info").click(); ok(crumbs() === "الرئيسية›PUBG›فوري", "the path grows (PUBG > فوري)");
-  await addNode("item", "60 UC", 150); await addNode("item", "325 UC", 750); await addNode("item", "660 UC", 1450);
-  ok(names().join("|") === "60 UC|325 UC|660 UC" && /منتج · 150 ل\.س/.test(rows()[0].textContent) && /1,450 ل\.س/.test(rows()[2].textContent) && /📄/.test(rows()[0].querySelector(".thumb").textContent), "products show a product icon and a formatted price");
+  $("btnAddItem").click(); ok(!$("edPriceBox").hidden && /VIP 1/.test($("edPriceBox").textContent) && /\$ دولار/.test($("edPriceBox").textContent) && $("edVip").querySelectorAll("input").length === 9 && $("edVip2").placeholder === "نفس السابق" && $("edVip10"), "a product editor asks for the VIP 1 price in dollars and has nine optional boxes for VIP 2 to 10");
+  $("edName").value = "no price"; $("edSave").click(); await sleep(30); ok(/اكتب سعر VIP 1/.test($("edMsg").textContent) && !calls.some(c => c.body.action === "save" && c.body.name === "no price"), "saving a product without the VIP 1 price is refused on the screen"); $("edCancel").click();
+  await addNode("item", "60 UC", 0.92); await addNode("item", "325 UC", 4.4);
+  await addNode("item", "660 UC", 9.26, () => { $("edVip2").value = "9.1"; $("edVip10").value = "8.3"; });
+  ok(lastSave().body.prices.length === 10 && lastSave().body.prices.join() === "9.26,9.1,,,,,,,,8.3" && lastSave().body.type === "item" && !("price" in lastSave().body), "ten prices are sent (empty boxes are empty, the server fills them)");
+  ok(names().join("|") === "60 UC|325 UC|660 UC" && /منتج · \$0\.92/.test(rows()[0].textContent) && /\$4\.40/.test(rows()[1].textContent) && /\$9\.26/.test(rows()[2].textContent) && /VIP 10: \$8\.30/.test(rows()[2].textContent) && !/VIP 10/.test(rows()[0].textContent) && /📄/.test(rows()[0].querySelector(".thumb").textContent), "products show dollars, and the VIP 10 price when it is lower");
 
   /* ---- order ---- */
   ok(rows()[0].querySelector('[data-act="up"]').disabled && !rows()[0].querySelector('[data-act="down"]').disabled && rows()[2].querySelector('[data-act="down"]').disabled, "the first row cannot go up and the last cannot go down");
@@ -66,10 +74,11 @@ const lastSave = () => calls.filter(c => c.body.action === "save").pop();
 
   /* ---- edit ---- */
   rows()[1].querySelector('[data-act="edit"]').click();
-  ok(!$("editor").hidden && /تعديل المنتج/.test($("edTitle").textContent) && $("edName").value === "60 UC" && $("edPrice").value === "150" && $("edEnabled").checked === true, "✏️ opens the editor filled with the product");
-  $("edPrice").value = "160"; $("edEnabled").checked = false; $("edSave").click(); await sleep(60);
-  ok(lastSave().body.id && lastSave().body.price === 160 && lastSave().body.enabled === false && !("type" in lastSave().body) && !("image" in lastSave().body), "saving sends only what is editable (no type, no image if untouched)");
-  ok(/مخفي/.test(rows()[1].textContent) && /160 ل\.س/.test(rows()[1].textContent), "a hidden product is marked 'مخفي'");
+  ok(!$("editor").hidden && /تعديل المنتج/.test($("edTitle").textContent) && $("edName").value === "60 UC" && $("edPrice").value === "0.92" && $("edEnabled").checked === true && $("edVip2").value === "" && !$("edVipBox").open, "✏️ opens the editor filled with the product (VIP boxes empty when they follow the price before)");
+  $("edPrice").value = "0.95"; $("edEnabled").checked = false; $("edSave").click(); await sleep(60);
+  ok(lastSave().body.id && lastSave().body.prices[0] === 0.95 && lastSave().body.enabled === false && !("type" in lastSave().body) && !("image" in lastSave().body), "saving sends only what is editable (no type, no image if untouched)");
+  ok(/مخفي/.test(rows()[1].textContent) && /\$0\.95/.test(rows()[1].textContent), "a hidden product is marked 'مخفي'");
+  rows()[0].querySelector('[data-act="edit"]').click(); ok($("edPrice").value === "9.26" && $("edVip2").value === "9.1" && $("edVip3").value === "" && $("edVip10").value === "8.3" && $("edVipBox").open, "a product with different VIP prices opens with them filled (and the VIP section open)"); $("edCancel").click();
   rows()[1].querySelector(".info").click(); ok(!$("editor").hidden && $("edName").value === "60 UC", "tapping a product opens it for editing");
   $("edCancel").click();
 
@@ -109,5 +118,30 @@ const lastSave = () => calls.filter(c => c.body.action === "save").pop();
   ok(/أقصى عمق/.test($("edMsg").textContent) && !$("editor").hidden, "a server refusal (like the depth limit) is shown inside the editor");
   $("edCancel").click(); serverFail = 500; rows().length && d.querySelector("#crumbs [data-go]").click();
   await addNode("folder", "x"); ok(/صار خطأ/.test($("edMsg").textContent) && !$("edSave").disabled, "a server error is shown and the save button works again");
+  /* ---- payment methods tab ---- */
+  serverFail = null; $("editor").hidden = true;
+  const pmBefore = calls.length; $("tabPayments").click(); await sleep(80);
+  ok(!$("viewPayments").hidden && $("viewCatalog").hidden && $("tabPayments").classList.contains("active") && !$("tabCatalog").classList.contains("active") && calls.slice(pmBefore).some(c => c.body.action === "payments_get") && /ما في طرق دفع/.test($("pmEmpty").textContent), "the payment tab opens, loads the settings, and explains there are none yet");
+  const rowsPm = () => [...d.querySelectorAll("#pmList .pm")];
+  const setPm = (i, f, v) => { const x = rowsPm()[i].querySelector(`[data-f="${f}"]`); if (x.type === "checkbox") { x.checked = v; } else x.value = v; x.dispatchEvent(new dom.window.Event("input", { bubbles: true })); };
+  $("btnAddMethod").click(); ok(rowsPm().length === 1 && rowsPm()[0].querySelector('[data-f="decimals"]').value === "2" && rowsPm()[0].querySelector('[data-f="enabled"]').checked, "adding a method gives a new row (2 decimals, enabled)");
+  setPm(0, "name", "شام كاش"); setPm(0, "currency", "ل.س"); setPm(0, "rate", "142.5"); setPm(0, "decimals", "0");
+  ok(/1\$ = 143 ل\.س/.test(rowsPm()[0].querySelector(".prev").textContent), "a live preview shows what $1 becomes (rounded the way the store will show it)");
+  $("btnAddMethod").click(); setPm(1, "name", "USDT"); setPm(1, "currency", "USDT"); setPm(1, "rate", "1"); setPm(1, "feePct", "1.5");
+  ok(/1\$ = 1\.02 USDT/.test(rowsPm()[1].querySelector(".prev").textContent), "the extra percentage is included in the preview");
+  const sv0 = calls.length; $("btnSaveMethods").click(); await sleep(80);
+  const sv = calls.slice(sv0).find(c => c.body.action === "payments_save").body.methods;
+  ok(sv.length === 2 && sv[0].name === "شام كاش" && sv[0].rate === 142.5 && sv[0].decimals === 0 && sv[0].feePct === 0 && sv[1].feePct === 1.5 && sv[1].decimals === 2 && sv.every(m => m.enabled === true) && /انحفظ/.test($("pmMsg").textContent) && rowsPm().length === 2, "saving sends numbers (not text) for every method, and the row list refreshes from the server's answer");
+  ok(METHODS_DB[0].id === "m1x" && sv[0].id === undefined, "new methods are sent without an id (the server gives one)");
+  setPm(0, "rate", "145"); $("btnSaveMethods").click(); await sleep(60);
+  ok(calls.filter(c => c.body.action === "payments_save").pop().body.methods[0].id === "m1x" && METHODS_DB[0].rate === 145, "saving again keeps the ids and updates the rate (the quick way to follow the market)");
+  setPm(1, "enabled", false); $("btnSaveMethods").click(); await sleep(60); ok(METHODS_DB[1].enabled === false, "a method can be switched off");
+  rowsPm()[1].querySelector('[data-pm="up"]').click(); ok(rowsPm()[0].querySelector('[data-f="name"]').value === "USDT" && rowsPm()[0].querySelector('[data-pm="up"]').disabled && rowsPm()[1].querySelector('[data-pm="down"]').disabled, "▲ moves a method up (the first cannot go up, the last cannot go down)");
+  confirmAnswer = false; rowsPm()[0].querySelector('[data-pm="del"]').click(); ok(rowsPm().length === 2, "deleting asks first");
+  confirmAnswer = true; rowsPm()[0].querySelector('[data-pm="del"]').click(); ok(rowsPm().length === 1 && rowsPm()[0].querySelector('[data-f="name"]').value === "شام كاش", "confirming deletes it");
+  methodsFail = "سعر الصرف لازم يكون رقم أكبر من 0."; $("btnSaveMethods").click(); await sleep(60);
+  ok(/سعر الصرف/.test($("pmMsg").textContent) && !$("btnSaveMethods").disabled, "a server refusal is shown and the button works again"); methodsFail = null;
+  for (let i = 0; i < 8; i++) $("btnAddMethod").click(); ok(rowsPm().length === 8 && /الحد الأقصى 8/.test($("pmMsg").textContent), "no more than 8 methods");
+  $("tabCatalog").click(); ok(!$("viewCatalog").hidden && $("viewPayments").hidden && names().length > 0, "back to the catalog tab");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });

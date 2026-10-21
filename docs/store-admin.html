@@ -50,6 +50,17 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .imgrow .pv img{width:100%;height:100%;object-fit:cover}
 #edMsg{color:var(--err);min-height:1.5em;margin-top:10px;font-size:.92rem}
 #listMsg{color:var(--err);min-height:1.4em;margin:6px 0;font-size:.92rem}
+.vipgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.vipgrid label{margin:0 0 2px;font-size:.8rem}
+.vipgrid input{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+.pm{background:#12281F;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.pm .g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pm label{display:block;margin:0 0 2px;color:var(--dim);font-size:.8rem}
+.pm input[type=text],.pm input[type=number],.pm select{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+.pm .prev{margin-top:8px;color:var(--tape);font-size:.9rem;direction:ltr;text-align:start}
+.pm .tools{display:flex;gap:6px;align-items:center;justify-content:space-between;margin-top:8px}
+.pm .tools button{padding:5px 9px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
+#pmMsg{min-height:1.5em;margin-top:8px;font-size:.92rem}
 </style>
 </head>
 <body>
@@ -71,6 +82,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
   <div class="wrap">
     <div class="tabs" id="tabs">
       <button class="tab active" id="tabCatalog">📁 الكتالوج</button>
+      <button class="tab" id="tabPayments">💳 طرق الدفع</button>
     </div>
     <div class="card" id="viewCatalog">
       <div class="crumbs" id="crumbs"></div>
@@ -81,6 +93,12 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <div id="listMsg" role="alert"></div>
       <div id="list"></div>
     </div>
+    <div class="card" id="viewPayments" hidden>
+      <div style="color:var(--dim);font-size:.9rem;line-height:1.8;margin-bottom:12px;">الأسعار بالدولار. لكل طريقة دفع <b>سعر صرف</b> (كم وحدة من عملتها مقابل 1 دولار) ونسبة إضافية اختيارية. غيّر السعر لما يتقلّب، والصفحة العامة بتحسب الأسعار لحالها.</div>
+      <div id="pmList"></div>
+      <div class="bar"><button id="btnAddMethod">＋ طريقة دفع</button><button id="btnSaveMethods">حفظ طرق الدفع</button></div>
+      <div id="pmMsg" role="alert"></div>
+    </div>
   </div>
 </div>
 <div class="sheet" id="editor" hidden>
@@ -88,8 +106,15 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
     <h3 id="edTitle"></h3>
     <label for="edName">الاسم</label>
     <input type="text" id="edName" maxlength="60" autocomplete="off">
-    <label for="edPrice">السعر (ل.س) <span id="edPriceHint" style="color:var(--dim)"></span></label>
-    <input type="number" id="edPrice" min="0" step="1" inputmode="numeric">
+    <div id="edPriceBox">
+      <label for="edPrice">سعر VIP 1 — الأساسي ($ دولار)</label>
+      <input type="number" id="edPrice" min="0" step="0.0001" inputmode="decimal">
+      <details id="edVipBox" style="margin-top:8px;">
+        <summary style="cursor:pointer;color:var(--tape);">أسعار VIP 2 → 10 (اختياري)</summary>
+        <div style="color:var(--dim);font-size:.85rem;margin:6px 0;">اترك الخانة فاضية: بتاخد سعر المستوى اللي قبلها. المستوى الأعلى ما بيكون أغلى.</div>
+        <div class="vipgrid" id="edVip"></div>
+      </details>
+    </div>
     <label>الصورة</label>
     <div class="imgrow">
       <div class="pv" id="edPv"><span id="edPvPh">لا صورة</span></div>
@@ -157,7 +182,7 @@ async function storeApi(body){
 const byId = id => NODES.find(n => n.id === id);
 const childrenOf = pid => NODES.filter(n => n.parentId === pid).sort((a, b) => a.sort - b.sort);
 function pathOf(id){ const p = []; let c = byId(id); while(c){ p.unshift(c); c = byId(c.parentId); } return p; }
-function fmtPrice(n){ return Number(n).toLocaleString('en-US') + ' ل.س'; }
+function fmtUsd(n){ return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
 function renderCatalog(){
   const cr = $('crumbs'); cr.textContent = '';
   const path = pathOf(CUR);
@@ -170,7 +195,8 @@ function renderCatalog(){
     const thumb = n.hasImage ? el('img', { class: 'thumb', src: API + n.imageUrl, alt: '' }) : el('div', { class: 'thumb', text: n.type === 'folder' ? '📁' : '📄' });
     const name = el('div', { class: 'nm', text: n.name });
     if(!n.enabled) name.append(el('span', { class: 'badge', text: 'مخفي' }));
-    const sub = el('div', { class: 'sub', text: n.type === 'folder' ? ('مجلد · ' + childrenOf(n.id).length + ' عنصر' + (n.price ? ' · ' + fmtPrice(n.price) : '')) : ('منتج · ' + fmtPrice(n.price)) });
+    const pr = n.prices || [];
+    const sub = el('div', { class: 'sub', text: n.type === 'folder' ? ('مجلد · ' + childrenOf(n.id).length + ' عنصر') : (pr.length ? ('منتج · ' + fmtUsd(pr[0]) + (pr[pr.length - 1] < pr[0] ? ' · VIP 10: ' + fmtUsd(pr[pr.length - 1]) : '')) : 'منتج · بدون سعر ⚠️') });
     const info = el('div', { class: 'info', 'data-open': n.id }, name, sub);
     const up = el('button', { 'data-act': 'up', 'data-id': n.id, title: 'فوق', text: '▲' }); if(i === 0) up.disabled = true;
     const down = el('button', { 'data-act': 'down', 'data-id': n.id, title: 'تحت', text: '▼' }); if(i === kids.length - 1) down.disabled = true;
@@ -204,8 +230,12 @@ function openEditor(n, type){
   EDIMG = undefined;
   const isFolder = EDIT.type === 'folder';
   $('edTitle').textContent = n ? (isFolder ? 'تعديل المجلد' : 'تعديل المنتج') : (isFolder ? 'مجلد جديد' : 'منتج جديد');
-  $('edName').value = n ? n.name : ''; $('edPrice').value = n ? n.price : '';
-  $('edPriceHint').textContent = isFolder ? '(اختياري للمجلد)' : '';
+  $('edName').value = n ? n.name : '';
+  $('edPriceBox').hidden = isFolder;
+  const pr = (n && n.prices) || [];
+  $('edPrice').value = pr.length ? pr[0] : '';
+  for(let k = 2; k <= 10; k++) $('edVip' + k).value = (pr.length && pr[k - 1] !== pr[k - 2]) ? pr[k - 1] : '';     // بنعرض بس المستويات اللي سعرها غير السابق
+  $('edVipBox').open = pr.some((x, i) => i > 0 && x !== pr[i - 1]);
   $('edEnabled').checked = n ? n.enabled : true;
   $('edFile').value = ''; $('edMsg').textContent = '';
   showPreview(n && n.hasImage ? API + n.imageUrl : '');
@@ -245,13 +275,82 @@ $('edFile').onchange = async () => {
 $('edSave').onclick = async () => {
   const name = $('edName').value.trim();
   if(!name){ $('edMsg').textContent = 'اكتب اسم.'; return; }
-  const body = { action: 'save', name, price: $('edPrice').value === '' ? 0 : Number($('edPrice').value), enabled: $('edEnabled').checked };
+  const body = { action: 'save', name, enabled: $('edEnabled').checked };
+  if(EDIT.type === 'item'){
+    if($('edPrice').value === ''){ $('edMsg').textContent = 'اكتب سعر VIP 1 بالدولار.'; return; }
+    body.prices = [Number($('edPrice').value)];
+    for(let k = 2; k <= 10; k++){ const v = $('edVip' + k).value; body.prices.push(v === '' ? null : Number(v)); }
+  }
   if(EDIT.id) body.id = EDIT.id; else { body.type = EDIT.type; body.parentId = CUR; }
   if(EDIMG !== undefined) body.image = EDIMG;
   $('edSave').disabled = true; $('edMsg').textContent = '';
   try{ NODES = (await storeApi(body)).nodes; $('editor').hidden = true; renderCatalog(); }
   catch(err){ $('edMsg').textContent = err.message; }
   $('edSave').disabled = false;
+};
+
+// خانات VIP 2..10
+(function(){ const g = $('edVip'); for(let k = 2; k <= 10; k++){ const w = document.createElement('div'); const lb = document.createElement('label'); lb.textContent = 'VIP ' + k; lb.setAttribute('for', 'edVip' + k); const i = document.createElement('input'); i.type = 'number'; i.id = 'edVip' + k; i.min = '0'; i.step = '0.0001'; i.placeholder = 'نفس السابق'; i.setAttribute('inputmode', 'decimal'); w.append(lb, i); g.append(w); } })();
+
+// ===== التبويبات =====
+function showTab(which){
+  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments';
+  $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments');
+  if(which === 'payments') loadMethods();
+}
+$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments');
+
+// ===== طرق الدفع =====
+let METHODS = [];
+function pmPreview(m){
+  const r = Number(m.rate), f = Number(m.feePct) || 0, d = Number(m.decimals);
+  if(!(r > 0)) return '';
+  const v = Math.round(Number((r * (1 + f / 100) * Math.pow(10, d)).toPrecision(12))) / Math.pow(10, d);   // toPrecision: حتى ما يطلع 1.01 بدل 1.02 بسبب كسور الفاصلة
+  return '1$ = ' + v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + (m.currency || '');
+}
+function renderMethods(){
+  const box = $('pmList'); box.textContent = '';
+  if(!METHODS.length){ box.append(el('div', { class: 'empty', id: 'pmEmpty', text: 'ما في طرق دفع. بدونها الصفحة العامة بتعرض الدولار بس. ضيف طريقة (مثلاً شام كاش بسعر 142.5).' })); return; }
+  METHODS.forEach((m, i) => {
+    const inp = (f, label, type, extra) => { const w = el('div', {}, el('label', { text: label })); const x = el('input', Object.assign({ type, 'data-i': i, 'data-f': f }, extra || {})); x.value = m[f] === undefined ? '' : m[f]; w.append(x); return w; };
+    const dec = el('select', { 'data-i': i, 'data-f': 'decimals' }); [0, 1, 2, 3, 4].forEach(d => { const o = el('option', { value: d, text: String(d) }); dec.append(o); }); dec.value = String(m.decimals);
+    const decW = el('div', {}, el('label', { text: 'خانات عشرية' }), dec);
+    const g = el('div', { class: 'g' }, inp('name', 'الاسم', 'text', { maxlength: 30 }), inp('currency', 'رمز العملة', 'text', { maxlength: 8 }), inp('rate', 'سعر الصرف (لكل 1$)', 'number', { step: 'any', min: '0', inputmode: 'decimal' }), inp('feePct', 'نسبة إضافية %', 'number', { step: '0.1', min: '0', max: '50', inputmode: 'decimal' }), decW);
+    const en = el('input', { type: 'checkbox', 'data-i': i, 'data-f': 'enabled' }); en.checked = m.enabled !== false;
+    const up = el('button', { 'data-pm': 'up', 'data-i': i, text: '▲' }); if(i === 0) up.disabled = true;
+    const down = el('button', { 'data-pm': 'down', 'data-i': i, text: '▼' }); if(i === METHODS.length - 1) down.disabled = true;
+    const tools = el('div', { class: 'tools' }, el('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:.9rem;' }, en, 'مفعّلة'), el('div', { style: 'display:flex;gap:6px;' }, up, down, el('button', { 'data-pm': 'del', 'data-i': i, text: '🗑' })));
+    box.append(el('div', { class: 'pm', 'data-pmrow': i }, g, el('div', { class: 'prev', 'data-prev': i, text: pmPreview(m) }), tools));
+  });
+}
+async function loadMethods(){
+  $('pmMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'payments_get' }); METHODS = j.methods.map(m => ({ ...m }));
+    renderMethods(); $('pmMsg').style.color = 'var(--dim)'; $('pmMsg').textContent = j.updatedAt ? ('آخر تحديث: ' + new Date(j.updatedAt).toLocaleString('en-GB')) : '';
+  }catch(e){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = 'تعذّر التحميل: ' + e.message; }
+}
+$('pmList').addEventListener('input', e => {
+  const t = e.target; if(t.dataset.f === undefined) return;
+  const m = METHODS[Number(t.dataset.i)]; m[t.dataset.f] = t.type === 'checkbox' ? t.checked : (t.tagName === 'SELECT' ? Number(t.value) : t.value);
+  const pv = document.querySelector('[data-prev="' + t.dataset.i + '"]'); if(pv) pv.textContent = pmPreview(m);
+});
+$('pmList').addEventListener('change', e => { if(e.target.tagName === 'SELECT' || e.target.type === 'checkbox') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+$('pmList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-pm]'); if(!b) return; const i = Number(b.dataset.i);
+  if(b.dataset.pm === 'del'){ if(!window.confirm('احذف "' + (METHODS[i].name || 'طريقة الدفع') + '"؟')) return; METHODS.splice(i, 1); }
+  else { const j = b.dataset.pm === 'up' ? i - 1 : i + 1; [METHODS[i], METHODS[j]] = [METHODS[j], METHODS[i]]; }
+  renderMethods();
+});
+$('btnAddMethod').onclick = () => { if(METHODS.length >= 8){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = 'الحد الأقصى 8 طرق دفع.'; return; } METHODS.push({ name: '', currency: '', rate: '', decimals: 2, feePct: 0, enabled: true }); renderMethods(); };
+$('btnSaveMethods').onclick = async () => {
+  const body = { action: 'payments_save', methods: METHODS.map(m => ({ id: m.id, name: String(m.name || '').trim(), currency: String(m.currency || '').trim(), rate: m.rate === '' ? 0 : Number(m.rate), decimals: Number(m.decimals), feePct: m.feePct === '' ? 0 : Number(m.feePct), enabled: m.enabled !== false })) };
+  $('btnSaveMethods').disabled = true; $('pmMsg').textContent = '';
+  try{
+    const j = await storeApi(body); METHODS = j.methods.map(m => ({ ...m })); renderMethods();
+    $('pmMsg').style.color = 'var(--ok, #4caf50)'; $('pmMsg').textContent = 'انحفظ ✓ ' + new Date(j.updatedAt).toLocaleString('en-GB');
+  }catch(e){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = e.message; }
+  $('btnSaveMethods').disabled = false;
 };
 </script>
 </body>

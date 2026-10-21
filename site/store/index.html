@@ -53,6 +53,11 @@ button.card:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #10211C}
 .card .nm{font-family:var(--f-head);font-weight:700;line-height:1.35;word-break:break-word}
 .card .pr{margin-top:6px;display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:2px 12px;direction:ltr}
 .card .soon{display:block;margin-top:8px;color:var(--muted);font-size:.85rem}
+.methods{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 18px}
+.methods .lb{color:var(--muted);font-size:.9rem}
+.chip{font:inherit;font-weight:600;border:2px solid #10211C;background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 14px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--tape);color:#10211C}
+.card .pr small{display:block;font-weight:400;font-size:.78rem;opacity:.8}
 .state{padding:28px;text-align:center;color:var(--muted)}
 .state button{margin-top:12px;font:inherit;font-weight:600;border:2px solid #10211C;background:var(--tape);color:#10211C;border-radius:8px;padding:8px 18px;cursor:pointer}
 .skel{height:160px;border-radius:14px;background:linear-gradient(90deg,var(--line),transparent,var(--line));opacity:.5}
@@ -76,20 +81,29 @@ footer{padding-block:24px;color:var(--muted);font-size:.9rem}
 </section>
 <main class="wrap" id="app">
   <nav class="crumbs" id="crumbs" aria-label="المسار"></nav>
+  <div class="methods" id="methods" hidden></div>
   <div id="catalog" aria-live="polite"></div>
 </main>
 <footer class="wrap">© Yardova</footer>
 <script>
 // متجر الشدات (الخطوة 2): بيعرض الشجرة اللي بنيتها بالأدمن (أقسام بصور ← منتجات بأسعارها). بدون طلبات بعد.
 const API = 'https://postback.ly-ad.de';
-let TREE = null;
+let TREE = null, METHODS = [], METHOD = null;       // METHOD: طريقة الدفع المختارة (null = دولار بس)
 const $ = id => document.getElementById(id);
 function el(tag, attrs, ...kids){
   const e = document.createElement(tag);
   for(const k in (attrs || {})){ if(k === 'text') e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]); }
   kids.forEach(x => e.append(x)); return e;
 }
-const fmtPrice = n => Number(n).toLocaleString('en-US') + ' ل.س';
+const roundTo = (x, d) => Math.round(Number((x * Math.pow(10, d)).toPrecision(12))) / Math.pow(10, d);   // toPrecision: حتى ما يطلع 1.01 بدل 1.02 بسبب كسور الفاصلة
+const fmtUsd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+// السعر بعملة طريقة الدفع: بالدولار × سعر الصرف × (1 + النسبة الإضافية)
+function priceIn(m, usd){ const d = Number(m.decimals); return roundTo(Number(usd) * Number(m.rate) * (1 + (Number(m.feePct) || 0) / 100), d).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + m.currency; }
+function priceBox(usd){
+  const box = el('span', { class: 'pr' });
+  if(METHOD){ box.append(document.createTextNode(priceIn(METHOD, usd)), el('small', { text: fmtUsd(usd) })); } else box.textContent = fmtUsd(usd);
+  return box;
+}
 function imgSrc(u){ return typeof u === 'string' && /^\/store\/img\/[A-Za-z0-9_-]+(\?v=\d+)?$/.test(u) ? API + u : ''; }   // بس صور من سيرفرنا
 function findPath(nodes, id, trail){
   for(const n of nodes){
@@ -109,11 +123,19 @@ function folderCard(n){
   return b;
 }
 function itemCard(n){
-  return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), el('span', { class: 'pr', text: fmtPrice(n.price) }), el('span', { class: 'soon', text: 'الطلب قريباً' })));
+  return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), priceBox(n.priceUsd), el('span', { class: 'soon', text: 'الطلب قريباً' })));
+}
+function savedMethod(){ try{ return localStorage.getItem('store_method') || ''; }catch(e){ return ''; } }
+function renderMethods(){
+  const bar = $('methods'); bar.textContent = '';
+  bar.hidden = !METHODS.length; if(!METHODS.length) return;
+  bar.append(el('span', { class: 'lb', text: 'الدفع عبر:' }));
+  METHODS.forEach(m => { const c = el('button', { class: 'chip', type: 'button', 'data-m': m.id, 'aria-pressed': METHOD && METHOD.id === m.id ? 'true' : 'false', text: m.name }); bar.append(c); });
 }
 function render(){
   const box = $('catalog'), cr = $('crumbs'); box.textContent = ''; cr.textContent = '';
   if(TREE === null) return;
+  renderMethods();
   const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
   let trail = id ? findPath(TREE, id, []) : [];
   let note = '';
@@ -136,13 +158,20 @@ async function load(){
   try{
     const res = await fetch(API + '/store/catalog'); const j = await res.json();
     if(!res.ok || !j.ok || !Array.isArray(j.items)) throw new Error('bad');
-    TREE = j.items; render();
+    TREE = j.items; METHODS = Array.isArray(j.methods) ? j.methods.filter(m => m && m.id && m.currency && Number(m.rate) > 0) : [];
+    METHOD = METHODS.find(m => m.id === savedMethod()) || METHODS[0] || null;          // أول طريقة افتراضياً، وبنتذكّر اختيار الزبون
+    render();
   }catch(e){
     box.textContent = '';
     const st = el('div', { class: 'state', id: 'errState' }, el('div', { text: 'تعذّر تحميل المتجر. تأكد من الإنترنت وجرّب كمان مرة.' }), el('button', { id: 'btnRetry', type: 'button', text: 'إعادة المحاولة' }));
     box.append(st); $('btnRetry').onclick = load;
   }
 }
+$('methods').addEventListener('click', e => {
+  const c = e.target.closest('[data-m]'); if(!c) return; METHOD = METHODS.find(m => m.id === c.dataset.m) || METHOD;
+  try{ localStorage.setItem('store_method', METHOD.id); }catch(err){}
+  render();
+});
 $('catalog').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if(b){ location.hash = '#/' + encodeURIComponent(b.dataset.go); window.scrollTo(0, 0); } });
 window.addEventListener('hashchange', render);
 load();
