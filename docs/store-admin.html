@@ -144,9 +144,10 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <div class="h">الطلبات <span id="ordCount" style="color:var(--dim);font-weight:400;"></span></div>
       <div class="bar" style="align-items:center;">
         <select id="ordFilter" aria-label="تصفية الطلبات">
-          <option value="payment_submitted">دفع مرسل (بانتظارك)</option><option value="open">كل المفتوحة</option><option value="all">كل الطلبات</option>
+          <option value="waiting">بانتظارك (دفع مرسل + قيد التنفيذ)</option><option value="processing">قيد التنفيذ (مدفوعة من الرصيد)</option><option value="payment_submitted">إيداعات: دفع مرسل</option><option value="open">كل المفتوحة</option><option value="all">كل الطلبات</option>
           <option value="done">منفّذة</option><option value="rejected">مرفوضة</option><option value="refunded">مسترجعة</option><option value="cancelled">ملغاة</option><option value="expired">منتهية</option>
         </select>
+        <select id="ordKind" aria-label="نوع الطلب"><option value="all">الكل</option><option value="order">طلبات شراء</option><option value="topup">إيداعات</option></select>
         <input type="search" id="ordSearch" placeholder="🔎 رقم الطلب، الاسم، الإيميل، Player ID، المنتج">
         <button id="btnOrdRefresh" title="تحديث">🔄</button>
       </div>
@@ -169,6 +170,16 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <div id="custList"></div>
     </div>
     <div class="card" id="viewPayments" hidden>
+      <div class="h">إعدادات المحفظة</div>
+      <div class="hint"><b>النقاط وحدة عرض بس</b> (مو نقاط اللعبة): المخزّن والمخصوم دولار، وزر $/نقاط عند الزبون بيبدّل العرض. طرق الدفع تحت بتُستعمل <b>لإيداع الرصيد بس</b>.</div>
+      <div class="vrow"><label for="wlPoints">نقطة لكل 1$</label><input type="number" id="wlPoints" min="1" step="1" inputmode="numeric"></div>
+      <div class="vrow"><label for="wlMin">أقل إيداع ($)</label><input type="number" id="wlMin" min="1" step="0.01" inputmode="decimal"></div>
+      <div class="vrow"><label for="wlMax">أعلى إيداع ($)</label><input type="number" id="wlMax" min="1" step="0.01" inputmode="decimal"></div>
+      <div class="vrow"><label for="wlProc">أقصى طلبات قيد التنفيذ للزبون</label><input type="number" id="wlProc" min="1" max="100" step="1" inputmode="numeric"></div>
+      <div class="bar"><button id="btnSaveWallet">حفظ إعدادات المحفظة</button></div>
+      <div id="wlMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="h">طرق الدفع (للإيداع)</div>
       <div style="color:var(--dim);font-size:.9rem;line-height:1.8;margin-bottom:12px;">الأسعار بالدولار. لكل طريقة دفع <b>سعر صرف</b> (كم وحدة من عملتها مقابل 1 دولار) ونسبة إضافية اختيارية. غيّر السعر لما يتقلّب، والصفحة العامة بتحسب الأسعار لحالها.</div>
       <div id="pmList"></div>
       <div class="bar"><button id="btnAddMethod">＋ طريقة دفع</button><button id="btnSaveMethods">حفظ طرق الدفع</button></div>
@@ -373,8 +384,8 @@ function showTab(which){
   $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders';
   $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers'); $('tabOrders').classList.toggle('active', which === 'orders');
   if(which === 'orders') loadOrders();
-  if(which === 'payments') loadMethods();
-  if(which === 'customers'){ loadVip(); loadCustomers(); }
+  if(which === 'payments'){ loadMethods(); loadWallet(); }
+  if(which === 'customers'){ loadWallet(); loadVip(); loadCustomers(); }
 }
 $('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers'); $('tabOrders').onclick = () => showTab('orders');
 
@@ -431,8 +442,30 @@ $('btnSaveMethods').onclick = async () => {
   $('btnSaveMethods').disabled = false;
 };
 
+
+// ===== إعدادات المحفظة =====
+let WALLET = { pointsPerUsd: 1000 };
+async function loadWallet(){
+  $('wlMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'wallet_get' }); WALLET = j.cfg;
+    $('wlPoints').value = j.cfg.pointsPerUsd; $('wlMin').value = j.cfg.minTopupUsd; $('wlMax').value = j.cfg.maxTopupUsd; $('wlProc').value = j.cfg.maxProcessing;
+    if(!j.configured){ $('wlMsg').style.color = 'var(--dim)'; $('wlMsg').textContent = 'هاي أرقام مثال، عدّلها واحفظ.'; }
+  }catch(e){ $('wlMsg').style.color = 'var(--err)'; $('wlMsg').textContent = 'تعذّر تحميل الإعدادات: ' + e.message; }
+}
+$('btnSaveWallet').onclick = async () => {
+  $('btnSaveWallet').disabled = true; $('wlMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'wallet_save', cfg: { pointsPerUsd: Number($('wlPoints').value), minTopupUsd: Number($('wlMin').value), maxTopupUsd: Number($('wlMax').value), maxProcessing: Number($('wlProc').value) } });
+    WALLET = j.cfg; $('wlMsg').style.color = 'var(--ok, #4caf50)'; $('wlMsg').textContent = 'انحفظ ✓';
+  }catch(e){ $('wlMsg').style.color = 'var(--err)'; $('wlMsg').textContent = e.message; }
+  $('btnSaveWallet').disabled = false;
+};
+const ptsText = (u) => Math.round(Number(u) * (Number(WALLET.pointsPerUsd) || 1000)).toLocaleString('en-US') + ' نقطة';
+
 // ===== الزباين وVIP =====
 let VIP = [];
+function usd4(n){ const v = Number(n); return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }      // للرصيد وحركاته: بيحافظ على 4 خانات (مثل 0.8663)
 function usd(n){ const v = Number(n); return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function renderVipRows(){
   const box = $('vipRows'); box.textContent = '';
@@ -488,14 +521,15 @@ function renderCustomers(){
     const fill = el('div', { class: 'fill' }); fill.style.width = pct.toFixed(1) + '%';
     const prog = max ? 'أعلى مستوى 🎉' : ('تقدّمه ' + usd(c.progressUsd) + ' من ' + usd(c.sizeUsd) + ' · باقي ' + usd(c.remainingUsd) + ' لـVIP ' + c.nextVip);
     const spendBtn = el('button', { 'data-act': 'spend', 'data-id': c.id, text: '➕ تعديل الصرف' }), logBtn = el('button', { 'data-act': 'log', 'data-id': c.id, text: '📜 السجل' });
-    const merBtn = el('button', { 'data-act': 'mset', 'data-id': c.id, text: '🏪 نقل تاجر' });
+    const merBtn = el('button', { 'data-act': 'mset', 'data-id': c.id, text: '🏪 نقل تاجر' }), balBtn = el('button', { 'data-act': 'bal', 'data-id': c.id, text: '💵 تعديل الرصيد' });
     const held = c.merchant && c.vip > c.autoVip;
     box.append(el('div', { class: 'cust', 'data-cust': c.id },
       el('div', { class: 'top' }, el('div', {}, el('div', { class: 'nm', text: c.name || '—' }), el('div', { class: 'em', dir: 'ltr', text: c.email || c.id })), el('div', { style: 'text-align:end;' }, el('span', { class: 'vb', text: 'VIP ' + c.vip }), held ? el('div', { class: 'sm', 'data-auto': c.id, text: 'تلقائي: VIP ' + c.autoVip }) : '')),
       el('div', { class: 'track' }, fill), el('div', { class: 'sm', text: prog }),
+      el('div', { class: 'sm', 'data-bal': c.id, text: 'الرصيد ' + usd4(c.balanceUsd || 0) + ' (' + ptsText(c.balanceUsd || 0) + ')' }),
       el('div', { class: 'sm', text: 'إجمالي الصرف ' + usd(c.spentUsd) + ' · آخر زيارة: ' + (c.lastSeenAt ? new Date(c.lastSeenAt).toLocaleString('en-GB') : '—') }),
       merchantBox(c),
-      el('div', { class: 'tools' }, spendBtn, merBtn, logBtn), el('div', { class: 'logbox', 'data-box': c.id })));
+      el('div', { class: 'tools' }, spendBtn, balBtn, merBtn, logBtn), el('div', { class: 'logbox', 'data-box': c.id })));
   });
 }
 async function loadCustomers(){
@@ -514,6 +548,17 @@ $('custList').addEventListener('click', async e => {
       ev.preventDefault(); const delta = Number(f.querySelector('[data-f="delta"]').value), errEl = f.querySelector('[data-f="err"]'); errEl.textContent = '';
       if(!f.querySelector('[data-f="delta"]').value || !Number.isFinite(delta) || delta === 0){ errEl.textContent = 'اكتب مبلغ (غير صفر).'; return; }
       try{ await storeApi({ action: 'customer_spend', uid: id, deltaUsd: delta, note: f.querySelector('[data-f="note"]').value }); await loadCustomers(); }
+      catch(err){ errEl.textContent = err.message; }
+    });
+    card.insertBefore(f, box);
+  } else if(b.dataset.act === 'bal'){
+    if(card.querySelector('form')){ card.querySelector('form').remove(); return; }
+    const f = el('form', { 'data-balance-form': id }, el('input', { type: 'number', step: '0.0001', placeholder: 'المبلغ $ (سالب = استرجاع نقدي أو تصحيح)', 'data-f': 'delta' }), el('input', { type: 'text', maxlength: '120', placeholder: 'ملاحظة (إجباري تقريباً: ليش؟)', 'data-f': 'note' }), el('button', { type: 'submit', text: 'تطبيق' }), el('div', { class: 'err', 'data-f': 'err', style: 'color:var(--err);font-size:.85rem;' }));
+    f.addEventListener('submit', async ev => {
+      ev.preventDefault(); const dv = f.querySelector('[data-f="delta"]'), delta = Number(dv.value), errEl = f.querySelector('[data-f="err"]'); errEl.textContent = '';
+      if(!dv.value || !Number.isFinite(delta) || delta === 0){ errEl.textContent = 'اكتب مبلغ (غير صفر).'; return; }
+      if(!window.confirm((delta > 0 ? 'إضافة ' : 'خصم ') + usd(Math.abs(delta)) + ' ' + (delta > 0 ? 'لرصيد' : 'من رصيد') + ' الزبون؟')) return;
+      try{ await storeApi({ action: 'customer_balance', uid: id, deltaUsd: delta, note: f.querySelector('[data-f="note"]').value }); await loadCustomers(); }
       catch(err){ errEl.textContent = err.message; }
     });
     card.insertBefore(f, box);
@@ -548,8 +593,10 @@ $('custList').addEventListener('click', async e => {
     box.textContent = 'عم يحمّل...';
     try{
       const j = await storeApi({ action: 'customer_log', uid: id }); box.textContent = '';
+      let lg = []; try{ lg = (await storeApi({ action: 'customer_ledger', uid: id })).ledger || []; }catch(e){}
       const VL = { set: 'نقل لـVIP', extend: 'تمديد', lock: 'تثبيت يدوي', cancel: 'إلغاء النقل', auto_lock: 'تثبيت تلقائي (وصل للرقم)' };
-      const all = [...j.log.map(x => ({ at: x.at, text: (x.deltaUsd > 0 ? '+' : '') + usd(x.deltaUsd) + ' ← ' + usd(x.spentAfter) + (x.note ? ' · ' + x.note : '') })), ...(j.vipLog || []).map(x => ({ at: x.at, text: '🏪 ' + (VL[x.action] || x.action) + (x.level ? ' ' + x.level : '') + (x.targetUsd ? ' · وعد ' + usd(x.targetUsd) : '') + (x.days ? ' · ' + x.days + ' يوم' : '') + (x.note ? ' · ' + x.note : '') }))].sort((a, c2) => c2.at - a.at);
+      const LL = { adjust: 'تعديل رصيد', order: 'شراء', order_refund: 'رجوع مبلغ طلب مرفوض', refund: 'استرجاع طلب', topup: 'إيداع', topup_refund: 'استرجاع إيداع' };
+      const all = [...lg.map(x => ({ at: x.at, text: '💵 ' + (LL[x.type] || x.type) + ' ' + (x.amountUsd > 0 ? '+' : '') + usd4(x.amountUsd) + ' ← رصيد ' + usd4(x.balanceAfter) + (x.ref ? ' · ' + x.ref : '') + (x.note ? ' · ' + x.note : '') })), ...j.log.map(x => ({ at: x.at, text: (x.deltaUsd > 0 ? '+' : '') + usd(x.deltaUsd) + ' ← ' + usd(x.spentAfter) + (x.note ? ' · ' + x.note : '') })), ...(j.vipLog || []).map(x => ({ at: x.at, text: '🏪 ' + (VL[x.action] || x.action) + (x.level ? ' ' + x.level : '') + (x.targetUsd ? ' · وعد ' + usd(x.targetUsd) : '') + (x.days ? ' · ' + x.days + ' يوم' : '') + (x.note ? ' · ' + x.note : '') }))].sort((a, c2) => c2.at - a.at);
       if(!all.length) box.textContent = 'ما في تعديلات.';
       all.forEach(x => box.append(el('div', { text: new Date(x.at).toLocaleString('en-GB') + ' · ' + x.text })));
     }catch(err){ box.textContent = 'تعذّر: ' + err.message; }
@@ -557,22 +604,22 @@ $('custList').addEventListener('click', async e => {
 });
 
 // ===== الطلبات =====
-const ST_LABEL = { awaiting_payment: 'بانتظار الدفع', payment_submitted: 'دفع مرسل', done: 'منفّذ', rejected: 'مرفوض', cancelled: 'ملغى', refunded: 'مسترجع', expired: 'منتهي' };
-const FILTER_COUNT = { payment_submitted: c => c.payment_submitted || 0, open: c => (c.payment_submitted || 0) + (c.awaiting_payment || 0), all: (c, t) => t, done: c => c.done || 0, rejected: c => c.rejected || 0, refunded: c => c.refunded || 0, cancelled: c => c.cancelled || 0, expired: c => c.expired || 0 };
+const ST_LABEL = { awaiting_payment: 'بانتظار الدفع', processing: 'قيد التنفيذ', payment_submitted: 'دفع مرسل', done: 'منفّذ', rejected: 'مرفوض', cancelled: 'ملغى', refunded: 'مسترجع', expired: 'منتهي' };
+const FILTER_COUNT = { waiting: c => (c.payment_submitted || 0) + (c.processing || 0), processing: c => c.processing || 0, payment_submitted: c => c.payment_submitted || 0, open: c => (c.payment_submitted || 0) + (c.awaiting_payment || 0) + (c.processing || 0), all: (c, t) => t, done: c => c.done || 0, rejected: c => c.rejected || 0, refunded: c => c.refunded || 0, cancelled: c => c.cancelled || 0, expired: c => c.expired || 0 };
 let ORDERS = [], ORD_TIMER = null;
 function amountText(o){ const d = Number(o.method.decimals) || 0; return Number(o.amount).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + o.method.currency; }
-function updateOrderBadge(counts){ const n = (counts && counts.payment_submitted) || 0, b = $('ordBadge'); b.textContent = String(n); b.hidden = !n; }
+function updateOrderBadge(counts){ const n = counts ? (counts.payment_submitted || 0) + (counts.processing || 0) : 0, b = $('ordBadge'); b.textContent = String(n); b.hidden = !n; }
 function updateFilterLabels(counts, total){
   [...$('ordFilter').options].forEach(o => { const base = o.dataset.base || (o.dataset.base = o.textContent); const f = FILTER_COUNT[o.value]; o.textContent = base + ' (' + (f ? f(counts, total) : 0) + ')'; });
 }
 async function loadOrders(){
   $('ordMsg').textContent = '';
   try{
-    const j = await storeApi({ action: 'orders_list', status: $('ordFilter').value, q: $('ordSearch').value.trim() });
+    const j = await storeApi({ action: 'orders_list', status: $('ordFilter').value, kind: $('ordKind').value, q: $('ordSearch').value.trim() });
     ORDERS = j.orders; updateOrderBadge(j.counts); updateFilterLabels(j.counts, j.total); $('ordCount').textContent = '(' + j.orders.length + ')'; renderOrders();
   }catch(e){ $('ordMsg').textContent = 'تعذّر تحميل الطلبات: ' + e.message; }
 }
-async function refreshOrderBadge(){ try{ const j = await storeApi({ action: 'orders_list', status: 'payment_submitted' }); updateOrderBadge(j.counts); }catch(e){} }
+async function refreshOrderBadge(){ try{ const j = await storeApi({ action: 'orders_list', status: 'waiting' }); updateOrderBadge(j.counts); }catch(e){} }
 function renderOrders(){
   const box = $('ordList'); box.textContent = '';
   if(!ORDERS.length){ box.append(el('div', { class: 'empty', id: 'ordEmpty', text: 'ما في طلبات هون.' })); return; }
@@ -580,9 +627,9 @@ function renderOrders(){
     const sub = (t) => el('div', { class: 'sm', text: t });
     const card = el('div', { class: 'ord', 'data-ord': o.id },
       el('div', { class: 'top' }, el('span', { class: 'code', text: o.code }), el('span', { class: 'pill ' + o.status, text: ST_LABEL[o.status] || o.status })),
-      el('div', { class: 'nm', style: 'margin-top:4px;font-weight:700;word-break:break-word;', text: (o.itemPath || o.itemName) }),
-      sub('Player ID: ' + o.playerId), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
-      sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
+      el('div', { class: 'nm', style: 'margin-top:4px;font-weight:700;word-break:break-word;', text: (o.kind === 'topup' ? '📥 ' : '') + (o.itemPath || o.itemName) }),
+      o.kind === 'topup' ? '' : sub('Player ID: ' + o.playerId), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
+      o.kind === 'topup' ? sub('الإيداع: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name) : o.kind === 'order' ? sub('السعر: ' + usd(o.priceUsd) + ' · انخصم من رصيده') : sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
       sub('أُنشئ: ' + new Date(o.createdAt).toLocaleString('en-GB') + (o.doneAt ? ' · نُفّذ: ' + new Date(o.doneAt).toLocaleString('en-GB') : '')));
     if(o.proof){
       const pr = el('div', { class: 'sm', 'data-proof': o.id, text: 'الإيصال: ' + (o.proof.ref || '—') + (o.proof.hasImage ? ' · فيه صورة' : '') + ' · أُرسل ' + new Date(o.proof.submittedAt).toLocaleString('en-GB') });
@@ -593,14 +640,14 @@ function renderOrders(){
     if(o.adminNote) card.append(sub('ملاحظتك: ' + o.adminNote));
     const t = el('div', { class: 'tools' });
     if(o.proof && o.proof.hasImage) t.append(el('button', { 'data-oact': 'proof', 'data-id': o.id, text: '🧾 عرض الإيصال' }));
-    if(['awaiting_payment', 'payment_submitted', 'expired'].includes(o.status)){ t.append(el('button', { 'data-oact': 'done', 'data-id': o.id, text: '✅ تم التنفيذ' }), el('button', { 'data-oact': 'reject', 'data-id': o.id, text: '❌ رفض' })); }
-    if(o.status === 'done') t.append(el('button', { 'data-oact': 'refund', 'data-id': o.id, text: '↩️ استرجاع' }));
+    if(['awaiting_payment', 'payment_submitted', 'expired', 'processing'].includes(o.status)){ t.append(el('button', { 'data-oact': 'done', 'data-id': o.id, text: o.kind === 'topup' ? '✅ تأكيد الإيداع' : '✅ تم التنفيذ' }), el('button', { 'data-oact': 'reject', 'data-id': o.id, text: '❌ رفض' })); }
+    if(o.status === 'done') t.append(el('button', { 'data-oact': 'refund', 'data-id': o.id, text: o.kind === 'topup' ? '↩️ استرجاع الإيداع' : '↩️ استرجاع' }));
     t.append(el('button', { 'data-oact': 'events', 'data-id': o.id, text: '📜 السجل' }));
     card.append(t, el('div', { class: 'ev', 'data-ev': o.id }));
     box.append(card);
   });
 }
-$('ordFilter').addEventListener('change', loadOrders);
+$('ordFilter').addEventListener('change', loadOrders); $('ordKind').addEventListener('change', loadOrders);
 $('ordSearch').addEventListener('input', () => { clearTimeout(ORD_TIMER); ORD_TIMER = setTimeout(loadOrders, 300); });
 $('btnOrdRefresh').onclick = loadOrders;
 $('ordList').addEventListener('click', async e => {
@@ -622,11 +669,14 @@ $('ordList').addEventListener('click', async e => {
     if(card.querySelector('form')){ card.querySelector('form').remove(); return; }
     const act = b.dataset.oact, isReject = act === 'reject';
     const input = el('input', { type: 'text', maxlength: '200', 'data-f': 'note', placeholder: isReject ? 'سبب الرفض (إجباري، بيوصل للزبون)' : 'ملاحظة (اختياري)' });
-    const f = el('form', {}, input, el('button', { type: 'submit', text: act === 'done' ? 'تأكيد التنفيذ' : isReject ? 'رفض' : 'استرجاع' }), el('div', { 'data-f': 'err', style: 'grid-column:1/-1;color:var(--err);font-size:.85rem;' }));
+    const f = el('form', {}, input, el('button', { type: 'submit', text: act === 'done' ? (o.kind === 'topup' ? 'تأكيد الإيداع' : 'تأكيد التنفيذ') : isReject ? 'رفض' : 'استرجاع' }), el('div', { 'data-f': 'err', style: 'grid-column:1/-1;color:var(--err);font-size:.85rem;' }));
     f.addEventListener('submit', async ev => {
       ev.preventDefault(); const note = input.value.trim(), errEl = f.querySelector('[data-f="err"]'); errEl.textContent = '';
       if(isReject && !note){ errEl.textContent = 'اكتب سبب الرفض.'; return; }
-      const msg = act === 'done' ? 'تأكيد تنفيذ ' + o.code + '؟ بيتحسب ' + usd(o.priceUsd) + ' بصرف الزبون.' : act === 'refund' ? 'استرجاع ' + o.code + '؟ بيتنقص ' + usd(o.priceUsd) + ' من صرف الزبون.' : 'رفض ' + o.code + '؟';
+      const tp = o.kind === 'topup', od = o.kind === 'order';
+      const msg = act === 'done' ? (tp ? 'تأكيد إيداع ' + o.code + '؟ بيزيد ' + usd(o.priceUsd) + ' لرصيد الزبون.' : 'تأكيد تنفيذ ' + o.code + '؟ بيتحسب ' + usd(o.priceUsd) + ' بصرف الزبون (VIP).')
+        : act === 'refund' ? (tp ? 'استرجاع إيداع ' + o.code + '؟ بيتنقص ' + usd(o.priceUsd) + ' من رصيد الزبون.' : od ? 'استرجاع ' + o.code + '؟ بيرجع ' + usd(o.priceUsd) + ' لرصيد الزبون وبيتنقص من صرفه.' : 'استرجاع ' + o.code + '؟ بيتنقص ' + usd(o.priceUsd) + ' من صرف الزبون.')
+        : (od ? 'رفض ' + o.code + '؟ بيرجع ' + usd(o.priceUsd) + ' لرصيد الزبون.' : 'رفض ' + o.code + '؟');
       if(!window.confirm(msg)) return;
       try{ await storeApi(isReject ? { action: 'order_reject', id, reason: note } : { action: act === 'done' ? 'order_done' : 'order_refund', id, note }); await loadOrders(); }
       catch(err){ errEl.textContent = err.message; }

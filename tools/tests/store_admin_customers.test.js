@@ -5,11 +5,15 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m)
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const html = fs.readFileSync(path.join(__dirname, "../../docs/store-admin.html"), "utf8").replace(/<script src="[^"]+"><\/script>\s*/g, "");
 const ADMIN = "09DZoXtB6afGTGHtFghiUx5t71N2";
-const calls = []; let authCb = null, SIZES = [200, 300, 500, 800, 1200, 2000, 3000, 5000, 8000], configured = false, vipFail = null, spendFail = null, logMode = "ok";
+const calls = []; let confirmAnswerC = true, confirmTextsC = []; let authCb = null, SIZES = [200, 300, 500, 800, 1200, 2000, 3000, 5000, 8000], configured = false, vipFail = null, spendFail = null, logMode = "ok";
 const info = (spent) => { let rest = spent, lv = 1; for (const z of SIZES) { if (rest + 1e-9 >= z) { rest -= z; lv++; } else break; } const max = lv > 9; return { vip: lv, progressUsd: max ? 0 : rest, sizeUsd: max ? null : SIZES[lv - 1], remainingUsd: max ? 0 : SIZES[lv - 1] - rest, nextVip: max ? null : lv + 1 }; };
-let CUSTS = [{ id: "c1", name: "Sara", email: "sara@x.com", spentUsd: 250, createdAt: 1, lastSeenAt: 1792000000000 }, { id: "c2", name: "<img src=x onerror=alert(1)>", email: "", spentUsd: 21000, createdAt: 1, lastSeenAt: 0 }];
+let CUSTS = [{ id: "c1", name: "Sara", email: "sara@x.com", spentUsd: 250, balanceUsd: 12.5, createdAt: 1, lastSeenAt: 1792000000000 }, { id: "c2", name: "<img src=x onerror=alert(1)>", email: "", spentUsd: 21000, balanceUsd: 0, createdAt: 1, lastSeenAt: 0 }];
+let LEDGER = [], balFail = null;
 const view = () => CUSTS.map(c => ({ ...c, ...info(c.spentUsd) }));
 function server(b) {
+  if (b.action === "wallet_get") return { st: 200, j: { ok: true, cfg: { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 }, configured: true, updatedAt: 1 } };
+  if (b.action === "customer_balance") { if (balFail) return { st: 400, j: { ok: false, error: "insufficient_balance", message: balFail } }; const c = CUSTS.find(x => x.id === b.uid); c.balanceUsd = Math.round((c.balanceUsd + b.deltaUsd) * 10000) / 10000; return { st: 200, j: { ok: true } }; }
+  if (b.action === "customer_ledger") return { st: 200, j: { ok: true, ledger: LEDGER } };
   if (b.action === "vip_get") return { st: 200, j: { ok: true, sizes: SIZES, configured, updatedAt: 0 } };
   if (b.action === "vip_save") { if (vipFail) return { st: 400, j: { ok: false, error: "bad_vip", message: vipFail } }; SIZES = b.sizes; configured = true; return { st: 200, j: { ok: true, sizes: SIZES, configured: true, updatedAt: 1 } }; }
   if (b.action === "customers_list") { const q = (b.q || "").toLowerCase(); return { st: 200, j: { ok: true, total: CUSTS.length, customers: view().filter(c => !q || (c.name + " " + c.email).toLowerCase().includes(q)) } }; }
@@ -18,11 +22,13 @@ function server(b) {
   return { st: 400, j: { ok: false } };
 }
 const dom = new JSDOM(html, { url: "https://example.test/store-admin.html", runScripts: "dangerously", pretendToBeVisual: true, beforeParse(w) {
+  w.confirm = (t) => { confirmTextsC.push(t); return confirmAnswerC; };
   const auth = () => ({ currentUser: { uid: ADMIN, email: "a@x.com", getIdToken: async () => "TOKEN" }, onAuthStateChanged(cb) { authCb = cb; }, signInWithPopup() { return Promise.resolve(); }, signOut() {} });
   auth.GoogleAuthProvider = function () {}; w.firebase = { initializeApp() {}, auth };
   w.fetch = async (url, o) => { const body = JSON.parse(o.body); calls.push({ auth: o.headers.Authorization, body }); const r = server(body); return { ok: r.st < 400, status: r.st, json: async () => r.j }; };
 } });
 const d = dom.window.document, $ = id => d.getElementById(id);
+const submit0 = f => f.dispatchEvent(new dom.window.Event("submit", { cancelable: true }));
 const last = (a) => calls.filter(c => c.body.action === a).pop();
 const cards = () => [...d.querySelectorAll("#custList .cust")];
 const typeIn = (el, v) => { el.value = v; el.dispatchEvent(new dom.window.Event("input", { bubbles: true })); };
@@ -73,6 +79,24 @@ const typeIn = (el, v) => { el.value = v; el.dispatchEvent(new dom.window.Event(
   btn("c1", "log").click(); ok(box.textContent === "", "pressing again hides it");
   logMode = "empty"; btn("c1", "log").click(); await sleep(60); ok(/ما في تعديلات/.test(box.textContent), "an empty log says so"); btn("c1", "log").click();
   logMode = "fail"; btn("c1", "log").click(); await sleep(60); ok(/تعذّر/.test(box.textContent), "a failure is shown");
+  /* ---- balance (in dollars and points) ---- */
+  logMode = "ok"; await sleep(50);
+  ok(/الرصيد \$12\.50 \(12,500 نقطة\)/.test(cards()[0].querySelector('[data-bal]').textContent) && /الرصيد \$0\.00 \(0 نقطة\)/.test(cards()[1].querySelector('[data-bal]').textContent), "each customer shows his balance in dollars and in points (1000 points = $1)");
+  const balBtn = (id) => d.querySelector(`[data-cust="${id}"] button[data-act="bal"]`);
+  balBtn("c1").click(); let bf = d.querySelector('[data-cust="c1"] form[data-balance-form]');
+  ok(!!bf && /سالب/.test(bf.querySelector('[data-f="delta"]').placeholder) && bf.querySelector('[data-f="delta"]').step === "0.0001", "'💵 تعديل الرصيد' opens a form (amount in dollars; negative means a cash refund or a correction)");
+  const pre2 = calls.length; submit0(bf); await sleep(30); ok(/اكتب مبلغ/.test(bf.querySelector('[data-f="err"]').textContent) && calls.length === pre2, "an empty amount is refused on the screen");
+  bf.querySelector('[data-f="delta"]').value = "0"; submit0(bf); await sleep(30); ok(/اكتب مبلغ/.test(bf.querySelector('[data-f="err"]').textContent) && calls.length === pre2, "so is zero");
+  bf.querySelector('[data-f="delta"]').value = "-5.5"; bf.querySelector('[data-f="note"]').value = "cash refund"; confirmAnswerC = false; submit0(bf); await sleep(30);
+  ok(calls.length === pre2 && /خصم \$5\.50 من رصيد الزبون/.test(confirmTextsC.pop()), "a deduction asks first (and says 'from his balance')");
+  confirmAnswerC = true; submit0(bf); await sleep(120); const bp = last("customer_balance").body;
+  ok(bp.uid === "c1" && bp.deltaUsd === -5.5 && typeof bp.deltaUsd === "number" && bp.note === "cash refund" && /الرصيد \$7\.00 \(7,000 نقطة\)/.test(cards()[0].querySelector('[data-bal]').textContent) && !d.querySelector('[data-cust="c1"] form[data-balance-form]'), "applying sends the amount (as a number) and the note, the list refreshes ($7.00 = 7,000 points) and the form closes");
+  balBtn("c1").click(); bf = d.querySelector('[data-cust="c1"] form[data-balance-form]'); balFail = "رصيد الزبون ما بيكفي لهالخصم."; bf.querySelector('[data-f="delta"]').value = "-500"; submit0(bf); await sleep(80);
+  ok(/ما بيكفي/.test(d.querySelector('[data-cust="c1"] form[data-balance-form] [data-f="err"]').textContent), "a refusal from the server is shown inside the form"); balFail = null;
+  balBtn("c1").click(); ok(!d.querySelector('[data-cust="c1"] form[data-balance-form]'), "pressing the button again closes the form");
+  LEDGER = [{ type: "topup", amountUsd: 100, balanceAfter: 112.5, ref: "D-1001", note: "", at: 1792000200000, by: "admin" }, { type: "order", amountUsd: -0.9234, balanceAfter: 12.5, ref: "T-1001", note: "60 UC", at: 1792000100000, by: "customer" }]; d.querySelector('[data-box="c1"]').textContent = "";
+  d.querySelector('[data-cust="c1"] button[data-act="log"]').click(); await sleep(100); const lines = [...d.querySelector('[data-box="c1"]').children].map(x => x.textContent);
+  ok(lines.some(x => /💵 إيداع \+\$100\.00 ← رصيد \$112\.50 · D-1001/.test(x)) && lines.some(x => /💵 شراء -\$0\.9234 ← رصيد \$12\.50 · T-1001 · 60 UC/.test(x)), "the history now also lists his balance movements in plain words (deposit, purchase...), with 4-decimal amounts kept");
   $("tabCatalog").click(); ok(!$("viewCatalog").hidden && $("viewCustomers").hidden, "back to the catalog tab");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });
