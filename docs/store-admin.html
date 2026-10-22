@@ -231,7 +231,8 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <div class="h">طرق الدفع (للإيداع)</div>
       <div style="color:var(--dim);font-size:.9rem;line-height:1.8;margin-bottom:12px;">الأسعار بالدولار. لكل طريقة دفع <b>سعر صرف</b> (كم وحدة من عملتها مقابل 1 دولار) ونسبة إضافية اختيارية. غيّر السعر لما يتقلّب، والصفحة العامة بتحسب الأسعار لحالها.</div>
       <div id="pmList"></div>
-      <div class="bar"><button id="btnAddMethod">＋ طريقة دفع</button><button id="btnSaveMethods">حفظ طرق الدفع</button></div>
+      <div class="bar"><button id="btnAddMethod">＋ طريقة دفع</button><button id="btnSaveMethods">حفظ طرق الدفع</button>
+        <button id="btnChainLock" type="button" title="بيقفل أرقام عمليات الإيداعات اللي انأكدت قبل، حتى ما حدا يستعملها مرة تانية">🔒 قفل أرقام العمليات المؤكدة</button></div>
       <div id="pmMsg" role="alert"></div>
     </div>
   </div>
@@ -484,6 +485,12 @@ $('pmList').addEventListener('click', e => {
   renderMethods();
 });
 $('btnAddMethod').onclick = () => { if(METHODS.length >= 8){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = 'الحد الأقصى 8 طرق دفع.'; return; } METHODS.push({ name: '', currency: '', rate: '', decimals: 2, feePct: 0, enabled: true, account: '', instructions: '' }); renderMethods(); };
+$('btnChainLock').onclick = async () => {
+  $('btnChainLock').disabled = true; $('pmMsg').textContent = '';
+  try{ const j = await storeApi({ action: 'chain_backfill' }); $('pmMsg').style.color = 'var(--ok, #4caf50)'; $('pmMsg').textContent = j.locked ? 'انقفل ' + j.locked + ' رقم عملية ✓' : 'كلها مقفولة من قبل ✓ (ما في شي جديد)'; }
+  catch(e){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = e.message; }
+  $('btnChainLock').disabled = false;
+};
 $('btnSaveMethods').onclick = async () => {
   const body = { action: 'payments_save', methods: METHODS.map(m => ({ id: m.id, name: String(m.name || '').trim(), currency: String(m.currency || '').trim(), rate: m.rate === '' ? 0 : Number(m.rate), decimals: Number(m.decimals), feePct: m.feePct === '' ? 0 : Number(m.feePct), enabled: m.enabled !== false, account: String(m.account || '').trim(), instructions: String(m.instructions || '').trim(), autoVerify: m.autoVerify === 'bep20' || m.autoVerify === 'trc20' ? m.autoVerify : '' })) };
   $('btnSaveMethods').disabled = true; $('pmMsg').textContent = '';
@@ -776,8 +783,12 @@ $('ordList').addEventListener('click', async e => {
         : act === 'refund' ? (tp ? 'استرجاع إيداع ' + o.code + '؟ بيتنقص ' + usd(o.priceUsd) + ' من رصيد الزبون.' : od ? 'استرجاع ' + o.code + '؟ بيرجع ' + usd(o.priceUsd) + ' لرصيد الزبون وبيتنقص من صرفه.' : 'استرجاع ' + o.code + '؟ بيتنقص ' + usd(o.priceUsd) + ' من صرف الزبون.')
         : (od ? 'رفض ' + o.code + '؟ بيرجع ' + usd(o.priceUsd) + ' لرصيد الزبون.' : 'رفض ' + o.code + '؟');
       if(!window.confirm(msg)) return;
-      try{ const j = await storeApi(isReject ? { action: 'order_reject', id, reason: note } : { action: act === 'done' ? 'order_done' : 'order_refund', id, note }); await loadOrders(); if(j.warning){ $('ordMsg').style.color = '#ffd48a'; $('ordMsg').textContent = j.warning; } }
-      catch(err){ errEl.textContent = err.message; }
+      const run = async (force) => { const j = await storeApi(isReject ? { action: 'order_reject', id, reason: note } : { action: act === 'done' ? 'order_done' : 'order_refund', id, note, ...(force ? { force: true } : {}) }); await loadOrders(); if(j.warning){ $('ordMsg').style.color = '#ffd48a'; $('ordMsg').textContent = j.warning; } };
+      try{ await run(false); }
+      catch(err){
+        if(err.code === 'txid_used' && act === 'done' && window.confirm(err.message + '\n\nإذا متأكد إنها دفعة جديدة اضغط موافق.')){ try{ await run(true); }catch(err2){ errEl.textContent = err2.message; } }          // رقم عملية مستعمل: ما بيتأكد إلا بتأكيدك المقصود
+        else errEl.textContent = err.message;
+      }
     });
     card.insertBefore(f, card.querySelector('.ev'));
   }

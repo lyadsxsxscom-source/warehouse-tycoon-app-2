@@ -5,7 +5,7 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m)
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const html = fs.readFileSync(path.join(__dirname, "../../docs/store-admin.html"), "utf8").replace(/<script src="[^"]+"><\/script>\s*/g, "");
 const ADMIN = "09DZoXtB6afGTGHtFghiUx5t71N2"; const NOW = Date.now();
-const calls = []; let authCb = null, outcome = { outcome: "done", reason: "" }, failNext = null;
+const calls = []; let authCb = null, outcome = { outcome: "done", reason: "" }, failNext = null, usedOnce = false, confirms = [], confirmAnswer = true, confirmSeq = [];
 let METHODS = [{ id: "usdtb", name: "USDT BEP20", currency: "USDT", rate: 1, decimals: 2, feePct: 0, enabled: true, instructions: "", account: "0x" + "ab".repeat(20), autoVerify: "bep20" }, { id: "sham", name: "شام كاش", currency: "ل.س", rate: 142.5, decimals: 0, feePct: 0, enabled: true, instructions: "", account: "0932", autoVerify: "" }];
 let WALLET = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10, autoCapUsd: 200 };
 const TX = "0x" + "9f".repeat(32);
@@ -22,6 +22,8 @@ function server(b) {
   if (failNext) { const f = failNext; failNext = null; return { st: 400, j: { ok: false, error: "x", message: f } }; }
   if (b.action === "orders_list") return { st: 200, j: { ok: true, orders: ORDERS.map(o => JSON.parse(JSON.stringify(o))), counts: { payment_submitted: 5, done: 1 }, total: ORDERS.length } };
   if (b.action === "order_chain_check") { const o = ORDERS.find(x => x.id === b.id); if (outcome.outcome === "done") { o.status = "done"; o.chainInfo = { state: "ok", reason: "", txid: TX, network: "bep20", amount: 10.0137, confirmations: 11, tries: 1, at: NOW }; } return { st: 200, j: { ok: true, outcome: outcome.outcome, reason: outcome.reason, order: o } }; }
+  if (b.action === "order_done") { const o = ORDERS.find(x => x.id === b.id); if (usedOnce && !b.force) return { st: 409, j: { ok: false, error: "txid_used", message: "رقم العملية هاد استُعمل قبل بإيداع D-0999. إذا متأكد إنها دفعة جديدة، أكّد مرة تانية." } }; o.status = "done"; return { st: 200, j: { ok: true, order: o } }; }
+  if (b.action === "chain_backfill") return { st: 200, j: { ok: true, locked: b.__n === undefined ? (outcome.locked === undefined ? 3 : outcome.locked) : b.__n } };
   if (b.action === "payments_get") return { st: 200, j: { ok: true, methods: METHODS, updatedAt: 1 } };
   if (b.action === "payments_save") { METHODS = b.methods; return { st: 200, j: { ok: true, methods: METHODS, updatedAt: 2 } }; }
   if (b.action === "wallet_get") return { st: 200, j: { ok: true, cfg: WALLET, configured: true, updatedAt: 1 } };
@@ -30,7 +32,7 @@ function server(b) {
 }
 const dom = new JSDOM(html, { url: "https://example.test/store-admin.html", runScripts: "dangerously", pretendToBeVisual: true, beforeParse(w) {
   const auth = () => ({ currentUser: { uid: ADMIN, email: "a@x.com", getIdToken: async () => "TOKEN" }, onAuthStateChanged(cb) { authCb = cb; }, signInWithPopup() { return Promise.resolve(); }, signOut() {} });
-  auth.GoogleAuthProvider = function () {}; w.firebase = { initializeApp() {}, auth }; w.confirm = () => true;
+  auth.GoogleAuthProvider = function () {}; w.firebase = { initializeApp() {}, auth }; w.confirm = (m) => { confirms.push(m); return confirmSeq.length ? confirmSeq.shift() : confirmAnswer; };
   w.fetch = async (url, o) => { const body = JSON.parse(o.body); calls.push({ auth: o.headers.Authorization, body }); const r = server(body); return { ok: r.st < 400, status: r.st, json: async () => r.j }; };
 } });
 const d = dom.window.document, $ = id => d.getElementById(id);
@@ -60,5 +62,13 @@ const click = async (el) => { el.click(); await sleep(120); };
   await click(btn("c4", "chaincheck")); ok(last("order_chain_check").body.id === "c4" && /D-1004: تم تأكيد الإيداع تلقائياً ✓/.test($("ordMsg").textContent) && /أُكّد تلقائياً/.test(line("c4")) && !btn("c4", "chaincheck"), "pressing it checks now; when it works the card turns green ('confirmed') and the button goes");
   for (const [o, re] of [[{ outcome: "pending" }, /لسا بانتظار الشبكة/], [{ outcome: "retry" }, /تعذّر الاتصال بالشبكة، جرّب بعد شوي/], [{ outcome: "manual", reason: "المبلغ المحوّل 9 يختلف" }, /D-1002: المبلغ المحوّل 9 يختلف/], [{ outcome: "closed" }, /الإيداع منتهي/], [{ outcome: "no_ref" }, /ما في رقم عملية/]]) { outcome = { reason: "", ...o }; await click(btn("c2", "chaincheck")); ok(re.test($("ordMsg").textContent), "outcome '" + o.outcome + "' is explained in plain words"); }
   failNext = "تعذّر الاتصال"; await click(btn("c2", "chaincheck")); ok(/تعذّر الاتصال/.test($("ordMsg").textContent), "an error is shown");
+  /* ---- a transaction number that was already used ---- */
+  usedOnce = true; ORDERS.push(top("c7", "D-1007", { chainInfo: null })); await click($("btnOrdRefresh")); await click(btn("c7", "done")); const f7 = card("c7").querySelector("form"); f7.dispatchEvent(new dom.window.Event("submit", { cancelable: true })); await sleep(200);
+  ok(confirms.some(m => /رقم العملية هاد استُعمل قبل بإيداع D-0999/.test(m) && /إذا متأكد إنها دفعة جديدة اضغط موافق/.test(m)) && last("order_done").body.force === true && ORDERS.find(x => x.id === "c7").status === "done", "confirming a deposit whose transaction number was already used shows the warning naming the earlier deposit; only if you agree it confirms again (with 'force')");
+  ORDERS.push(top("c8", "D-1008", { chainInfo: null })); confirmSeq = [true, false]; await click($("btnOrdRefresh")); await click(btn("c8", "done")); const f8 = card("c8").querySelector("form"); const nDone = calls.filter(c => c.body.action === "order_done").length; f8.dispatchEvent(new dom.window.Event("submit", { cancelable: true })); await sleep(200);
+  ok(calls.filter(c => c.body.action === "order_done").length === nDone + 1 && ORDERS.find(x => x.id === "c8").status === "payment_submitted", "saying no to that warning sends nothing more and the deposit stays waiting");
+  /* ---- locking the old numbers ---- */
+  $("tabPayments").click(); await sleep(250); await click($("btnChainLock")); ok(last("chain_backfill") && /انقفل 3 رقم عملية ✓/.test($("pmMsg").textContent) && !$("btnChainLock").disabled && /🔒 قفل أرقام العمليات المؤكدة/.test($("btnChainLock").textContent), "the '🔒 lock confirmed numbers' button locks the numbers of deposits confirmed before and says how many");
+  outcome = { outcome: "done", reason: "", locked: 0 }; await click($("btnChainLock")); ok(/كلها مقفولة من قبل ✓/.test($("pmMsg").textContent), "and says so when there is nothing new");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e.stack.split("\n").slice(0, 3).join(" | ")); process.exit(1); });

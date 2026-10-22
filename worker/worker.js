@@ -1411,6 +1411,7 @@ async function handleAdminStore(request, env) {
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
       const note = cleanText(b.action === "order_reject" ? b.reason : b.note, 200);
       if (b.action === "order_reject" && !note) throw new ApiError("reason_required", "اكتب سبب الرفض (بيوصل للزبون).");
+      if (b.action === "order_done") await storeChainLockForManual(env, id, b.force === true);
       const r = await storeOrderAction(env, b.action, id, note, "admin");
       return jsonResponse({ ok: true, ...(r.warning ? { warning: r.warning } : {}), order: r.order }, 200);
     }
@@ -1421,6 +1422,7 @@ async function handleAdminStore(request, env) {
       const fresh = await fsGetDoc(env, "storeOrders/" + id); if (!fresh.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
       return jsonResponse({ ok: true, outcome: r.outcome, reason: r.reason || "", order: storeOrderOut(id, fresh.data, Date.now(), true) }, 200);
     }
+    if (b.action === "chain_backfill") return jsonResponse({ ok: true, locked: await storeChainBackfill(env) }, 200);
     if (b.action === "order_chain_check") {                    // تحقق يدوي الآن من البلوكتشين لإيداع USDT
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
       const r = await storeChainVerifyOnce(env, id), fresh = await fsGetDoc(env, "storeOrders/" + id); if (!fresh.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
@@ -2000,7 +2002,7 @@ const CHAIN_NET = {
 };
 const CHAIN_TOPIC = "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const BSC_RPCS = ["https://bsc-dataseed.bnbchain.org", "https://bsc-dataseed1.bnbchain.org", "https://bsc-dataseed2.bnbchain.org"];
-const CHAIN_CLAIM_WINDOW_MS = 24 * 3600000, CHAIN_SKEW_MS = 5 * 60000, CHAIN_PENDING_TIMEOUT_MS = 3 * 3600000;
+const CHAIN_CLAIM_WINDOW_MS = 24 * 3600000, CHAIN_SKEW_MS = 60000, CHAIN_PENDING_TIMEOUT_MS = 3 * 3600000;
 let CHAIN_FAST_MS = [10000, 10000];
 const chainSleep = (ms) => new Promise(r => setTimeout(r, ms));
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -2096,13 +2098,31 @@ async function storeChainVerifyOnce(env, id) {
     : res.timeMs > created + CHAIN_CLAIM_WINDOW_MS ? "العملية بعد مهلة الطلب (24 ساعة)."
     : Number(o.priceUsd) > wc.autoCapUsd ? "الإيداع (" + o.priceUsd + "$) فوق سقف التأكيد التلقائي (" + wc.autoCapUsd + "$): راجعه يدوياً." : "";
   if (why) return await manual(why, { txid: tx, network: o.autoVerify, amount: got, confirmations: res.confirmations });
-  const claim = "storeChainTx/" + o.autoVerify + "_" + tx;
-  try { await fsCommit(env, [{ update: { name: docName(env, claim), fields: objToFields({ orderId: id, uid: o.uid, amount: got, network: o.autoVerify, at: now }) }, currentDocument: { exists: false } }]); }
-  catch (e) { if (!e.conflict) throw e; const cl = await fsGetDoc(env, claim); if (!cl.exists || cl.data.orderId !== id) return await manual("رقم العملية هاد انستعمل لطلب إيداع تاني.", { txid: tx, network: o.autoVerify, amount: got }); }
+  const cl0 = await storeChainClaimTx(env, id, { ...o, amount: got }, "auto");
+  if (!cl0.ok) return await manual("رقم العملية هاد انستعمل لطلب إيداع تاني.", { txid: tx, network: o.autoVerify, amount: got });
   try {
     const r = await storeOrderAction(env, "order_done", id, "تحقق تلقائي من البلوكتشين (" + net.label + ")", "auto", { chain: { ...ch, state: "ok", reason: "", txid: tx, network: o.autoVerify, amount: got, confirmations: res.confirmations, need: net.minConf, at: now } });
     return { outcome: "done", order: r.order };
   } catch (e) { if (e instanceof ApiError && (e.code === "bad_status" || e.code === "conflict")) return { outcome: "closed" }; throw e; }
+}
+const chainClaimPath = (net, tx) => "storeChainTx/" + net + "_" + tx;
+async function storeChainClaimTx(env, id, o, by) {          // يحجز رقم العملية لهالإيداع (مرة وحدة بس): بيرجع {ok:true} أو {ok:false, otherId}
+  const tx = chainTxid(o.autoVerify, o.proof && o.proof.ref); if (!tx) return { ok: true, tx: "" };
+  try { await fsCommit(env, [{ update: { name: docName(env, chainClaimPath(o.autoVerify, tx)), fields: objToFields({ orderId: id, uid: o.uid, amount: Number(o.amount) || 0, network: o.autoVerify, by, at: Date.now() }) }, currentDocument: { exists: false } }]); return { ok: true, tx }; }
+  catch (e) { if (!e.conflict) throw e; const cl = await fsGetDoc(env, chainClaimPath(o.autoVerify, tx)); return cl.exists && cl.data.orderId !== id ? { ok: false, tx, otherId: String(cl.data.orderId || "") } : { ok: true, tx }; }
+}
+// تأكيد يدوي من الأدمن لإيداع USDT تلقائي: بنقفل رقم عمليته حتى ما حدا يستعمله لإيداع تاني (وبنحذّرك إذا كان مستعمل قبل)
+async function storeChainLockForManual(env, id, force) {
+  const od = await fsGetDoc(env, "storeOrders/" + id); if (!od.exists) return;
+  const o = od.data; if (o.kind !== "topup" || !o.autoVerify) return;
+  const r = await storeChainClaimTx(env, id, o, "admin");
+  if (!r.ok && !force) { const other = await fsGetDoc(env, "storeOrders/" + r.otherId); throw new ApiError("txid_used", "رقم العملية هاد استُعمل قبل بإيداع " + (other.exists ? String(other.data.code || "ثاني") : "ثاني") + ". إذا متأكد إنها دفعة جديدة، أكّد مرة تانية.", 409); }
+}
+async function storeChainBackfill(env) {                    // يقفل أرقام عمليات الإيداعات المؤكدة سابقاً (آمن لو تكرر)
+  const rows = await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "status", value: "done" }); let locked = 0;
+  for (const r of rows) { const o = r.data; if (o.kind !== "topup" || !o.autoVerify) continue; const tx = chainTxid(o.autoVerify, o.proof && o.proof.ref); if (!tx) continue;
+    try { await fsCommit(env, [{ update: { name: docName(env, chainClaimPath(o.autoVerify, tx)), fields: objToFields({ orderId: r.id, uid: o.uid, amount: Number(o.amount) || 0, network: o.autoVerify, by: "backfill", at: Date.now() }) }, currentDocument: { exists: false } }]); locked++; } catch (e) { if (!e.conflict) throw e; } }
+  return locked;
 }
 async function storeChainVerify(env, id, opts) {
   let r = await storeChainVerifyOnce(env, id);
@@ -2376,6 +2396,7 @@ async function handleStoreOrderApi(request, env, action, ctx) {
       if (view.status !== "awaiting_payment" && view.status !== "payment_submitted") throw new ApiError("bad_status", view.status === "expired" ? "انتهت صلاحية الطلب. اعمل طلب جديد." : "هالطلب مو بحالة بتسمح بإرسال دفع.");
       const ref = cleanText(b.ref, 120); let image = "";
       if (b.image !== undefined && b.image !== "" && b.image !== null) { if (typeof b.image === "string" && b.image.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image)) image = b.image; else throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير."); }
+      if (o.autoVerify && ref) { const tx = chainTxid(o.autoVerify, ref); if (tx) { const cl = await fsGetDoc(env, chainClaimPath(o.autoVerify, tx)); if (cl.exists && cl.data.orderId !== id) throw new ApiError("txid_used", "رقم العملية هاد استُعمل قبل بإيداع ثاني. كل تحويل إله رقم عملية خاص فيه: حوّل مبلغ جديد واستعمل رقمه.", 400); } }
       const hadImage = !!(o.proof && o.proof.hasImage);
       if (!ref && !image && !hadImage) throw new ApiError("bad_proof", "اكتب رقم العملية أو ارفق صورة الإيصال.");
       const proof = { ref: ref || (o.proof && o.proof.ref) || "", hasImage: !!image || hadImage, submittedAt: now, late: now > Number(o.expiresAt) };
@@ -3497,6 +3518,7 @@ export default {
       ctx.waitUntil(storeChainSweep(env).then(r => console.info({ message: "chain sweep", ...r })).catch(e => console.error({ message: "chain sweep failed", error: String(e && e.message || e) })));
       return;
     }
+    ctx.waitUntil(storeChainBackfill(env).then(n => console.info({ message: "chain backfill", locked: n })).catch(e => console.error({ message: "chain backfill failed", error: String(e && e.message || e) })));
     ctx.waitUntil(storeSupplierWatch(env).then(r => console.info({ message: "supplier watch", ...r })).catch(e => console.error({ message: "supplier watch failed", error: String(e && e.message || e) })));
     ctx.waitUntil(storeRetentionSweep(env).then(n => console.info({ message: "store receipts retention", purged: n })).catch(e => console.error({ message: "store receipts retention failed", error: String(e && e.message || e) })));
     ctx.waitUntil(runInactivity(env, { dryRun: false }).then(r => console.info({ message: "inactivity run", ...r, plan: undefined })).catch(e => console.error({ message: "inactivity run failed", error: String(e.message || e) })));
