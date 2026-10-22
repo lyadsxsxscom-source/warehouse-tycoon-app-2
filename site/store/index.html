@@ -113,7 +113,8 @@ body.lock{overflow:hidden}
 #osBody .big{font-size:1.5rem;font-weight:700;direction:ltr;text-align:center;margin:8px 0}
 #osBody .accbox{direction:ltr;text-align:start;background:var(--paper);border:2px solid var(--edge);border-radius:10px;padding:8px 10px;margin:6px 0;word-break:break-all;font-weight:700}
 #osBody .warn{border:2px solid var(--edge);border-radius:10px;padding:8px 10px;margin:10px 0;background:var(--pic);font-size:.95rem;line-height:1.7}
-#osBody .stat{display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:1px 14px}
+#osBody .dellist{margin:8px 0;padding-inline-start:22px;line-height:1.9}
+.stat{display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:1px 14px}
 #osBody img.pv{max-width:100%;max-height:200px;border:2px solid var(--edge);border-radius:8px;margin-top:6px;display:block}
 .myrow{display:block;width:100%;text-align:start;font:inherit;color:var(--ink);background:transparent;border:2px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px;cursor:pointer}
 .myrow .a{display:flex;justify-content:space-between;gap:8px;font-weight:700}
@@ -290,11 +291,13 @@ function renderDrawer(){
     el('div', { class: 'acc-row' }, el('span', { text: 'مستوى VIP' }), el('span', { class: 'vipbadge', id: 'accVip', text: 'VIP ' + c.vip })),
     progBox(c),
     merchantNote(c),
+    closingBox(c),
     el('div', { class: 'acc-row' }, el('span', { text: 'رصيدك' }), el('b', { id: 'accBalance', dir: 'ltr', text: money(c.balanceUsd) })),
     el('button', { class: 'btn-main', id: 'btnDrTopup', type: 'button', style: 'margin-top:10px;', text: '➕ شحن الرصيد' }),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
     ordersSection(),
     el('button', { class: 'btn-ghost', id: 'btnMerchant', type: 'button', text: '🏪 هل أنت تاجر؟ تواصل معنا' }),
+    c.closing ? '' : el('button', { class: 'btn-ghost', id: 'btnDelete', type: 'button', text: '🗑️ احذف حسابي بالمتجر' }),
     el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
   );
 }
@@ -364,6 +367,8 @@ $('drBody').addEventListener('click', async e => {
   } else if(b.id === 'btnMerchant'){ closeDrawer(); $('merchantCta').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctaTg').focus(); }
   else if(b.id === 'btnLogout'){ try{ await auth.signOut(); }catch(err){} }
   else if(b.id === 'btnRetryAcc'){ loadCustomer(); }
+  else if(b.id === 'btnDelete'){ openDelete(); }
+  else if(b.id === 'btnCancelClose'){ DEL_MSG = ''; const r = await cancelClosing(); if(r === null) return; DEL_MSG = r; renderDrawer(); }
 });
 
 
@@ -387,7 +392,7 @@ const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', processing: '�
 let WALLET = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000 };
 let UNIT = (() => { try{ return localStorage.getItem('store_unit') === 'pts' ? 'pts' : 'usd'; }catch(e){ return 'usd'; } })();      // وحدة العرض: دولار أو نقاط (المخزّن دايماً دولار)
 let MY = [], MY_STATE = 'idle', QUOTE = null, TQ = null, ORD = null, ordTriggerSel = '', tqTimer = null;      // ordTriggerSel: الزر اللي فتح النافذة (بنرجّع له التركيز حتى لو انرسم من جديد)
-const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null });
+const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false });
 let idTimer = null;
 let SH = freshSheet('closed');
 const rate = () => Number(WALLET.pointsPerUsd) || 1000;
@@ -440,7 +445,7 @@ function ordersSection(){
   if(MY_STATE === 'loading' || MY_STATE === 'idle') box.append(el('p', { class: 'hint', id: 'myLoading', text: 'عم نحمّل طلباتك...' }));
   else if(MY_STATE === 'error') box.append(el('p', { class: 'hint', id: 'myError', text: 'تعذّر تحميل طلباتك. اضغط 🔄.' }));
   else if(!MY.length) box.append(el('p', { class: 'hint', id: 'myEmpty', text: 'ما عندك طلبات بعد.' }));
-  else MY.slice(0, 10).forEach(o => box.append(el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: ORDER_ST[o.status] || o.status })), el('div', { class: 'b', text: o.kind === 'topup' ? 'إيداع رصيد · ' + money(o.priceUsd) : o.itemName + ' · ' + (o.kind === 'order' ? money(o.priceUsd) : orderAmount(o)) }))));
+  else MY.slice(0, 10).forEach(o => box.append(el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: o.kind === 'refund' && o.status === 'processing' ? 'بانتظار إرسال رصيدك' : (ORDER_ST[o.status] || o.status) })), el('div', { class: 'b', text: o.kind === 'topup' ? 'إيداع رصيد · ' + money(o.priceUsd) : o.itemName + ' · ' + (o.kind === 'order' || o.kind === 'refund' ? money(o.priceUsd) : orderAmount(o)) }))));
   return box;
 }
 // ---- النافذة
@@ -460,6 +465,7 @@ async function openOrder(itemId){
   const item = findItem(TREE || [], itemId); if(!item) return;
   ordTriggerSel = '[data-order="' + itemId + '"]';
   if(!(await needAccount('سجّل دخول عشان تطلب.'))) return;
+  if(closedGuard()) return;
   SH = freshSheet('loading'); SH.item = item; SH.rid = newRid();
   showSheet(); renderSheet(); $('osClose').focus();
   try{ QUOTE = (await apiAuth('/store/quote', { itemId })).quote; SH.step = 'form'; }
@@ -478,12 +484,61 @@ function timerText(o){
   if(left <= 0) return 'انتهت صلاحية السعر. إذا دفعت هلق ممكن يتغيّر المبلغ، فتواصل معنا لتأكيده.';
   return 'السعر مضمون لمدة ' + Math.max(1, Math.ceil(left / 60000)) + ' دقيقة (لحد ' + new Date(o.quoteEndsAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ').';
 }
+// ---- حذف الحساب: بدون رصيد فوراً، ومع رصيد طلب سحب (بتبعته الإدارة وبعدها بينحذف الحساب)
+let DEL_MSG = '';
+function closingBox(c){
+  if(!c.closing) return '';
+  return el('div', { class: 'warn', id: 'closingBox' }, el('div', { style: 'font-weight:700;', text: '⏳ حسابك قيد الحذف' }), el('div', { text: 'طلب سحب رصيدك ' + c.closing.code + ' (' + money(c.closing.amountUsd) + ') بانتظار الإرسال. ما بتقدر تعمل طلبات أو إيداعات لحد ما ينتهي.' }), el('div', { class: 'msg' + (DEL_MSG ? ' err' : ''), id: 'closeMsg', role: 'alert', text: DEL_MSG }), el('button', { class: 'btn-ghost', id: 'btnCancelClose', type: 'button', text: 'ألغِ طلب الحذف' }));
+}
+function closedGuard(){
+  if(CUSTOMER && CUSTOMER.closing){ closeDrawerQuiet(); SH = freshSheet('error'); SH.msg = 'حسابك قيد الحذف (طلب ' + CUSTOMER.closing.code + '). ما بتقدر تعمل طلبات أو إيداعات لحد ما ينتهي. بتقدر تلغي طلب الحذف من ☰.'; showSheet(); renderSheet(); $('osClose').focus(); return true; }
+  return false;
+}
+async function openDelete(){
+  ordTriggerSel = '#btnMenu';
+  if(!(await needAccount('سجّل دخول أول.'))) return;
+  closeDrawerQuiet(); SH = freshSheet('dloading'); SH.rid = newRid(); showSheet(); renderSheet(); $('osClose').focus();
+  try{ SH.del = await apiAuth('/store/deleteMe', { op: 'check' }); SH.step = 'dform'; }
+  catch(e){ SH.step = 'error'; SH.msg = e.message; }
+  renderSheet();
+}
+function renderDeleteForm(b){
+  const d = SH.del, bal = Number(d.balanceUsd) || 0, hasBal = bal >= 0.01;
+  $('osTitle').textContent = 'حذف حسابي بالمتجر';
+  b.append(el('div', { class: 'warn', id: 'delWarn', text: 'الحذف نهائي وما بيتراجع عنه.' }), el('ul', { class: 'dellist', id: 'delList' }, el('li', { text: 'بينمسح اسمك وإيميلك ومعرّفات اللاعب وصور الإيصالات.' }), el('li', { text: 'سجلات الطلبات والمبالغ بتضل بدون اسم (للمحاسبة).' }), el('li', { text: 'حسابك باللعبة ما بيتأثر.' }), el('li', { text: 'إذا دخلت المتجر بعدين بيتعمل لك حساب جديد فاضي.' })));
+  if(d.openOrders && d.openOrders.length){ b.append(el('div', { class: 'warn', id: 'delOpen', role: 'alert', text: 'عندك طلبات مفتوحة (' + d.openOrders.join('، ') + '). استنى لحد ما تخلص أو تواصل معنا، وبعدين احذف حسابك.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'تمام' })); return; }
+  if(hasBal){
+    const m = el('input', { class: 'tx', id: 'osDelMethod', type: 'text', maxlength: '40', autocomplete: 'off', placeholder: 'مثلاً: شام كاش أو USDT BEP20' }), a = el('input', { class: 'tx', id: 'osDelAcct', type: 'text', maxlength: '120', autocomplete: 'off', dir: 'ltr', placeholder: 'رقم الحساب أو عنوان المحفظة' }); m.value = SH.dm; a.value = SH.da;
+    b.append(el('div', { class: 'sum', id: 'delBal', text: 'رصيدك: ' + money(bal) + ' (' + moneyAlt(bal) + ')' }), el('p', { text: 'عشان نرسل لك رصيدك، اكتب طريقة الاستلام وحسابك:' }), el('label', { class: 'f', for: 'osDelMethod', text: 'طريقة الاستلام' }), m, el('label', { class: 'f', for: 'osDelAcct', text: 'الحساب أو العنوان' }), a);
+  }
+  const ck = el('input', { type: 'checkbox', id: 'osDelOk' }); ck.checked = SH.dc;
+  b.append(el('label', { class: 'f', style: 'display:flex;gap:8px;align-items:center;' }, ck, el('span', { text: 'أفهم أن الحذف نهائي' })), msgBox(), el('button', { class: 'btn-main', id: 'osDelGo', type: 'button', text: hasBal ? 'إرسال طلب السحب وحذف الحساب' : 'احذف حسابي نهائياً' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'تراجع' }));
+  if(SH.busy) b.querySelector('#osDelGo').disabled = true;
+}
+function renderDeleteDone(b){
+  $('osTitle').textContent = 'تم';
+  b.append(el('div', { class: 'warn', id: 'delDone', text: 'انحذف حسابك بالمتجر. شكراً لاستعمالك Yardova Card.' }), el('button', { class: 'btn-main', id: 'osDelFinish', type: 'button', text: 'تمام' }));
+}
+function renderRefundView(b){
+  const o = ORD, st = o.status, pay = o.payout || {};
+  $('osTitle').textContent = 'طلب سحب الرصيد ' + o.code;
+  b.append(el('div', { class: 'sum' }, el('div', { style: 'font-weight:700;', text: 'سحب الرصيد وحذف الحساب' }), el('div', { id: 'rfAmount', text: 'المبلغ: ' + money(o.priceUsd) }), el('div', {}, 'الاستلام: ' + (pay.method || '—') + ' · ', el('bdi', { id: 'rfAcct', text: pay.account || '—' })), el('div', {}, el('span', { class: 'stat', id: 'osStatus', text: st === 'processing' ? 'بانتظار إرسال رصيدك' : (ORDER_ST[st] || st) }))));
+  const lines = { processing: 'بنرسل رصيدك على الحساب اللي كتبته، وبعدها بينحذف حسابك. ما بتقدر تعمل طلبات أو إيداعات لحد ما ينتهي.', done: 'تم إرسال رصيدك وحذف حسابك.', rejected: 'تم رفض الطلب.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : '') + ' رجع رصيدك لحسابك وحسابك مفتوح.', cancelled: 'ألغيت طلب الحذف، ورجع رصيدك لحسابك.' };
+  b.append(el('div', { class: 'warn', id: 'osFinal', text: lines[st] || '' }), msgBox());
+  if(st === 'processing') b.append(el('button', { class: 'btn-ghost', id: 'osCancelClose', type: 'button', text: 'ألغِ طلب الحذف' }));
+  b.append(el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'تمام' }));
+}
+async function cancelClosing(){
+  if(!window.confirm('تلغي طلب الحذف؟ بيرجع رصيدك لحسابك.')) return null;
+  try{ await apiAuth('/store/deleteMe', { op: 'cancel' }); await loadCustomer(); loadMyOrders(); return ''; }
+  catch(e){ return e.message; }
+}
 function renderSheet(){
   const b = $('osBody'); b.textContent = '';
   if(SH.step === 'closed') return;
-  if(SH.step === 'loading'){ $('osTitle').textContent = 'اطلب'; b.append(el('p', { id: 'osLoading', text: 'عم نحمّل السعر...' })); return; }
+  if(SH.step === 'loading' || SH.step === 'dloading'){ $('osTitle').textContent = 'اطلب'; b.append(el('p', { id: 'osLoading', text: 'عم نحمّل السعر...' })); return; }
   if(SH.step === 'error'){ $('osTitle').textContent = 'اطلب'; b.append(el('div', { class: 'warn', id: 'osError', role: 'alert', text: SH.msg || 'تعذّر تحميل السعر. جرّب كمان مرة.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return; }
-  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else renderPay(b);
+  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else if(SH.step === 'dform') renderDeleteForm(b); else if(SH.step === 'ddone') renderDeleteDone(b); else renderPay(b);
 }
 function msgBox(){ return el('div', { class: 'msg' + (SH.msg ? ' err' : ''), id: 'osMsg', role: 'alert', text: SH.msg || SH.ok || '' }); }
 // ---- التحقق من الـPlayer ID (اسم اللاعب) قبل الشراء
@@ -522,6 +577,7 @@ function renderForm(b){
 async function openTopup(pre){
   if(!ordTriggerSel) ordTriggerSel = '#btnMenu';
   if(!(await needAccount('سجّل دخول عشان تشحن رصيدك.'))) return;
+  if(closedGuard()) return;
   const min = Number(WALLET.minTopupUsd) || 5, max = Number(WALLET.maxTopupUsd) || 1000;
   let amt = pre ? Math.ceil(Number(pre)) : 10; amt = Math.min(max, Math.max(min, amt));
   closeDrawerQuiet(); SH = freshSheet('tform'); SH.amt = String(amt); SH.rid = newRid(); TQ = null;
@@ -559,6 +615,7 @@ async function loadTopupQuote(){
 }
 // ---- حالة الطلب أو الإيداع (بعد التأكيد، أو من "طلباتي")
 function renderPay(b){
+  if(ORD && ORD.kind === 'refund'){ renderRefundView(b); return; }
   const o = ORD, st = o.status, isTop = o.kind === 'topup', isOrd = o.kind === 'order';
   $('osTitle').textContent = (isTop ? 'إيداعك ' : 'طلبك ') + o.code;
   const pill = el('span', { class: 'stat', id: 'osStatus', text: ORDER_ST[st] || st });
@@ -616,9 +673,12 @@ $('scrim2').addEventListener('click', closeSheet);
 $('osBody').addEventListener('input', e => {
   if(e.target.id === 'osPid'){ SH.pid = e.target.value; SH.idRes = null; updateIdStatus(); clearTimeout(idTimer); if(SH.idSupported !== false && idFormatOk(SH.pid.trim())) idTimer = setTimeout(checkPlayerId, 700); }
   if(e.target.id === 'osRef') SH.ref = e.target.value;
+  if(e.target.id === 'osDelMethod') SH.dm = e.target.value;
+  if(e.target.id === 'osDelAcct') SH.da = e.target.value;
   if(e.target.id === 'tqAmount'){ SH.amt = e.target.value; updateTopupPts(); clearTimeout(tqTimer); tqTimer = setTimeout(loadTopupQuote, 350); }
 });
 $('osBody').addEventListener('change', async e => {
+  if(e.target.id === 'osDelOk'){ SH.dc = e.target.checked; return; }
   if(e.target.id !== 'osFile') return; const f = e.target.files && e.target.files[0]; if(!f) return;
   SH.msg = ''; SH.ok = '';
   try{ SH.img = await receiptToDataUrl(f); }catch(err){ SH.img = undefined; SH.msg = err.message; }
@@ -632,6 +692,21 @@ $('osBody').addEventListener('click', async e => {
   if(b.dataset.copy !== undefined){ const okc = await copyText(b.dataset.copy); b.textContent = okc ? '✅ تم النسخ' : 'انسخ يدوياً'; return; }
   if(b.id === 'osImgDel'){ SH.img = undefined; renderSheet(); return; }
   if(b.id === 'osTopup'){ openTopup(QUOTE ? QUOTE.shortUsd : 0); return; }
+  if(b.id === 'osDelFinish'){ try{ await auth.signOut(); }catch(err){} closeSheet(); return; }
+  if(b.id === 'osCancelClose'){ SH.msg = ''; const r = await cancelClosing(); if(r === null) return; if(r){ SH.msg = r; renderSheet(); return; } ORD = { ...ORD, status: 'cancelled' }; renderSheet(); return; }
+  if(b.id === 'osDelGo'){
+    SH.msg = ''; const hasBal = Number(SH.del.balanceUsd) >= 0.01, method = SH.dm.trim(), acct = SH.da.trim();
+    if(hasBal && (method.length < 2 || acct.length < 3)){ SH.msg = 'اكتب طريقة استلام رصيدك وحسابك.'; renderSheet(); return; }
+    if(!SH.dc){ SH.msg = 'أكّد إنك فاهم إنه الحذف نهائي.'; renderSheet(); return; }
+    SH.busy = true; renderSheet();
+    try{
+      const j = await apiAuth('/store/deleteMe', { op: 'request', confirm: true, reqId: SH.rid, payoutMethod: method, payoutAccount: acct });
+      SH.busy = false;
+      if(j.deleted){ SH.step = 'ddone'; renderSheet(); $('osDelFinish').focus(); return; }
+      ORD = j.request; DEL_MSG = ''; SH.step = 'pay'; renderSheet(); loadCustomer(); loadMyOrders(); $('osClose').focus();
+    }catch(err){ SH.busy = false; SH.msg = err.message; renderSheet(); }
+    return;
+  }
   if(b.id === 'osSubmit'){
     const pid = SH.pid.trim(); SH.msg = ''; SH.ok = '';
     if(pid.length < 3 || pid.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(pid)){ SH.msg = 'اكتب معرّف اللاعب (Player ID) بشكل صحيح: 3 لـ40 خانة، أرقام وأحرف.'; renderSheet(); $('osPid').focus(); return; }
