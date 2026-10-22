@@ -55,8 +55,10 @@ main{padding-block:26px 36px}
 .card{display:flex;flex-direction:column;background:var(--panel);border:3px solid var(--edge);border-radius:14px;overflow:hidden;text-align:center;font:inherit;color:var(--ink);padding:0;box-shadow:5px 5px 0 var(--shadow)}
 button.card{cursor:pointer}
 button.card:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--shadow)}
-.card .pic{aspect-ratio:1/1;background:var(--pic);display:flex;align-items:center;justify-content:center;font-size:3rem;overflow:hidden}
-.card .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.card .pic{aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px;background:radial-gradient(120% 120% at 30% 20%,#1F7A68 0%,var(--teal) 45%,var(--teal-d) 100%)}
+.card .pic .art{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:3rem}
+.card .pic img{width:100%;height:100%;object-fit:contain;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.35);display:block}
+.card .pic .brand{position:absolute;top:6px;right:6px;font-family:var(--f-stencil);font-weight:800;font-size:.62rem;letter-spacing:.08em;line-height:1;padding:3px 6px;border-radius:6px;background:rgba(5,16,12,.55);color:#F4F8F5;direction:ltr;text-transform:uppercase;pointer-events:none}
 .card .body{padding:12px 10px 14px;border-top:3px solid var(--edge)}
 .card .nm{font-family:var(--f-text);font-weight:700;font-size:1.12rem;line-height:1.45;color:var(--ink);word-break:break-word}
 .card .pr{margin-top:8px;display:inline-block;background:var(--tape);color:#10211C;font-weight:700;font-size:1.05rem;border-radius:999px;padding:3px 14px;direction:ltr}
@@ -200,9 +202,10 @@ function findPath(nodes, id, trail){
   return null;
 }
 function pic(n, icon){
-  const box = el('div', { class: 'pic' });
+  const box = el('div', { class: 'pic' }), art = el('div', { class: 'art' });
   const src = imgSrc(n.imageUrl);
-  if(src){ const im = el('img', { src, alt: '', loading: 'lazy' }); im.onerror = () => { box.textContent = icon; }; box.append(im); } else box.textContent = icon;
+  if(src){ const im = el('img', { src, alt: '', loading: 'lazy' }); im.onerror = () => { art.textContent = icon; }; art.append(im); } else art.textContent = icon;
+  box.append(art, el('span', { class: 'brand', 'aria-hidden': 'true', text: 'Yardova Card' }));          // الإطار: بيتحط تلقائياً على كل صورة
   return box;
 }
 function folderCard(n){

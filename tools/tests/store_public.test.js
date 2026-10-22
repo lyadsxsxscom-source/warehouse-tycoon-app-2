@@ -43,6 +43,11 @@ const crumbs = (d) => d.getElementById("crumbs").textContent.replace(/\s+/g, "")
     ok(h.w.localStorage.getItem("store_unit") === "pts", "his choice is remembered");
     d.querySelectorAll("#walletBar [data-unit]")[0].click(); await sleep(30);
 
+    /* ---- the Yardova Card frame ---- */
+    { const pics = [...d.querySelectorAll("#catalog .card .pic")]; ok(pics.length === 3 && pics.every(p => p.querySelector(".art") && p.querySelector(".brand") && p.querySelector(".brand").textContent === "Yardova Card" && p.querySelector(".brand").getAttribute("aria-hidden") === "true"), "every card picture (folders and products, with or without an image) sits in the same frame with a small 'Yardova Card' badge, hidden from screen readers");
+      ok(pics[0].querySelector(".art img") && !pics[2].querySelector(".art img") && /🎮/.test(pics[2].querySelector(".art").textContent) && pics[2].querySelector(".brand"), "a picture goes inside the frame; a card with no picture shows the icon inside the same frame, badge included");
+      ok(!/Yardova Card/.test(cards(d)[0].getAttribute("aria-label") || "") && cards(d)[0].getAttribute("aria-label") === "PUBG", "the badge is not part of a card's spoken name (it stays 'PUBG')");
+      ok(/\.card \.pic\{[^}]*overflow:hidden[^}]*\}/.test(html) && /\.card \.pic img\{[^}]*object-fit:contain[^}]*border-radius:12px/.test(html) && /\.card \.pic \.brand\{[^}]*position:absolute[^}]*top:6px;right:6px/.test(html), "styled: pictures are fitted whole (never cropped) with rounded corners, and the badge is pinned to the top-right corner"); }
     /* ---- navigate ---- */
     cards(d)[0].click(); await sleep(30);
     ok(h.w.location.hash === "#/nA" && crumbs(d) === "الرئيسية›PUBG" && cards(d).map(nm).join("|") === "فوري|بطاقة داخل PUBG" && /\$50\.00/.test(cards(d)[1].textContent) && /50,000 نقطة/.test(cards(d)[1].textContent), "opening a folder shows its path and what is inside; prices keep the chosen unit");
@@ -58,6 +63,7 @@ const crumbs = (d) => d.getElementById("crumbs").textContent.replace(/\s+/g, "")
 
     /* ---- images and safety ---- */
     const im = cards(d)[0].querySelector("img"); im.dispatchEvent(new h.w.Event("error"));
+    ok(!!cards(d)[0].querySelector(".pic .brand") && cards(d)[0].querySelector(".pic .brand").textContent === "Yardova Card", "when a picture fails to load the frame and badge stay (only the picture is replaced by an icon)");
     ok(!cards(d)[0].querySelector("img") && /📁/.test(cards(d)[0].querySelector(".pic").textContent), "a picture that fails to load is replaced by an icon");
     const evil = cards(d)[1];
     ok(d.querySelector("#catalog img[src=x]") === null && nm(evil) === "<img src=x onerror=alert(1)>" && !evil.querySelector("img"), "names are plain text, and a picture from another website is never loaded");
