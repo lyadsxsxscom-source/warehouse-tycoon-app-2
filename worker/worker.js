@@ -528,6 +528,16 @@ PUSH_TEXT.store_topup_done = {
   tr: (p) => ["Bakiyen yüklendi ✅", `${p.code}: bakiyene $${p.amount} eklendi.`],
   en: (p) => ["Your balance was topped up ✅", `${p.code}: $${p.amount} was added to your balance.`],
 };
+PUSH_TEXT.store_refund_request = {       // للأدمن: زبون طلب يسحب رصيده ويحذف حسابه
+  ar: (p) => ["💸 طلب سحب رصيد جديد", `${p.code} · $${p.amount} · ${p.method}`],
+  tr: (p) => ["💸 Yeni bakiye çekme talebi", `${p.code} · $${p.amount} · ${p.method}`],
+  en: (p) => ["💸 New balance withdrawal request", `${p.code} · $${p.amount} · ${p.method}`],
+};
+PUSH_TEXT.store_payout_done = {
+  ar: (p) => ["تم إرسال رصيدك ✅", `${p.code}: أُرسل $${p.amount} وتم حذف حسابك بالمتجر.`],
+  tr: (p) => ["Bakiyen gönderildi ✅", `${p.code}: $${p.amount} gönderildi ve mağaza hesabın silindi.`],
+  en: (p) => ["Your balance was sent ✅", `${p.code}: $${p.amount} was sent and your store account was deleted.`],
+};
 PUSH_TEXT.store_rejected = {
   ar: (p) => ["طلبك انرفض", `${p.code} (${p.item}): ${p.reason}`],
   tr: (p) => ["Siparişin reddedildi", `${p.code} (${p.item}): ${p.reason}`],
@@ -564,7 +574,7 @@ PUSH_TEXT.shop_rejected = {
   en: (p) => ["Your order was declined", `${p.points} points were refunded. Check your in-game mail.`],
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_topup_done: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_refund_request: "orders", store_payout_done: "orders", store_topup_done: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -1340,7 +1350,7 @@ async function handleAdminStore(request, env) {
       for (let attempt = 0; attempt < 3; attempt++) {
         const od = await fsGetDoc(env, "storeOrders/" + id);
         if (!od.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
-        const o = od.data, now2 = Date.now(), kind = o.kind === "order" || o.kind === "topup" ? o.kind : "legacy", price = Number(o.priceUsd) || 0;
+        const o = od.data, now2 = Date.now(), kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy", price = Number(o.priceUsd) || 0;
         const open = o.status === "awaiting_payment" || o.status === "payment_submitted" || o.status === "processing";
         const cd = await fsGetDoc(env, "storeCustomers/" + o.uid), bal = cd.exists ? r4(Number(cd.data.balanceUsd) || 0) : 0, led = [];
         let upd, custUpd = null, plan = null;
@@ -1349,13 +1359,16 @@ async function handleAdminStore(request, env) {
           if (!open || (kind === "order" && o.status !== "processing")) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
           upd = { status: "done", doneAt: now2, adminNote: note, updatedAt: now2, events: storeEvent(o, "done", "admin", note, now2) };
           if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
-          if (kind === "topup") { const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("topup", price, nb); }
+          if (kind === "refund") { upd.finalizePending = true; }                    // الرصيد انرسل: بعد الحفظ بينحذف الحساب
+          else if (kind === "topup") { const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("topup", price, nb); }
           else { plan = storeSpendPlan(env, o.uid, cd.data, price, "طلب " + o.code, "order", now2); custUpd = { ...plan.upd }; }
         } else if (b.action === "order_reject") {
           if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
           upd = { status: "rejected", rejectReason: note, updatedAt: now2, events: storeEvent(o, "rejected", "admin", note, now2) };
           if (kind === "order") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("order_refund", price, nb); }       // الرفض بيرجّع المبلغ لرصيده
+          if (kind === "refund") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb, closing: null }; ledger("payout_return", price, nb); }       // رفض طلب السحب: الرصيد بيرجع وبينفتح الحساب
         } else {
+          if (kind === "refund") throw new ApiError("bad_status", "طلب السحب ما بينرجّع.");
           if (o.status !== "done") throw new ApiError("bad_status", "بتقدر ترجّع طلب منفّذ بس.");
           upd = { status: "refunded", adminNote: note, updatedAt: now2, events: storeEvent(o, "refunded", "admin", note, now2) };
           if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
@@ -1370,12 +1383,27 @@ async function handleAdminStore(request, env) {
         try {
           await fsCommit(env, writes);
           const np = { code: String(o.code || ""), item: String(o.itemName || "") };
-          if (b.action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : np);
+          let warning = "";
+          if (b.action === "order_done" && kind === "refund") {
+            await storeNotify(env, o.uid, "store_payout_done", { code: np.code, amount: price.toFixed(2) });
+            try { await storeAnonymizeCustomer(env, o.uid, id); upd.finalizePending = false; upd.uid = ""; upd.name = "حساب محذوف"; upd.email = ""; upd.payout = { method: "", account: "" }; }
+            catch (e) { console.error({ message: "store deletion incomplete", code: np.code, error: String(e && e.message || e) }); warning = "انبعت الرصيد لكن تعذّر إكمال حذف الحساب. اضغط 🧹 إكمال الحذف."; }
+          }
+          else if (b.action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : np);
           else if (b.action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
           else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
-          return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200);
+          return jsonResponse({ ok: true, ...(warning ? { warning } : {}), order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
+    }
+    if (b.action === "order_finish_deletion") {
+      const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      const od = await fsGetDoc(env, "storeOrders/" + id);
+      if (!od.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
+      if (od.data.kind !== "refund" || od.data.status !== "done" || od.data.finalizePending !== true || !od.data.uid) throw new ApiError("bad_status", "ما في حذف ناقص لهالطلب.");
+      await storeAnonymizeCustomer(env, od.data.uid, id);
+      const fresh = await fsGetDoc(env, "storeOrders/" + id);
+      return jsonResponse({ ok: true, order: storeOrderOut(id, fresh.data, Date.now(), true) }, 200);
     }
     if (b.action === "retention_run") return jsonResponse({ ok: true, purged: await storeRetentionSweep(env) }, 200);
     if (b.action === "supplier_get") { const w = await storeLoadSupplier(env); return jsonResponse({ ok: true, hasKey: !!env.FAZER_API_KEY, ...w }, 200); }
@@ -1599,6 +1627,7 @@ function storeVipWithFloor(sizes, spentUsd, floor) {
 function storeCustomerOut(uid, c, sizes, opts = {}) {
   const now = opts.now || Date.now(), sz = sizes || STORE_VIP_DEFAULT_SIZES, ms = storeMerchantState(c.merchant, c.spentUsd, now);
   const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, balanceUsd: r4(Number(c.balanceUsd) || 0), ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
+  if (c.closing && c.closing.code) out.closing = { code: String(c.closing.code), amountUsd: r4(Number(c.closing.amountUsd) || 0), requestedAt: Number(c.closing.requestedAt) || 0 };
   if (opts.admin) out.autoVip = storeVipInfo(sz, c.spentUsd).vip;      // للأدمن بس: مستواه لو ما في نقل يدوي
   const m = c.merchant;
   if (ms.status !== "none" && (opts.admin || ms.status === "trial" || ms.status === "locked")) {
@@ -1812,25 +1841,57 @@ function storeQuoteFor(item, vip, methods) {
   const pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1];
   return { priceUsd, methods: methods.filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, decimals: m.decimals, amount: storeRound(priceUsd * m.rate * (1 + (Number(m.feePct) || 0) / 100), m.decimals) })) };
 }
-async function storeCustomerCtx(env, uid) {
+function storeClosingCheck(data) { if (data && data.closing && data.closing.code) throw new ApiError("account_closing", "حسابك قيد الحذف (طلب " + data.closing.code + "). ما بتقدر تعمل طلبات أو إيداعات جديدة. بتقدر تلغي طلب الحذف من لوحة الحساب."); }
+async function storeCustomerCtx(env, uid, forWrite) {
   const cur = await fsGetDoc(env, "storeCustomers/" + uid);
   if (!cur.exists) throw new ApiError("no_account", "افتح حسابك أول (من ☰) وجرّب كمان مرة.");
+  if (forWrite) storeClosingCheck(cur.data);
   const { sizes } = await storeLoadVipSizes(env);
   return { cur, vip: storeCustomerOut(uid, cur.data, sizes).vip };
 }
 function storeOrderOut(id, o, now, admin) {
-  const kind = o.kind === "order" || o.kind === "topup" ? o.kind : "legacy";
+  const kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy";
   const expired = o.status === "awaiting_payment" && now > Number(o.createdAt) + STORE_ORDER_TTL_MS, status = expired ? "expired" : o.status, pr = o.proof;
   const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
     method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || "") },
     amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
-    proof: pr && pr.submittedAt ? { ref: String(pr.ref || ""), hasImage: !!pr.hasImage, submittedAt: Number(pr.submittedAt) || 0, late: !!pr.late } : null, rejectReason: String(o.rejectReason || ""), doneAt: Number(o.doneAt) || 0 };
+    payout: kind === "refund" ? { method: String((o.payout && o.payout.method) || ""), account: String((o.payout && o.payout.account) || "") } : null, finalizePending: o.finalizePending === true, proof: pr && pr.submittedAt ? { ref: String(pr.ref || ""), hasImage: !!pr.hasImage, submittedAt: Number(pr.submittedAt) || 0, late: !!pr.late } : null, rejectReason: String(o.rejectReason || ""), doneAt: Number(o.doneAt) || 0 };
   if (admin) Object.assign(out, { uid: String(o.uid || ""), name: String(o.name || ""), email: String(o.email || ""), adminNote: String(o.adminNote || ""), events: Array.isArray(o.events) ? o.events : [] });
   return out;
 }
 const storeEvent = (o, action, by, note, at) => [...(Array.isArray(o.events) ? o.events : []), { at, action, by, note: note || "" }].slice(-20);
 async function storeNotify(env, uid, type, params) { try { await sendPush(env, uid, type, params); } catch (e) { console.warn({ message: "store notify failed", type, error: String(e.message || e) }); } }
 const storeAmountText = (o) => Number(o.amount).toLocaleString("en-US", { minimumFractionDigits: Number(o.decimals) || 0, maximumFractionDigits: Number(o.decimals) || 0 }) + " " + String(o.currency || "");
+// ===== حذف حساب المتجر (الخطوة 8): بدون رصيد بينحذف فوراً، ومع رصيد بيتحوّل لطلب سحب (R-1001) والأدمن بيرسل الرصيد ثم بينحذف الحساب =====
+// الحذف = مسح الاسم والإيميل ومعرّفات اللاعب والإيصالات، وتحويل سجلات الطلبات والمبالغ لسجلات بدون اسم (للمحاسبة). حساب Firebase وحساب اللعبة ما بيتأثروا.
+const storeDelTag = async (uid) => "deleted-" + (await sha256Hex("store-del|" + uid)).slice(0, 12);
+async function storeOpenOrderCodes(env, uid, now) {
+  const rows = await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "uid", value: uid });
+  return rows.map(r => storeOrderOut(r.id, r.data, now, false)).filter(o => (o.kind === "order" && o.status === "processing") || ((o.kind === "topup" || o.kind === "legacy") && (o.status === "awaiting_payment" || o.status === "payment_submitted"))).map(o => o.code);
+}
+async function storeAnonymizeCustomer(env, uid, keepOrderId) {
+  const tag = await storeDelTag(uid), now = Date.now();
+  const flush = async (writes) => { for (let i = 0; i < writes.length; i += 200) await fsCommit(env, writes.slice(i, i + 200)); };
+  for (const coll of ["storeOrders", "storeLedger", "storeSpendLog", "storeVipLog"]) {
+    for (let round = 0; round < 30; round++) {
+      const rows = (await fsRunQuery(env, coll, null, 400, 0, { field: "uid", value: uid })).filter(r => !(coll === "storeOrders" && r.id === keepOrderId));
+      if (!rows.length) break;
+      const writes = [];
+      for (const r of rows) {
+        if (coll === "storeOrders") {
+          const upd = { uid: tag, name: "حساب محذوف", email: "", playerId: "", deletedAt: now }; if (r.data.proof) upd.proof = { ...r.data.proof, ref: "", hasImage: false }; if (r.data.payout) upd.payout = { method: "", account: "" };
+          writes.push({ delete: docName(env, "storeProofs/" + r.id) }, { update: { name: docName(env, "storeOrders/" + r.id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) } });
+        } else writes.push({ update: { name: docName(env, coll + "/" + r.id), fields: objToFields({ uid: tag }) }, updateMask: { fieldPaths: ["uid"] } });
+      }
+      await flush(writes);
+    }
+  }
+  if (keepOrderId) {                                                  // آخر شي: طلب السحب نفسه (حتى لو انقطع الحذف نقدر نعيد المحاولة بالمعرّف الأصلي)
+    const od = await fsGetDoc(env, "storeOrders/" + keepOrderId);
+    if (od.exists) { const upd = { uid: tag, name: "حساب محذوف", email: "", playerId: "", deletedAt: now, payout: { method: "", account: "" }, finalizePending: false }; await fsCommit(env, [{ update: { name: docName(env, "storeOrders/" + keepOrderId), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) } }]); }
+  }
+  await fsCommit(env, [{ delete: docName(env, "storeCustomers/" + uid) }, { delete: docName(env, "storeRate/validate_" + uid) }]);
+}
 async function handleStoreOrderApi(request, env, action) {
   try {
     const user = await requireUser(request);
@@ -1857,6 +1918,7 @@ async function handleStoreOrderApi(request, env, action) {
       for (let attempt = 0; attempt < 3; attempt++) {
         const cd = await fsGetDoc(env, "storeCustomers/" + uid);
         if (!cd.exists) throw new ApiError("no_account", "افتح حسابك أول (من ☰) وجرّب كمان مرة.");
+        storeClosingCheck(cd.data);
         const vip = storeCustomerOut(uid, cd.data, sizes).vip, pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cd.data.balanceUsd) || 0);
         if (bal + 1e-9 < priceUsd) return jsonResponse({ ok: false, error: "insufficient_balance", message: `رصيدك ${bal}$ وسعر الطلب ${priceUsd}$. اشحن رصيدك أول.`, balanceUsd: bal, priceUsd, shortUsd: r4(priceUsd - bal) }, 400);
         const ctr = await nextRequestNo(env, "store"), code = "T-" + ctr.no, newBal = r4(bal - priceUsd);
@@ -1880,7 +1942,7 @@ async function handleStoreOrderApi(request, env, action) {
       const method = methods.find(m => m.id === String(b.methodId || "") && m.enabled !== false), am = method && qm.methods.find(m => m.id === method.id);
       if (!method) throw new ApiError("no_method", "اختار طريقة دفع.");
       const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
-      const { cur, vip } = await storeCustomerCtx(env, uid), id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
+      const { cur, vip } = await storeCustomerCtx(env, uid, true), id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
       if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, dup.data, now, false) }, 200); }
       const mine = await fsRunQuery(env, "storeOrders", null, 200, 0, { field: "uid", value: uid });
       if (mine.filter(r => r.data.kind === "topup" && (r.data.status === "payment_submitted" || storeOrderOut(r.id, r.data, now, false).status === "awaiting_payment")).length >= STORE_MAX_OPEN_TOPUPS) throw new ApiError("too_many_open", `عندك ${STORE_MAX_OPEN_TOPUPS} إيداعات مفتوحة. خلّصهم أو ألغي واحد قبل ما تعمل غيرهم.`);
@@ -1915,6 +1977,59 @@ async function handleStoreOrderApi(request, env, action) {
         if (e instanceof ApiError && (e.code === "supplier_error" || e.code === "supplier_unreachable")) return jsonResponse({ ok: true, supported: true, available: false }, 200);     // المورّد مو متاح: ما منمنع الشراء
         throw e;
       }
+    }
+    if (action === "delete") {
+      const op = String(b.op || ""), cd0 = await fsGetDoc(env, "storeCustomers/" + uid);
+      if (!cd0.exists) throw new ApiError("no_account", "ما في حساب متجر لهالمستخدم.");
+      const bal = r4(Number(cd0.data.balanceUsd) || 0);
+      if (op === "check") {
+        const openOrders = await storeOpenOrderCodes(env, uid, now), cl = cd0.data.closing && cd0.data.closing.code ? { code: String(cd0.data.closing.code), amountUsd: r4(Number(cd0.data.closing.amountUsd) || 0) } : null;
+        return jsonResponse({ ok: true, balanceUsd: bal, openOrders, closing: cl, canDelete: !openOrders.length && !cl }, 200);
+      }
+      if (op === "cancel") {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const cd = await fsGetDoc(env, "storeCustomers/" + uid), cl = cd.data && cd.data.closing;
+          if (!cl || !cl.code) throw new ApiError("not_closing", "ما في طلب حذف لإلغائه.");
+          const od = await fsGetDoc(env, "storeOrders/" + String(cl.orderId || ""));
+          if (!od.exists || od.data.uid !== uid || od.data.status !== "processing") throw new ApiError("bad_status", "ما بتقدر تلغي الطلب هلق (تم التعامل معه).");
+          const back = r4(Number(cl.amountUsd) || 0), nb = r4((Number(cd.data.balanceUsd) || 0) + back);
+          const upd = { status: "cancelled", updatedAt: now, events: storeEvent(od.data, "cancelled", "customer", "", now) };
+          try {
+            await fsCommit(env, [
+              { update: { name: docName(env, "storeOrders/" + cl.orderId), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } },
+              { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: nb, closing: null }) }, updateMask: { fieldPaths: ["balanceUsd", "closing"] }, currentDocument: { updateTime: cd.updateTime } },
+              { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "payout_return", amountUsd: back, balanceAfter: nb, ref: String(cl.code), note: "ألغى طلب الحذف", at: now, by: "customer" }) }, currentDocument: { exists: false } }]);
+            return jsonResponse({ ok: true, balanceUsd: nb }, 200);
+          } catch (e) { if (!e.conflict || attempt === 2) throw e; }
+        }
+      }
+      if (op === "request") {
+        if (b.confirm !== true) throw new ApiError("confirm_required", "أكّد إنك فاهم إنه الحذف نهائي.");
+        const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
+        const id = "o" + (await sha256Hex(uid + "|del|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
+        if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, request: storeOrderOut(id, dup.data, now, false) }, 200); }
+        if (cd0.data.closing && cd0.data.closing.code) throw new ApiError("already_closing", "عندك طلب حذف قيد المراجعة (" + cd0.data.closing.code + ").");
+        const open = await storeOpenOrderCodes(env, uid, now);
+        if (open.length) throw new ApiError("has_open", "عندك طلبات مفتوحة (" + open.slice(0, 5).join("، ") + "). استنى لحد ما تخلص قبل ما تحذف حسابك.");
+        if (bal < 0.01) { await storeAnonymizeCustomer(env, uid, ""); return jsonResponse({ ok: true, deleted: true }, 200); }
+        const method = cleanText(b.payoutMethod, 40), account = cleanText(b.payoutAccount, 120);
+        if (method.length < 2 || account.length < 3) throw new ApiError("payout_required", "عندك رصيد: اكتب طريقة استلامه (مثلاً شام كاش أو USDT) وحسابك.");
+        const u = storeUserName(user), { sizes } = await storeLoadVipSizes(env);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const cd = await fsGetDoc(env, "storeCustomers/" + uid), cur = r4(Number(cd.data.balanceUsd) || 0);
+          if (cur < 0.01) throw new ApiError("bad_status", "رصيدك تغيّر. جرّب كمان مرة.");
+          const ctr = await nextRequestNo(env, "refund"), code = "R-" + ctr.no, vip = storeCustomerOut(uid, cd.data, sizes).vip;
+          const order = { kind: "refund", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: "", itemName: "طلب سحب الرصيد وحذف الحساب", itemPath: "طلب سحب الرصيد وحذف الحساب", playerId: "", vip, priceUsd: cur, payout: { method, account }, status: "processing", createdAt: now, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+          try {
+            await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } },
+              { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: 0, closing: { orderId: id, code, amountUsd: cur, requestedAt: now } }) }, updateMask: { fieldPaths: ["balanceUsd", "closing"] }, currentDocument: { updateTime: cd.updateTime } },
+              { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "payout_hold", amountUsd: -cur, balanceAfter: 0, ref: code, note: method, at: now, by: "customer" }) }, currentDocument: { exists: false } }]);
+            await storeNotify(env, ADMIN_UID, "store_refund_request", { code, amount: cur.toFixed(2), method });
+            return jsonResponse({ ok: true, request: storeOrderOut(id, order, now, false) }, 200);
+          } catch (e) { if (!e.conflict || attempt === 2) throw e; const again = await fsGetDoc(env, "storeOrders/" + id); if (again.exists && again.data.uid === uid) return jsonResponse({ ok: true, duplicate: true, request: storeOrderOut(id, again.data, now, false) }, 200); }
+        }
+      }
+      throw new ApiError("bad_request", "طلب غلط.");
     }
     if (action === "prices") {            // أسعار كل المنتجات الظاهرة بمستوى VIP تبع الزبون (بتتحسب بالسيرفر)
       const nodes = await storeAllNodes(env), { vip } = await storeCustomerCtx(env, uid), prices = {};
@@ -3042,7 +3157,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7));
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
