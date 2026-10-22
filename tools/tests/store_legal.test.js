@@ -19,21 +19,28 @@ const doc = h => new JSDOM(h).window.document;
     ok(d.querySelectorAll("h2").length >= 8 && /\d\)/.test(d.querySelector("h2").textContent), name + ": organised in numbered sections");
   }
   const P = text(pages.privacy), T = text(pages.terms);
-  /* ---- the privacy policy says what the system really does ---- */
-  ok(/اسمك وإيميلك ومعرّف حسابك من Google/.test(P) && /رصيدك بالدولار وسجل حركاته/.test(P) && /معرّف اللاعب \(Player ID\)/.test(P) && /صورة الإيصال/.test(P), "privacy: lists what is collected (Google name, email and id; balance and its history; orders with the Player ID; deposits with the receipt picture)");
-  ok(/الإدارة فقط/.test(P) && /Google Firebase/.test(P) && /Cloudflare/.test(P) && /FazerCards/.test(P) && /ما منشاركه اسمك ولا إيميلك/.test(P) && /ما منبيع بياناتك/.test(P), "privacy: says who sees it (only you, Google Firebase, Cloudflare, and FazerCards which gets only the Player ID and the product, never the name or email); no selling");
-  ok(/ما في إعلانات ولا أدوات تتبّع/.test(P) && /بيتخزّن بمتصفحك فقط/.test(P), "privacy: no ads or tracking, and the display choice stays in the browser");
-  ok(/بتنحذف تلقائياً بعد 90 يوم/.test(P) && /منحتفظ فيها للمحاسبة/.test(P) && /لحد ما تحذف حسابك/.test(P), "privacy: retention: receipt pictures deleted after 90 days (the clean-up job does exactly that), records kept for bookkeeping");
-  ok(/ما بنخزّنه/.test(P) && /اسم اللاعب/.test(P), "privacy: the player's name is shown but not stored (true: the ID check answer is never saved)");
+  /* ---- the privacy policy says what the system really does (formal Arabic) ---- */
+  ok(/الاسم والبريد الإلكتروني ومعرّف الحساب لدى Google/.test(P) && /لا نجمع رقم الهاتف ولا كلمة المرور/.test(P) && /رصيد المستخدم بالدولار وسجلّ حركاته/.test(P) && /معرّف اللاعب \(Player ID\)/.test(P) && /صورة الإيصال/.test(P), "privacy: lists what is collected (Google name, email and id, and says plainly that no phone number or password is collected; balance and its history; orders with the Player ID; deposits with the receipt picture)");
+  ok(/لا يستقبل المتجر بيانات البطاقات المصرفية أو الحسابات البنكية ولا يخزّنها/.test(P) && /بالتحويل اليدوي/.test(P) && /رقم العملية وصورة الإيصال/.test(P), "privacy: no bank card or bank account data is received or stored; payments are manual transfers outside the store; only the reference and the receipt picture are kept");
+  ok(/الإدارة فقط/.test(P) && /Google Firebase/.test(P) && /Cloudflare/.test(P) && /FazerCards/.test(P) && /معرّف اللاعب والمنتج فقط، دون الاسم أو البريد الإلكتروني/.test(P) && /لا نبيع بيانات المستخدمين/.test(P), "privacy: says who sees it (only the management, Google Firebase, Cloudflare, and FazerCards which gets only the Player ID and the product, never the name or email); no selling or advertising");
+  ok(/لا نستخدم ملفات تعريف الارتباط \(الكوكيز\) لأغراض التتبّع أو الإعلان/.test(P) && /التخزين المحلي للمتصفح/.test(P) && /خيار عرض الأسعار/.test(P), "privacy: no tracking cookies; the sign-in session and the display choice live in the browser's local storage (which is what Firebase really does; no false 'cookies' claim)");
+  ok(!/OTP|Offerwall|شبكات العروض|رسائل SMS|بوابة دفع/.test(P + T), "nothing is claimed that the store does not have (no OTP codes, offerwalls, SMS providers or payment gateways)");
+  ok(/تُحذف تلقائياً بعد 90 يوماً/.test(P) && /لأغراض المحاسبة وحلّ النزاعات/.test(P) && /حتى حذف الحساب/.test(P), "privacy: retention: receipt pictures deleted after 90 days (the clean-up job does exactly that), records kept for bookkeeping");
+  ok(/نكتفي بعرضه ولا نخزّنه/.test(P) && /اسم اللاعب/.test(P), "privacy: the player's name is shown but not stored (true: the ID check answer is never saved)");
   ok(/بالتواصل معنا/.test(P) && !/زر "احذف حسابي"|زر احذف حسابي/.test(P), "privacy: deletion is by contacting you (the delete button does not exist yet, so the page does not promise it)");
-  ok(/18 سنة وأكتر/.test(P) && /18 سنة أو أكتر/.test(T), "both pages say 18 or older");
-  /* ---- the terms match your decisions ---- */
-  ok(/ما في استرجاع/.test(T) && /ID غلط/.test(T), "terms: no refund for a wrong Player ID");
-  ok(/صالح 30 دقيقة/.test(T) && /بيتأكّد يدوياً/.test(T), "terms: a deposit's exchange rate is valid for 30 minutes and deposits are confirmed by hand");
-  ok(/بطلبك وبقرار الإدارة/.test(T) && /النقاط وحدة عرض فقط/.test(T) && /1000 نقطة = 1\$/.test(T), "terms: unused balance is refunded in cash by request and your decision; points are only a display unit (1000 = $1)");
-  ok(/بينخصم من رصيدك فوراً/.test(T) && /بيرجع المبلغ لرصيدك/.test(T), "terms: the price leaves the balance at once; a failed or refused order returns it");
-  ok(/على مسؤوليتك/.test(T) && /تعلّق حسابات/.test(T) && /غير تابع/.test(T), "terms: third-party top-up risk is the customer's, and the store is not affiliated with the games");
-  ok(/تعليق حسابك أو رفض أو عكس أي طلب أو إيداع/.test(T) && /VIP/.test(T) && /فترة اختبار/.test(T), "terms: you may suspend, refuse or reverse; VIP and merchant levels are explained");
+  ok(/18 سنة فأكثر/.test(P) && /18 سنة فأكثر/.test(T), "both pages say 18 or older");
+  ok(!/\b(بتشوف|بنجمع|بيتأكّد|منحتفظ|بنحتفظ|بتنحذف|بيتخزّن|ما بنخزّنه)\b/.test(P + T), "both pages are in formal Arabic (none of the colloquial words used in the first draft remain)");
+  /* ---- the terms match your decisions and the added points ---- */
+  ok(/جميع المنتجات سلع وخدمات رقمية/.test(T) && /لا نضمن التنفيذ الفوري/.test(T) && /غير تابع/.test(T), "terms: all products are digital goods and services, delivered through suppliers after confirmation; no promise of instant delivery; the store is not affiliated with the games");
+  ok(/الحفاظ على سرّية بيانات دخوله/.test(T) && /لا يتحمّل المتجر أي خسارة تنتج عن إهمال المستخدم، أو مشاركته حسابه، أو تعرّضه لاحتيال من جهة خارجية/.test(T) && /إبلاغنا فوراً/.test(T), "terms: account security: keep the sign-in secret, no sharing, report misuse at once; the store is not liable for losses from negligence, sharing or outside fraud");
+  ok(/لا يمكن إلغاء الطلب أو إرجاعه أو تبديله بعد تنفيذه/.test(T) && /يُعاد المبلغ إلى الرصيد/.test(T) && /ظهر خلل في الشحنة/.test(T), "terms: no cancel, return or exchange after execution; a refused, failed or faulty order returns the amount to the balance");
+  ok(/لا يحقّ له الاسترجاع/.test(T) && /معرّف خاطئ/.test(T), "terms: no refund for a wrong Player ID");
+  ok(/صالحاً 30 دقيقة/.test(T) && /يُؤكَّد الإيداع يدوياً/.test(T), "terms: a deposit's exchange rate is valid for 30 minutes and deposits are confirmed by hand");
+  ok(/بناءً على طلب المستخدم وبقرار من الإدارة/.test(T) && /النقاط وحدة عرض فقط/.test(T) && /1000 نقطة = 1\$/.test(T), "terms: unused balance is refunded in cash by request and your decision; points are only a display unit (1000 = $1)");
+  ok(/فور تأكيد الطلب/.test(T), "terms: the price leaves the balance as soon as the order is confirmed");
+  ok(/على مسؤولية المستخدم/.test(T) && /تعلّق الحسابات/.test(T), "terms: third-party top-up risk is the customer's");
+  ok(/فترة اختبار/.test(T) && /60 يوماً/.test(T) && /يُثبَّت المستوى/.test(T) && /أيهما أعلى/.test(T) && /إلغاء مزايا التاجر/.test(T) && !/حد أدنى شهري|الحد الأدنى للصرف الشهري|حداً أدنى شهرياً/.test(T), "terms: YOUR merchant rule: an agreed total inside a test period (60 days), fixed once reached, otherwise back to the higher of the old and the earned level; the right to cancel merchant privileges for abuse; and NO monthly minimum (that was the other assistant's suggestion, not your decision)");
+  ok(/تعليق الحساب أو رفض أو عكس أي طلب أو إيداع/.test(T), "terms: you may suspend, refuse or reverse");
   ok(!/innerHTML|<script/.test(pages.privacy + pages.terms), "no scripts in either page");
   /* ---- links from the store ---- */
   const d = new JSDOM(storeHtml.replace(/<script src="[^"]+"><\/script>\s*/g, ""), { url: "https://yardova.ly-ad.de/store/", runScripts: "dangerously", pretendToBeVisual: true, beforeParse(w) { w.scrollTo = () => {}; w.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, items: [], methods: [] }) }); const auth = () => ({ onAuthStateChanged(cb) { cb(null); }, signInWithPopup() { return Promise.resolve(); }, signOut() { return Promise.resolve(); } }); auth.GoogleAuthProvider = function () {}; w.firebase = { initializeApp() {}, auth }; } });
