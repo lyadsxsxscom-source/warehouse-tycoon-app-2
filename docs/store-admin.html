@@ -223,6 +223,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <div class="vrow"><label for="wlPoints">نقطة لكل 1$</label><input type="number" id="wlPoints" min="1" step="1" inputmode="numeric"></div>
       <div class="vrow"><label for="wlMin">أقل إيداع ($)</label><input type="number" id="wlMin" min="1" step="0.01" inputmode="decimal"></div>
       <div class="vrow"><label for="wlMax">أعلى إيداع ($)</label><input type="number" id="wlMax" min="1" step="0.01" inputmode="decimal"></div>
+      <div class="vrow"><label for="wlChainCap">سقف التأكيد التلقائي لإيداع USDT ($)</label><input type="number" id="wlChainCap" min="1" step="1" inputmode="decimal"></div>
       <div class="vrow"><label for="wlProc">أقصى طلبات قيد التنفيذ للزبون</label><input type="number" id="wlProc" min="1" max="100" step="1" inputmode="numeric"></div>
       <div class="bar"><button id="btnSaveWallet">حفظ إعدادات المحفظة</button></div>
       <div id="wlMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
@@ -453,12 +454,14 @@ function renderMethods(){
     const inp = (f, label, type, extra) => { const w = el('div', {}, el('label', { text: label })); const x = el('input', Object.assign({ type, 'data-i': i, 'data-f': f }, extra || {})); x.value = m[f] === undefined ? '' : m[f]; w.append(x); return w; };
     const dec = el('select', { 'data-i': i, 'data-f': 'decimals' }); [0, 1, 2, 3, 4].forEach(d => { const o = el('option', { value: d, text: String(d) }); dec.append(o); }); dec.value = String(m.decimals);
     const decW = el('div', {}, el('label', { text: 'خانات عشرية' }), dec);
-    const g = el('div', { class: 'g' }, inp('name', 'الاسم', 'text', { maxlength: 30 }), inp('currency', 'رمز العملة', 'text', { maxlength: 8 }), inp('rate', 'سعر الصرف (لكل 1$)', 'number', { step: 'any', min: '0', inputmode: 'decimal' }), inp('feePct', 'نسبة إضافية %', 'number', { step: '0.1', min: '0', max: '50', inputmode: 'decimal' }), decW, inp('account', 'حساب/عنوان الدفع (بيظهر للزبون بالطلب)', 'text', { maxlength: 120, dir: 'ltr' }), inp('instructions', 'تعليمات للزبون', 'text', { maxlength: 300 }));
+    const av = el('select', { 'data-i': i, 'data-f': 'autoVerify' }); [['', 'بدون (تأكيد يدوي)'], ['bep20', 'تلقائي من البلوكتشين: USDT BEP20'], ['trc20', 'تلقائي من البلوكتشين: USDT TRC20']].forEach(([v, t]) => av.append(el('option', { value: v, text: t }))); av.value = m.autoVerify || '';
+    const avW = el('div', {}, el('label', { text: 'التأكيد التلقائي' }), av);
+    const g = el('div', { class: 'g' }, inp('name', 'الاسم', 'text', { maxlength: 30 }), inp('currency', 'رمز العملة', 'text', { maxlength: 8 }), inp('rate', 'سعر الصرف (لكل 1$)', 'number', { step: 'any', min: '0', inputmode: 'decimal' }), inp('feePct', 'نسبة إضافية %', 'number', { step: '0.1', min: '0', max: '50', inputmode: 'decimal' }), decW, inp('account', 'حساب/عنوان الدفع (بيظهر للزبون بالطلب)', 'text', { maxlength: 120, dir: 'ltr' }), avW, inp('instructions', 'تعليمات للزبون', 'text', { maxlength: 300 }));
     const en = el('input', { type: 'checkbox', 'data-i': i, 'data-f': 'enabled' }); en.checked = m.enabled !== false;
     const up = el('button', { 'data-pm': 'up', 'data-i': i, text: '▲' }); if(i === 0) up.disabled = true;
     const down = el('button', { 'data-pm': 'down', 'data-i': i, text: '▼' }); if(i === METHODS.length - 1) down.disabled = true;
     const tools = el('div', { class: 'tools' }, el('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:.9rem;' }, en, 'مفعّلة'), el('div', { style: 'display:flex;gap:6px;' }, up, down, el('button', { 'data-pm': 'del', 'data-i': i, text: '🗑' })));
-    box.append(el('div', { class: 'pm', 'data-pmrow': i }, g, el('div', { class: 'prev', 'data-prev': i, text: pmPreview(m) }), tools));
+    box.append(el('div', { class: 'pm', 'data-pmrow': i }, g, el('div', { class: 'prev', 'data-prev': i, text: pmPreview(m) }), m.autoVerify ? el('div', { class: 'sm', 'data-avnote': i, text: '⛓ تأكيد تلقائي: الزبون بيحوّل مبلغ مميّز (آخر أرقامه فريدة) ويلصق رقم العملية، والسيرفر بيتحقق من الشبكة العلنية. العملة لازم USDT وسعر الصرف 1، والعنوان لازم يكون عنوانك أنت. أي شك بيضل لإيدك.' }) : '', tools));
   });
 }
 async function loadMethods(){
@@ -470,7 +473,7 @@ async function loadMethods(){
 }
 $('pmList').addEventListener('input', e => {
   const t = e.target; if(t.dataset.f === undefined) return;
-  const m = METHODS[Number(t.dataset.i)]; m[t.dataset.f] = t.type === 'checkbox' ? t.checked : (t.tagName === 'SELECT' ? Number(t.value) : t.value);
+  const m = METHODS[Number(t.dataset.i)]; m[t.dataset.f] = t.type === 'checkbox' ? t.checked : (t.tagName === 'SELECT' && t.dataset.f === 'decimals' ? Number(t.value) : t.value);
   const pv = document.querySelector('[data-prev="' + t.dataset.i + '"]'); if(pv) pv.textContent = pmPreview(m);
 });
 $('pmList').addEventListener('change', e => { if(e.target.tagName === 'SELECT' || e.target.type === 'checkbox') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -482,7 +485,7 @@ $('pmList').addEventListener('click', e => {
 });
 $('btnAddMethod').onclick = () => { if(METHODS.length >= 8){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = 'الحد الأقصى 8 طرق دفع.'; return; } METHODS.push({ name: '', currency: '', rate: '', decimals: 2, feePct: 0, enabled: true, account: '', instructions: '' }); renderMethods(); };
 $('btnSaveMethods').onclick = async () => {
-  const body = { action: 'payments_save', methods: METHODS.map(m => ({ id: m.id, name: String(m.name || '').trim(), currency: String(m.currency || '').trim(), rate: m.rate === '' ? 0 : Number(m.rate), decimals: Number(m.decimals), feePct: m.feePct === '' ? 0 : Number(m.feePct), enabled: m.enabled !== false, account: String(m.account || '').trim(), instructions: String(m.instructions || '').trim() })) };
+  const body = { action: 'payments_save', methods: METHODS.map(m => ({ id: m.id, name: String(m.name || '').trim(), currency: String(m.currency || '').trim(), rate: m.rate === '' ? 0 : Number(m.rate), decimals: Number(m.decimals), feePct: m.feePct === '' ? 0 : Number(m.feePct), enabled: m.enabled !== false, account: String(m.account || '').trim(), instructions: String(m.instructions || '').trim(), autoVerify: m.autoVerify === 'bep20' || m.autoVerify === 'trc20' ? m.autoVerify : '' })) };
   $('btnSaveMethods').disabled = true; $('pmMsg').textContent = '';
   try{
     const j = await storeApi(body); METHODS = j.methods.map(m => ({ ...m })); renderMethods();
@@ -498,14 +501,14 @@ async function loadWallet(){
   $('wlMsg').textContent = '';
   try{
     const j = await storeApi({ action: 'wallet_get' }); WALLET = j.cfg;
-    $('wlPoints').value = j.cfg.pointsPerUsd; $('wlMin').value = j.cfg.minTopupUsd; $('wlMax').value = j.cfg.maxTopupUsd; $('wlProc').value = j.cfg.maxProcessing;
+    $('wlPoints').value = j.cfg.pointsPerUsd; $('wlMin').value = j.cfg.minTopupUsd; $('wlMax').value = j.cfg.maxTopupUsd; $('wlProc').value = j.cfg.maxProcessing; $('wlChainCap').value = j.cfg.autoCapUsd;
     if(!j.configured){ $('wlMsg').style.color = 'var(--dim)'; $('wlMsg').textContent = 'هاي أرقام مثال، عدّلها واحفظ.'; }
   }catch(e){ $('wlMsg').style.color = 'var(--err)'; $('wlMsg').textContent = 'تعذّر تحميل الإعدادات: ' + e.message; }
 }
 $('btnSaveWallet').onclick = async () => {
   $('btnSaveWallet').disabled = true; $('wlMsg').textContent = '';
   try{
-    const j = await storeApi({ action: 'wallet_save', cfg: { pointsPerUsd: Number($('wlPoints').value), minTopupUsd: Number($('wlMin').value), maxTopupUsd: Number($('wlMax').value), maxProcessing: Number($('wlProc').value) } });
+    const j = await storeApi({ action: 'wallet_save', cfg: { pointsPerUsd: Number($('wlPoints').value), minTopupUsd: Number($('wlMin').value), maxTopupUsd: Number($('wlMax').value), maxProcessing: Number($('wlProc').value), autoCapUsd: Number($('wlChainCap').value) } });
     WALLET = j.cfg; $('wlMsg').style.color = 'var(--ok, #4caf50)'; $('wlMsg').textContent = 'انحفظ ✓';
   }catch(e){ $('wlMsg').style.color = 'var(--err)'; $('wlMsg').textContent = e.message; }
   $('btnSaveWallet').disabled = false;
@@ -682,6 +685,14 @@ function renderOrders(){
       o.kind === 'refund' ? sub('المبلغ المطلوب إرساله: ' + usd(o.priceUsd) + ' (محجوز من رصيده)') : o.kind === 'topup' ? sub('الإيداع: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name) : o.kind === 'order' ? sub('السعر: ' + usd(o.priceUsd) + ' · انخصم من رصيده') : sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
       sub('أُنشئ: ' + new Date(o.createdAt).toLocaleString('en-GB') + (o.doneAt ? ' · نُفّذ: ' + new Date(o.doneAt).toLocaleString('en-GB') : '')));
     if(o.kind === 'refund' && o.payout && (o.payout.method || o.payout.account)) card.append(el('div', { class: 'sm', 'data-payout': o.id }, 'الاستلام: ' + o.payout.method + ' · ', el('bdi', { text: o.payout.account })));
+    if(o.chainInfo){
+      const ci = o.chainInfo, net = o.method && o.method.autoVerify ? o.method.autoVerify.toUpperCase() : '', short = ci.txid ? ci.txid.slice(0, 10) + '…' + ci.txid.slice(-6) : '';
+      const lineC = ci.state === 'ok' ? '⛓ أُكّد تلقائياً من البلوكتشين ' + net + ' · ' + short + ' · ' + ci.amount + ' USDT' + (ci.confirmations ? ' · ' + ci.confirmations + ' تأكيد' : '')
+        : ci.state === 'pending' ? '⛓ بانتظار الشبكة: ' + ci.reason + (short ? ' · ' + short : '')
+        : ci.state === 'retry' ? '⛓ تعذّر الاتصال بالشبكة، إعادة محاولة (' + ci.tries + ')'
+        : '⛓ يحتاج مراجعتك: ' + ci.reason + (short ? ' · ' + short : '');
+      card.append(el('div', { class: 'sm' + (ci.state === 'manual' ? ' late' : ''), 'data-chain': o.id, text: lineC }));
+    }
     if(o.auto){
       const au = o.auto, cost = o.costUsd || au.costUsd || 0, profit = cost ? o.priceUsd - cost : null, pTxt = profit === null ? '' : ' · الربح ' + usd4(profit) + ' (' + (o.priceUsd ? (profit / o.priceUsd * 100).toFixed(1) : '0') + '%)';
       const line = au.state === 'sent' ? '🤖 أُرسل لـFazerCards ' + (o.supplierOrderId || '') + ' · التكلفة ' + usd4(cost) + pTxt + ' · بانتظار تأكيدهم'
@@ -701,6 +712,7 @@ function renderOrders(){
     if(o.adminNote) card.append(sub('ملاحظتك: ' + o.adminNote));
     const t = el('div', { class: 'tools' });
     if(o.proof && o.proof.hasImage) t.append(el('button', { 'data-oact': 'proof', 'data-id': o.id, text: '🧾 عرض الإيصال' }));
+    if(o.kind === 'topup' && o.status === 'payment_submitted' && o.method && o.method.autoVerify && o.proof && o.proof.ref) t.append(el('button', { 'data-oact': 'chaincheck', 'data-id': o.id, text: '⛓ تحقق من البلوكتشين' }));
     if(o.kind === 'order' && o.status === 'processing' && !o.supplierOrderId) t.append(el('button', { 'data-oact': 'autorun', 'data-id': o.id, text: '🤖 نفّذ تلقائياً الآن' }));
     if(o.kind === 'order' && o.status === 'processing' && o.supplierOrderId) t.append(el('button', { 'data-oact': 'autosync', 'data-id': o.id, text: '🔄 تحقق من FazerCards' }));
     if(o.kind === 'refund' && o.status === 'processing' && o.payout && o.payout.account) t.append(el('button', { 'data-oact': 'copy', 'data-id': o.id, text: '📋 نسخ الحساب' }));
@@ -718,7 +730,14 @@ $('btnOrdRefresh').onclick = loadOrders;
 $('ordList').addEventListener('click', async e => {
   const b = e.target.closest('button[data-oact]'); if(!b) return;
   const id = b.dataset.id, o = ORDERS.find(x => x.id === id), card = document.querySelector('[data-ord="' + id + '"]'); $('ordMsg').textContent = '';
-  if(b.dataset.oact === 'autorun' || b.dataset.oact === 'autosync'){
+  if(b.dataset.oact === 'chaincheck'){
+    $('ordMsg').style.color = 'var(--dim)'; $('ordMsg').textContent = 'عم نتحقق من الشبكة...';
+    try{
+      const j = await storeApi({ action: 'order_chain_check', id }); await loadOrders();
+      const T = { done: 'تم تأكيد الإيداع تلقائياً ✓', pending: 'لسا بانتظار الشبكة (تأكيدات أو ما انلقت العملية)', retry: 'تعذّر الاتصال بالشبكة، جرّب بعد شوي', manual: j.reason || 'يحتاج مراجعتك', closed: 'الإيداع منتهي', not_open: 'الإيداع مو بانتظار تأكيد', no_ref: 'ما في رقم عملية', not_auto: 'هالطريقة مو تلقائية' };
+      $('ordMsg').style.color = j.outcome === 'done' ? 'var(--ok, #4caf50)' : '#ffd48a'; $('ordMsg').textContent = o.code + ': ' + (T[j.outcome] || j.outcome);
+    }catch(err){ $('ordMsg').style.color = 'var(--err)'; $('ordMsg').textContent = err.message; }
+  } else if(b.dataset.oact === 'autorun' || b.dataset.oact === 'autosync'){
     const run = b.dataset.oact === 'autorun'; if(run && !window.confirm('تنفيذ ' + o.code + ' تلقائياً هلق عند FazerCards؟ (بيصرف من رصيدك عندهم، ضمن حماياتك)')) return;
     $('ordMsg').style.color = 'var(--dim)'; $('ordMsg').textContent = run ? 'عم نرسل...' : 'عم نسأل FazerCards...';
     try{

@@ -1278,15 +1278,22 @@ function storeParseMethods(raw) {
     const feePct = m.feePct === undefined || m.feePct === "" || m.feePct === null ? 0 : Number(m.feePct);
     if (!Number.isFinite(feePct) || feePct < 0 || feePct > 50) throw new ApiError("bad_method", `"${name}": النسبة الإضافية من 0 لـ50.`);
     const instructions = cleanText(m.instructions, 300), account = cleanText(m.account, 120);
+    const autoVerify = m.autoVerify === "bep20" || m.autoVerify === "trc20" ? m.autoVerify : "";
+    if (autoVerify) {
+      if (currency.toUpperCase() !== "USDT") throw new ApiError("bad_method", `"${name}": التحقق التلقائي من البلوكتشين لعملة USDT بس.`);
+      if (Math.abs(rate - 1) > 1e-9) throw new ApiError("bad_rate", `"${name}": للتحقق التلقائي سعر الصرف لازم يكون 1 (USDT = 1$).`);
+      if (autoVerify === "bep20" && !/^0x[0-9a-fA-F]{40}$/.test(account)) throw new ApiError("bad_method", `"${name}": عنوان BEP20 لازم يبدأ بـ0x ويكون 42 خانة.`);
+      if (autoVerify === "trc20" && !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(account)) throw new ApiError("bad_method", `"${name}": عنوان TRC20 لازم يبدأ بحرف T ويكون 34 خانة.`);
+    }
     let id = typeof m.id === "string" && /^[a-z0-9_-]{1,24}$/.test(m.id) ? m.id : "m" + randomId().slice(0, 8);
     while (seen.has(id)) id = "m" + randomId().slice(0, 8);
     seen.add(id);
-    return { id, name, currency, rate: Math.round(rate * 1000000) / 1000000, decimals, feePct: Math.round(feePct * 100) / 100, enabled: m.enabled !== false, instructions, account };
+    return { id, name, currency, rate: Math.round(rate * 1000000) / 1000000, decimals, feePct: Math.round(feePct * 100) / 100, enabled: m.enabled !== false, instructions, account, autoVerify };
   });
 }
 async function handleStoreCatalog(env) {
   const tree = storeTree(await storeAllNodes(env));
-  const methods = (await storeLoadMethods(env)).filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, rate: m.rate, decimals: m.decimals, feePct: m.feePct }));
+  const methods = (await storeLoadMethods(env)).filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, rate: m.rate, decimals: m.decimals, feePct: m.feePct, auto: !!m.autoVerify }));
   const { cfg: wcfg } = await storeLoadWallet(env);
   const r = jsonResponse({ ok: true, items: tree, methods, wallet: { pointsPerUsd: wcfg.pointsPerUsd } }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
 }
@@ -1414,6 +1421,11 @@ async function handleAdminStore(request, env) {
       const fresh = await fsGetDoc(env, "storeOrders/" + id); if (!fresh.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
       return jsonResponse({ ok: true, outcome: r.outcome, reason: r.reason || "", order: storeOrderOut(id, fresh.data, Date.now(), true) }, 200);
     }
+    if (b.action === "order_chain_check") {                    // تحقق يدوي الآن من البلوكتشين لإيداع USDT
+      const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      const r = await storeChainVerifyOnce(env, id), fresh = await fsGetDoc(env, "storeOrders/" + id); if (!fresh.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
+      return jsonResponse({ ok: true, outcome: r.outcome, reason: r.reason || "", order: storeOrderOut(id, fresh.data, Date.now(), true) }, 200);
+    }
     if (b.action === "order_finish_deletion") {
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
       const od = await fsGetDoc(env, "storeOrders/" + id);
@@ -1538,6 +1550,7 @@ async function handleAdminStore(request, env) {
     if (b.action === "payments_get") { const d = await fsGetDoc(env, "config/storePayments"); return jsonResponse({ ok: true, methods: await storeLoadMethods(env), updatedAt: d.exists && d.data ? Number(d.data.updatedAt) || 0 : 0 }, 200); }
     if (b.action === "payments_save") {
       const methods = storeParseMethods(b.methods), at = Date.now();
+      for (const m of methods) if (m.autoVerify === "trc20" && !(await tronAddrToHex20(m.account))) throw new ApiError("bad_method", `"${m.name}": عنوان TRC20 غير صحيح (فشل فحص الخانات الأخيرة). تأكد من نسخه كامل.`);
       await fsCommit(env, [{ update: { name: docName(env, "config/storePayments"), fields: objToFields({ methods, updatedAt: at }) } }]);
       return jsonResponse({ ok: true, methods, updatedAt: at }, 200);
     }
@@ -1669,17 +1682,18 @@ function storeSpendPlan(env, uid, cur, delta, note, by, at) {
 }
 // ===== محفظة المتجر (الخطوة 6): رصيد دولار منفصل عن رصيد اللعبة =====
 // storeCustomers/{uid}.balanceUsd (4 خانات عشرية). "النقاط" وحدة عرض بس: pointsPerUsd نقطة = 1$ (المخزّن والمخصوم دولار). كل حركة بتنسجّل بـstoreLedger.
-const STORE_WALLET_DEFAULTS = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 };
+const STORE_WALLET_DEFAULTS = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10, autoCapUsd: 200 };
 const r4 = (x) => Math.round(x * 10000) / 10000;
 function storeParseWallet(o) {
   o = o || {}; const num = (v, d) => (v === undefined || v === "" || v === null ? d : Number(v));
-  const w = { pointsPerUsd: num(o.pointsPerUsd, STORE_WALLET_DEFAULTS.pointsPerUsd), minTopupUsd: num(o.minTopupUsd, STORE_WALLET_DEFAULTS.minTopupUsd), maxTopupUsd: num(o.maxTopupUsd, STORE_WALLET_DEFAULTS.maxTopupUsd), maxProcessing: num(o.maxProcessing, STORE_WALLET_DEFAULTS.maxProcessing) };
+  const w = { pointsPerUsd: num(o.pointsPerUsd, STORE_WALLET_DEFAULTS.pointsPerUsd), minTopupUsd: num(o.minTopupUsd, STORE_WALLET_DEFAULTS.minTopupUsd), maxTopupUsd: num(o.maxTopupUsd, STORE_WALLET_DEFAULTS.maxTopupUsd), maxProcessing: num(o.maxProcessing, STORE_WALLET_DEFAULTS.maxProcessing), autoCapUsd: num(o.autoCapUsd, STORE_WALLET_DEFAULTS.autoCapUsd) };
   const bad = (m) => { throw new ApiError("bad_wallet", m); };
   if (!Number.isInteger(w.pointsPerUsd) || w.pointsPerUsd < 1 || w.pointsPerUsd > 1000000) bad("عدد النقاط لكل 1$ لازم يكون رقم صحيح بين 1 ومليون.");
   if (!Number.isFinite(w.minTopupUsd) || w.minTopupUsd < 1 || w.minTopupUsd > 10000) bad("أقل إيداع من 1$ لـ10,000$.");
   if (!Number.isFinite(w.maxTopupUsd) || w.maxTopupUsd < w.minTopupUsd || w.maxTopupUsd > 100000) bad("أعلى إيداع لازم يكون أكبر من أقل إيداع (وأقل من 100,000$).");
   if (!Number.isInteger(w.maxProcessing) || w.maxProcessing < 1 || w.maxProcessing > 100) bad("عدد الطلبات المفتوحة من 1 لـ100.");
-  w.minTopupUsd = r2(w.minTopupUsd); w.maxTopupUsd = r2(w.maxTopupUsd);
+  if (!Number.isFinite(w.autoCapUsd) || w.autoCapUsd < 1 || w.autoCapUsd > 100000) bad("سقف التأكيد التلقائي للإيداع من 1$ لـ100,000$.");
+  w.minTopupUsd = r2(w.minTopupUsd); w.maxTopupUsd = r2(w.maxTopupUsd); w.autoCapUsd = r2(w.autoCapUsd);
   return w;
 }
 async function storeLoadWallet(env) {
@@ -1977,6 +1991,129 @@ async function handleFazerWebhook(request, env) {
   }
   return jsonResponse({ ok: true }, 200);
 }
+// ===== تأكيد إيداع USDT تلقائياً من البلوكتشين العلني (BEP20 / TRC20) =====
+// الزبون بيدفع لعنوانك مبلغ مميّز (آخر خانات عشرية فريدة لكل طلب مفتوح) وبيلصق رقم العملية (TXID). السيرفر بيقرا الشبكة العلنية بس
+// (ما في مفاتيح ولا وصول لأي محفظة): نجاح العملية، عقد USDT الحقيقي، عنوانك، المبلغ بالضبط، عدد التأكيدات، والوقت. أي شك = بيضل لإيدك.
+const CHAIN_NET = {
+  bep20: { label: "BEP20", contract: "0x55d398326f99059ff775485246999027b3197955", minConf: 10 },
+  trc20: { label: "TRC20", contractHex: "a614f803b6fd780986a42c78ec9c7f77e6ded13c", minConf: 0 },
+};
+const CHAIN_TOPIC = "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const BSC_RPCS = ["https://bsc-dataseed.bnbchain.org", "https://bsc-dataseed1.bnbchain.org", "https://bsc-dataseed2.bnbchain.org"];
+const CHAIN_CLAIM_WINDOW_MS = 24 * 3600000, CHAIN_SKEW_MS = 5 * 60000, CHAIN_PENDING_TIMEOUT_MS = 3 * 3600000;
+let CHAIN_FAST_MS = [10000, 10000];
+const chainSleep = (ms) => new Promise(r => setTimeout(r, ms));
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+async function tronAddrToHex20(addr) {                    // عنوان TRON (T...) ← 20 بايت hex، مع فحص الخانات الأخيرة (checksum)
+  addr = String(addr || ""); if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr)) return null;
+  let n = 0n; for (const ch of addr) n = n * 58n + BigInt(B58.indexOf(ch));
+  const hex = n.toString(16).padStart(50, "0"); if (hex.length !== 50) return null;
+  const payload = hex.slice(0, 42), check = hex.slice(42), bytes = Uint8Array.from(payload.match(/../g).map(h => parseInt(h, 16)));
+  const h1 = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), h2 = new Uint8Array(await crypto.subtle.digest("SHA-256", h1));
+  if ([...h2.slice(0, 4)].map(b => b.toString(16).padStart(2, "0")).join("") !== check || payload.slice(0, 2) !== "41") return null;
+  return payload.slice(2);
+}
+function chainTxid(network, ref) {
+  let t = String(ref || "").trim().toLowerCase();
+  if (network === "bep20") return /^0x[0-9a-f]{64}$/.test(t) ? t : null;
+  t = t.replace(/^0x/, ""); return /^[0-9a-f]{64}$/.test(t) ? t : null;
+}
+async function bscRpc(env, method, params) {
+  const urls = env.BSC_RPC_URL ? [String(env.BSC_RPC_URL), ...BSC_RPCS] : BSC_RPCS; let last = null;
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
+      const j = await res.json(); if (!res.ok || j.error) { last = new Error(String(j.error && j.error.message || res.status)); continue; }
+      return j.result;
+    } catch (e) { last = e; }
+  }
+  throw new ApiError("chain_unreachable", "تعذّر الوصول لشبكة BNB Chain.", 502);
+}
+const chainNorm = (x) => String(x || "").replace(/^0x/i, "").toLowerCase();
+async function chainBep20(env, tx, addr) {
+  const rc = await bscRpc(env, "eth_getTransactionReceipt", [tx]);
+  if (!rc) return { state: "pending", reason: "ما انلقت العملية على شبكة BEP20 بعد." };
+  if (rc.status !== "0x1") return { state: "fail", reason: "العملية فشلت على الشبكة." };
+  const want = chainNorm(addr); let total = 0n;
+  for (const l of Array.isArray(rc.logs) ? rc.logs : []) {
+    if (String(l.address || "").toLowerCase() === CHAIN_NET.bep20.contract && Array.isArray(l.topics) && l.topics.length === 3 && chainNorm(l.topics[0]) === CHAIN_TOPIC && chainNorm(l.topics[2]).length === 64 && chainNorm(l.topics[2]).endsWith(want)) { try { total += BigInt(l.data); } catch (e) {} }
+  }
+  if (total === 0n) return { state: "fail", reason: "ما في تحويل USDT (BEP20) لعنوانك بهالعملية." };
+  const amount = Number(total / 10n ** 12n) / 1e6, bn = parseInt(rc.blockNumber, 16), latest = parseInt(await bscRpc(env, "eth_blockNumber", []), 16), conf = latest - bn + 1;
+  if (!(conf >= CHAIN_NET.bep20.minConf)) return { state: "pending", reason: "التأكيدات " + Math.max(0, conf) + " من " + CHAIN_NET.bep20.minConf + ".", confirmations: Math.max(0, conf), amount };
+  const blk = await bscRpc(env, "eth_getBlockByNumber", [rc.blockNumber, false]);
+  return { state: "ok", amount, confirmations: conf, timeMs: (parseInt(blk && blk.timestamp, 16) || 0) * 1000 };
+}
+async function chainTrc20(env, tx, addr20) {
+  const res = await fetch((env.TRON_API_URL ? String(env.TRON_API_URL) : "https://api.trongrid.io") + "/walletsolidity/gettransactioninfobyid", { method: "POST", headers: { "Content-Type": "application/json", ...(env.TRONGRID_KEY ? { "TRON-PRO-API-KEY": String(env.TRONGRID_KEY) } : {}) }, body: JSON.stringify({ value: tx }), signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined }).catch(() => null);
+  if (!res || !res.ok) throw new ApiError("chain_unreachable", "تعذّر الوصول لشبكة TRON.", 502);
+  const j = await res.json().catch(() => null); if (!j || typeof j !== "object") throw new ApiError("chain_unreachable", "رد غير مفهوم من شبكة TRON.", 502);
+  if (!j.id) return { state: "pending", reason: "ما انلقت العملية على شبكة TRC20 بعد (أو ما انثبّتت)." };       // نقطة solidity ما بترجّع غير العمليات المثبّتة نهائياً
+  if (!j.receipt || j.receipt.result !== "SUCCESS" || (j.result && j.result !== "SUCCESS")) return { state: "fail", reason: "العملية فشلت على الشبكة." };
+  let total = 0n;
+  for (const l of Array.isArray(j.log) ? j.log : []) {
+    let a = chainNorm(l.address); if (a.length === 42 && a.startsWith("41")) a = a.slice(2);
+    if (a === CHAIN_NET.trc20.contractHex && Array.isArray(l.topics) && l.topics.length === 3 && chainNorm(l.topics[0]) === CHAIN_TOPIC && chainNorm(l.topics[2]).length === 64 && chainNorm(l.topics[2]).endsWith(addr20)) { try { total += BigInt("0x" + chainNorm(l.data)); } catch (e) {} }
+  }
+  if (total === 0n) return { state: "fail", reason: "ما في تحويل USDT (TRC20) لعنوانك بهالعملية." };
+  return { state: "ok", amount: Number(total) / 1e6, confirmations: 0, timeMs: Number(j.blockTimeStamp) || 0 };
+}
+async function storeChainTail(env, method, base, now) {            // رقم مميّز صغير (0.0001 لـ0.0099) لكل طلب مفتوح: بيربط الدفعة بالطلب
+  const rows = await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "methodId", value: method.id });
+  const used = new Set(rows.filter(r => r.data.kind === "topup" && (r.data.status === "awaiting_payment" || r.data.status === "payment_submitted") && now - Number(r.data.createdAt) <= CHAIN_CLAIM_WINDOW_MS).map(r => Math.round(Number(r.data.amount) * 10000)));
+  const b = Math.round(base * 10000), start = crypto.getRandomValues(new Uint8Array(1))[0] % 99;
+  for (let k = 0; k < 99; k++) { const t = 1 + ((start + k) % 99); if (!used.has(b + t)) return { amount: (b + t) / 10000, tail: t }; }
+  throw new ApiError("busy", "الإيداعات المفتوحة بهالمبلغ كتير هلق. جرّب بعد شوي.", 429);
+}
+async function storeChainVerifyOnce(env, id) {
+  const now = Date.now(), od = await fsGetDoc(env, "storeOrders/" + id);
+  if (!od.exists) return { outcome: "missing" };
+  const o = od.data; if (o.kind !== "topup" || o.status !== "payment_submitted") return { outcome: "not_open" };
+  const net = CHAIN_NET[o.autoVerify]; if (!net) return { outcome: "not_auto" };
+  const ref = String((o.proof && o.proof.ref) || ""); if (!ref.trim()) return { outcome: "no_ref" };
+  const ch = o.chain || {}, submittedAt = Number(o.proof && o.proof.submittedAt) || now, tx = chainTxid(o.autoVerify, ref);
+  const set = (patch) => storeAutoSetState(env, id, x => x.status === "payment_submitted" ? { chain: { ...(x.chain || {}), ...patch, at: now }, updatedAt: now } : null);
+  const manual = async (reason, extra) => { await set({ state: "manual", reason, ...(extra || {}) }); return { outcome: "manual", reason }; };
+  if (!tx) return await manual("رقم العملية مو بصيغة " + net.label + " صحيحة (" + (o.autoVerify === "bep20" ? "0x ثم 64 خانة" : "64 خانة") + ").", { txid: "", network: o.autoVerify });
+  if (now - Number(o.createdAt) > CHAIN_CLAIM_WINDOW_MS) return await manual("الطلب أقدم من 24 ساعة.", { txid: tx, network: o.autoVerify });
+  const addr = o.autoVerify === "bep20" ? (/^0x[0-9a-fA-F]{40}$/.test(String(o.methodAccount || "")) ? String(o.methodAccount).toLowerCase() : null) : await tronAddrToHex20(o.methodAccount);
+  if (!addr) return await manual("عنوان الاستلام بإعدادات طريقة الدفع غير صالح.", { txid: tx, network: o.autoVerify });
+  let res;
+  try { res = o.autoVerify === "bep20" ? await chainBep20(env, tx, addr) : await chainTrc20(env, tx, addr); }
+  catch (e) {
+    if (!(e instanceof ApiError) || e.code !== "chain_unreachable") throw e;
+    if (now - submittedAt > CHAIN_PENDING_TIMEOUT_MS) return await manual("تعذّر الوصول لشبكة البلوكتشين لفترة طويلة.", { txid: tx, network: o.autoVerify });
+    await set({ state: "retry", reason: "تعذّر الاتصال بالشبكة، رح نعيد المحاولة.", tries: (Number(ch.tries) || 0) + 1, txid: tx, network: o.autoVerify }); return { outcome: "retry" };
+  }
+  if (res.state === "pending") {
+    if (now - submittedAt > CHAIN_PENDING_TIMEOUT_MS) return await manual("ما انلقت العملية على الشبكة خلال 3 ساعات: تأكد من الرقم والشبكة (" + net.label + ").", { txid: tx, network: o.autoVerify });
+    await set({ state: "pending", reason: res.reason, confirmations: res.confirmations || 0, need: net.minConf, tries: (Number(ch.tries) || 0) + 1, txid: tx, network: o.autoVerify }); return { outcome: "pending" };
+  }
+  if (res.state === "fail") return await manual(res.reason, { txid: tx, network: o.autoVerify });
+  const { cfg: wc } = await storeLoadWallet(env), expected = Number(o.amount), got = res.amount, created = Number(o.createdAt) || 0;
+  const why = Math.abs(got - expected) > 0.00005 ? "المبلغ المحوّل " + got + " يختلف عن المطلوب " + expected + " (لازم بالضبط)."
+    : res.timeMs < created - CHAIN_SKEW_MS ? "العملية أقدم من وقت طلب الإيداع."
+    : res.timeMs > created + CHAIN_CLAIM_WINDOW_MS ? "العملية بعد مهلة الطلب (24 ساعة)."
+    : Number(o.priceUsd) > wc.autoCapUsd ? "الإيداع (" + o.priceUsd + "$) فوق سقف التأكيد التلقائي (" + wc.autoCapUsd + "$): راجعه يدوياً." : "";
+  if (why) return await manual(why, { txid: tx, network: o.autoVerify, amount: got, confirmations: res.confirmations });
+  const claim = "storeChainTx/" + o.autoVerify + "_" + tx;
+  try { await fsCommit(env, [{ update: { name: docName(env, claim), fields: objToFields({ orderId: id, uid: o.uid, amount: got, network: o.autoVerify, at: now }) }, currentDocument: { exists: false } }]); }
+  catch (e) { if (!e.conflict) throw e; const cl = await fsGetDoc(env, claim); if (!cl.exists || cl.data.orderId !== id) return await manual("رقم العملية هاد انستعمل لطلب إيداع تاني.", { txid: tx, network: o.autoVerify, amount: got }); }
+  try {
+    const r = await storeOrderAction(env, "order_done", id, "تحقق تلقائي من البلوكتشين (" + net.label + ")", "auto", { chain: { ...ch, state: "ok", reason: "", txid: tx, network: o.autoVerify, amount: got, confirmations: res.confirmations, need: net.minConf, at: now } });
+    return { outcome: "done", order: r.order };
+  } catch (e) { if (e instanceof ApiError && (e.code === "bad_status" || e.code === "conflict")) return { outcome: "closed" }; throw e; }
+}
+async function storeChainVerify(env, id, opts) {
+  let r = await storeChainVerifyOnce(env, id);
+  if (opts && opts.fast) for (const ms of CHAIN_FAST_MS) { if (r.outcome !== "pending" && r.outcome !== "retry") break; await chainSleep(ms); r = await storeChainVerifyOnce(env, id); }
+  return r;
+}
+async function storeChainSweep(env) {
+  const rows = (await fsRunQuery(env, "storeOrders", null, 300, 0, { field: "status", value: "payment_submitted" })).filter(r => r.data.kind === "topup" && r.data.autoVerify && r.data.proof && r.data.proof.ref && (!r.data.chain || ["pending", "retry"].includes(r.data.chain.state))), stats = { checked: 0, done: 0, errors: 0 };
+  for (const r of rows.slice(0, 20)) { try { const x = await storeChainVerifyOnce(env, r.id); stats.checked++; if (x.outcome === "done") stats.done++; } catch (e) { stats.errors++; console.warn({ message: "chain sweep item failed", id: r.id, error: String(e && e.message || e) }); } }
+  return stats;
+}
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);
@@ -2034,10 +2171,11 @@ function storeOrderOut(id, o, now, admin) {
   const kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy";
   const expired = o.status === "awaiting_payment" && now > Number(o.createdAt) + STORE_ORDER_TTL_MS, status = expired ? "expired" : o.status, pr = o.proof;
   const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
-    method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || "") },
+    method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || ""), autoVerify: String(o.autoVerify || "") },
+    chain: o.chain && o.chain.state ? { state: String(o.chain.state), confirmations: Number(o.chain.confirmations) || 0, need: Number(o.chain.need) || 0 } : null,
     amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
     payout: kind === "refund" ? { method: String((o.payout && o.payout.method) || ""), account: String((o.payout && o.payout.account) || "") } : null, finalizePending: o.finalizePending === true, proof: pr && pr.submittedAt ? { ref: String(pr.ref || ""), hasImage: !!pr.hasImage, submittedAt: Number(pr.submittedAt) || 0, late: !!pr.late } : null, rejectReason: String(o.rejectReason || ""), doneAt: Number(o.doneAt) || 0 };
-  if (admin) Object.assign(out, { uid: String(o.uid || ""), name: String(o.name || ""), email: String(o.email || ""), adminNote: String(o.adminNote || ""), events: Array.isArray(o.events) ? o.events : [], supplierOrderId: String(o.supplierOrderId || ""), costUsd: Number(o.costUsd) || 0, auto: o.auto && o.auto.state ? { state: String(o.auto.state), reason: String(o.auto.reason || ""), supplierMsg: String(o.auto.supplierMsg || ""), supplierStatus: String(o.auto.supplierStatus || ""), costUsd: Number(o.auto.costUsd) || 0, at: Number(o.auto.at) || 0, tries: Number(o.auto.tries) || 0 } : null });
+  if (admin) Object.assign(out, { uid: String(o.uid || ""), name: String(o.name || ""), email: String(o.email || ""), adminNote: String(o.adminNote || ""), events: Array.isArray(o.events) ? o.events : [], chainInfo: o.chain && o.chain.state ? { state: String(o.chain.state), reason: String(o.chain.reason || ""), txid: String(o.chain.txid || ""), network: String(o.chain.network || ""), amount: Number(o.chain.amount) || 0, confirmations: Number(o.chain.confirmations) || 0, tries: Number(o.chain.tries) || 0, at: Number(o.chain.at) || 0 } : null, supplierOrderId: String(o.supplierOrderId || ""), costUsd: Number(o.costUsd) || 0, auto: o.auto && o.auto.state ? { state: String(o.auto.state), reason: String(o.auto.reason || ""), supplierMsg: String(o.auto.supplierMsg || ""), supplierStatus: String(o.auto.supplierStatus || ""), costUsd: Number(o.auto.costUsd) || 0, at: Number(o.auto.at) || 0, tries: Number(o.auto.tries) || 0 } : null });
   return out;
 }
 const storeEvent = (o, action, by, note, at) => [...(Array.isArray(o.events) ? o.events : []), { at, action, by, note: note || "" }].slice(-20);
@@ -2131,7 +2269,8 @@ async function handleStoreOrderApi(request, env, action, ctx) {
       const u = storeUserName(user);
       for (let attempt = 0; attempt < 3; attempt++) {
         const ctr = await nextRequestNo(env, "deposit"), code = "D-" + ctr.no;
-        const order = { kind: "topup", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: "", itemName: "إيداع رصيد", itemPath: "إيداع رصيد", playerId: "", vip, priceUsd: amountUsd, methodId: method.id, methodName: method.name, currency: method.currency, decimals: method.decimals, rate: method.rate, feePct: Number(method.feePct) || 0, amount: am.amount, methodAccount: String(method.account || ""), methodInstructions: String(method.instructions || ""), status: "awaiting_payment", createdAt: now, expiresAt: now + STORE_QUOTE_MIN * 60000, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+        const tailed = method.autoVerify ? await storeChainTail(env, method, am.amount, now) : null;
+        const order = { kind: "topup", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: "", itemName: "إيداع رصيد", itemPath: "إيداع رصيد", playerId: "", vip, priceUsd: amountUsd, methodId: method.id, methodName: method.name, currency: method.currency, decimals: tailed ? 4 : method.decimals, autoVerify: method.autoVerify || "", rate: method.rate, feePct: Number(method.feePct) || 0, amount: tailed ? tailed.amount : am.amount, methodAccount: String(method.account || ""), methodInstructions: String(method.instructions || ""), status: "awaiting_payment", createdAt: now, expiresAt: now + STORE_QUOTE_MIN * 60000, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
         try {
           await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } }]);
           return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false) }, 200);
@@ -2241,10 +2380,12 @@ async function handleStoreOrderApi(request, env, action, ctx) {
       if (!ref && !image && !hadImage) throw new ApiError("bad_proof", "اكتب رقم العملية أو ارفق صورة الإيصال.");
       const proof = { ref: ref || (o.proof && o.proof.ref) || "", hasImage: !!image || hadImage, submittedAt: now, late: now > Number(o.expiresAt) };
       const upd = { status: "payment_submitted", proof, updatedAt: now, events: storeEvent(o, "proof", "customer", proof.late ? "late" : "", now) };
+      if (ref && ref !== String((o.proof && o.proof.ref) || "")) upd.chain = null;                              // رقم عملية جديد: التحقق من الصفر
       const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
       if (image) writes.push({ update: { name: docName(env, "storeProofs/" + id), fields: objToFields({ data: image, ver: now }) } });
       await fsCommit(env, writes);
       await storeNotify(env, ADMIN_UID, "store_proof", { code: o.code, item: o.itemName, amount: storeAmountText(o), late: proof.late, player: o.playerId });
+      if (o.autoVerify && proof.ref && ctx && ctx.waitUntil) ctx.waitUntil(storeChainVerify(env, id, { fast: true }).catch(e2 => console.warn({ message: "chain verify failed", id, error: String(e2 && e2.message || e2) })));
       return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, now, false) }, 200);
     }
     throw new ApiError("bad_action", "طلب غلط.", 404);
@@ -3353,6 +3494,7 @@ export default {
   async scheduled(event, env, ctx) {
     if (event && event.cron === "*/5 * * * *") {         // كل 5 دقايق: متابعة طلبات FazerCards (إعادة المحاولة بنفس المفتاح + سؤال عن الحالة + تنبيه التأخير)
       ctx.waitUntil(storeAutoSweep(env).then(r => console.info({ message: "auto sweep", ...r })).catch(e => console.error({ message: "auto sweep failed", error: String(e && e.message || e) })));
+      ctx.waitUntil(storeChainSweep(env).then(r => console.info({ message: "chain sweep", ...r })).catch(e => console.error({ message: "chain sweep failed", error: String(e && e.message || e) })));
       return;
     }
     ctx.waitUntil(storeSupplierWatch(env).then(r => console.info({ message: "supplier watch", ...r })).catch(e => console.error({ message: "supplier watch failed", error: String(e && e.message || e) })));

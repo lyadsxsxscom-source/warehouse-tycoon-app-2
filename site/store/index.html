@@ -450,7 +450,19 @@ function ordersSection(){
 }
 // ---- النافذة
 function showSheet(){ $('osheet').hidden = false; $('scrim2').hidden = false; document.body.classList.add('lock'); }
-function stopTimer(){ if(SH.timer){ clearInterval(SH.timer); SH.timer = null; } }
+function stopPoll(){ if(SH.poll){ clearInterval(SH.poll); SH.poll = null; } }
+function stopTimer(){ if(SH.timer){ clearInterval(SH.timer); SH.timer = null; } stopPoll(); }
+// متابعة حالة التحقق من الشبكة بعد إرسال رقم العملية (حتى دقيقة تقريباً، وبترجع للمراجعة اليدوية إذا ما خلص)
+function startChainPoll(){
+  stopPoll(); let n = 0, sig = chainSig();
+  SH.poll = setInterval(async () => {
+    n++; try{ await reloadOrder(); }catch(e){}
+    const ns = chainSig(), end = n >= 15 || !ORD || ORD.status !== 'payment_submitted' || (ORD.chain && ORD.chain.state === 'manual');
+    if(ns !== sig && SH.step === 'pay'){ sig = ns; renderSheet(); }
+    if(end){ stopPoll(); loadMyOrders(); refreshBalance(); }
+  }, window.__chainPollMs || 5000);
+}
+const chainSig = () => ORD ? ORD.status + '|' + (ORD.chain ? ORD.chain.state + ':' + ORD.chain.confirmations : '') : '';
 function closeSheet(){
   stopTimer(); clearTimeout(tqTimer); clearTimeout(idTimer); $('osheet').hidden = true; $('scrim2').hidden = true; SH.step = 'closed';
   if($('drawer').hidden) document.body.classList.remove('lock');
@@ -636,10 +648,16 @@ function renderPay(b){
       if(o.method.account){ b.append(el('div', { class: 'f', style: 'font-weight:700;margin-top:8px;', text: 'حوّل على (' + o.method.name + '):' }), el('div', { class: 'accbox', id: 'osAccount', text: o.method.account }), el('button', { class: 'dr-close', type: 'button', 'data-copy': o.method.account, style: 'margin-top:4px;', text: '📋 نسخ' })); }
       if(o.method.instructions) b.append(el('div', { class: 'warn', id: 'osInstr', text: o.method.instructions }));
       b.append(el('div', { class: 'warn', text: 'حوّل المبلغ بالضبط، واذكر رقم ' + (isTop ? 'الإيداع ' : 'الطلب ') + o.code + ' بالملاحظة إذا بتقدر.' }), el('div', { class: 'hint', id: 'osTimer', text: timerText(o) }));
+      if(isTop && o.method.autoVerify) b.append(el('div', { class: 'warn', id: 'osAutoNote' }, '⛓ تأكيد تلقائي على شبكة ' + o.method.autoVerify.toUpperCase() + ': حوّل ', el('b', { text: orderAmount(o) }), ' بالضبط (بكل الأرقام العشرية الأربعة، مو أقل ولا أكتر) وعلى هالشبكة بس. بعدها الصق رقم العملية (TXID) تحت وبيتأكد لحاله خلال دقيقة تقريباً. إذا حوّلت من منصة (مثل بينانس)، زيد رسوم السحب فوق المبلغ حتى يوصل بالضبط.'));
+    } else if(isTop && o.method.autoVerify){
+      const ch = o.chain, txt = ch && ch.state === 'pending' ? 'عم نتحقق من الشبكة...' + (ch.need ? ' التأكيدات ' + ch.confirmations + ' من ' + ch.need : '') : ch && ch.state === 'retry' ? 'عم نحاول نتصل بالشبكة...' : ch && ch.state === 'manual' ? 'ما قدرنا نأكد الدفع تلقائياً. الإدارة رح تراجعه وتبلّغك (وبتقدر تصحّح رقم العملية تحت).' : 'عم نتحقق من الشبكة...';
+      b.append(el('div', { class: 'warn', id: 'osChain', text: 'وصلنا رقم العملية' + (o.proof && o.proof.ref ? ' (' + o.proof.ref.slice(0, 12) + '…)' : '') + '. ' + txt }));
+      if(!SH.poll && !(ch && ch.state === 'manual')) startChainPoll();
     } else b.append(el('div', { class: 'warn', id: 'osWaiting', text: 'وصلنا دفعك' + (o.proof && o.proof.ref ? ' (' + o.proof.ref + ')' : '') + '، ورح نراجعه ونبلّغك. بتقدر تضيف أو تغيّر الإيصال تحت.' }));
     const ref = el('input', { class: 'tx', id: 'osRef', type: 'text', maxlength: '120', autocomplete: 'off', placeholder: 'رقم العملية / TXID' }); ref.value = SH.ref;
     const file = el('input', { class: 'tx', id: 'osFile', type: 'file', accept: 'image/*' });
-    b.append(el('label', { class: 'f', for: 'osRef', text: st === 'awaiting_payment' ? 'بعد التحويل: أرسل الإيصال' : 'إيصال إضافي' }), ref, el('label', { class: 'f', for: 'osFile', text: 'أو صورة الإيصال' }), file);
+    const autoD = isTop && o.method.autoVerify; if(autoD) ref.setAttribute('placeholder', o.method.autoVerify === 'bep20' ? 'رقم العملية TXID (0x…)' : 'رقم العملية TXID (64 خانة)');
+    b.append(el('label', { class: 'f', for: 'osRef', text: autoD ? (st === 'awaiting_payment' ? 'بعد التحويل: الصق رقم العملية (TXID)' : 'رقم العملية (TXID)') : (st === 'awaiting_payment' ? 'بعد التحويل: أرسل الإيصال' : 'إيصال إضافي') }), ref, el('label', { class: 'f', for: 'osFile', text: autoD ? 'صورة الإيصال (اختياري)' : 'أو صورة الإيصال' }), file);
     if(SH.img) b.append(el('img', { class: 'pv', id: 'osPreview', alt: 'الإيصال', src: SH.img }), el('button', { class: 'dr-close', id: 'osImgDel', type: 'button', style: 'margin-top:6px;', text: 'حذف الصورة' }));
     b.append(msgBox(), el('button', { class: 'btn-main', id: 'osSend', type: 'button', text: st === 'awaiting_payment' ? 'أرسلت الدفع' : 'إرسال' }));
     if(st === 'awaiting_payment') b.append(el('button', { class: 'btn-ghost', id: 'osCancel', type: 'button', text: isTop ? 'ألغي الإيداع' : 'ألغي الطلب' }));
@@ -736,7 +754,7 @@ $('osBody').addEventListener('click', async e => {
     const ref = SH.ref.trim(); SH.msg = ''; SH.ok = '';
     if(!ref && !SH.img && !(ORD.proof && ORD.proof.hasImage)){ SH.msg = 'اكتب رقم العملية أو ارفق صورة الإيصال.'; renderSheet(); return; }
     b.disabled = true;
-    try{ const body = { orderId: ORD.id, ref }; if(SH.img) body.image = SH.img; const j = await apiAuth('/store/order/proof', body); ORD = j.order; SH.img = undefined; SH.ref = ''; SH.ok = 'وصلنا إيصالك ✅ رح نراجعه ونبلّغك.'; renderSheet(); loadMyOrders(); }
+    try{ const body = { orderId: ORD.id, ref }; if(SH.img) body.image = SH.img; const j = await apiAuth('/store/order/proof', body); ORD = j.order; SH.img = undefined; SH.ref = ''; SH.ok = ORD.method && ORD.method.autoVerify && ORD.kind === 'topup' ? 'وصلنا رقم العملية ✅ عم نتحقق من الشبكة...' : 'وصلنا إيصالك ✅ رح نراجعه ونبلّغك.'; stopPoll(); renderSheet(); loadMyOrders(); }
     catch(err){ SH.msg = err.message; renderSheet(); }
     return;
   }
