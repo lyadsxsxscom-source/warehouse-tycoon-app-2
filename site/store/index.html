@@ -55,10 +55,10 @@ main{padding-block:26px 36px}
 .card{display:flex;flex-direction:column;background:var(--panel);border:3px solid var(--edge);border-radius:14px;overflow:hidden;text-align:center;font:inherit;color:var(--ink);padding:0;box-shadow:5px 5px 0 var(--shadow)}
 button.card{cursor:pointer}
 button.card:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--shadow)}
-.card .pic{aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px;background:radial-gradient(120% 120% at 30% 20%,#1F7A68 0%,var(--teal) 45%,var(--teal-d) 100%)}
-.card .pic .art{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:3rem}
+.card .pic{aspect-ratio:1/1;display:flex;flex-direction:row;direction:ltr;align-items:stretch;gap:8px;overflow:hidden;padding:10px;background:radial-gradient(120% 120% at 30% 20%,#1F7A68 0%,var(--teal) 45%,var(--teal-d) 100%)}
+.card .pic .art{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;font-size:3rem}
 .card .pic img{width:100%;height:100%;object-fit:contain;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.35);display:block}
-.card .pic .brand{position:absolute;top:6px;right:6px;font-family:var(--f-stencil);font-weight:800;font-size:.62rem;letter-spacing:.08em;line-height:1;padding:3px 6px;border-radius:6px;background:rgba(5,16,12,.55);color:#F4F8F5;direction:ltr;text-transform:uppercase;pointer-events:none}
+.card .pic .brand{flex:0 0 22px;writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:center;font-family:var(--f-stencil);font-weight:800;font-size:.72rem;letter-spacing:.16em;line-height:1;border-radius:8px;background:rgba(5,16,12,.55);color:#F4F8F5;text-transform:uppercase;pointer-events:none}
 .card .body{padding:12px 10px 14px;border-top:3px solid var(--edge)}
 .card .nm{font-family:var(--f-text);font-weight:700;font-size:1.12rem;line-height:1.45;color:var(--ink);word-break:break-word}
 .card .pr{margin-top:8px;display:inline-block;background:var(--tape);color:#10211C;font-weight:700;font-size:1.05rem;border-radius:999px;padding:3px 14px;direction:ltr}
@@ -68,6 +68,7 @@ button.card:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--shado
 .state button{margin-top:12px;font:inherit;font-weight:700;border:3px solid #10211C;background:var(--tape);color:#10211C;border-radius:10px;padding:8px 20px;cursor:pointer}
 .skel{height:170px;border-radius:14px;background:linear-gradient(90deg,var(--line),transparent,var(--line));opacity:.5}
 footer{padding-block:24px;color:var(--muted);font-size:1rem}
+footer a,.hint a{color:var(--link);font-weight:700;text-decoration:underline;text-underline-offset:4px}
 .tools{display:flex;align-items:center;gap:10px}
 .menu{font:inherit;font-size:1.35rem;line-height:1;border:2px solid #8FC2B3;background:transparent;color:#F4F8F5;border-radius:10px;padding:6px 13px;cursor:pointer}
 body.lock{overflow:hidden}
@@ -161,7 +162,7 @@ body.lock{overflow:hidden}
     <p class="hint" id="ctaHint">للأفضل سجّل دخول أول (من ☰) حتى نعرف حسابك بسرعة.</p>
   </div>
 </section>
-<footer class="wrap">© Yardova</footer>
+<footer class="wrap">© Yardova · <a href="/store/terms/">الشروط</a> · <a href="/store/privacy/">الخصوصية</a></footer>
 <div class="scrim" id="scrim" hidden></div>
 <div class="scrim2" id="scrim2" hidden></div>
 <div class="osheet" id="osheet" role="dialog" aria-modal="true" aria-labelledby="osTitle" hidden>
@@ -275,7 +276,7 @@ function renderDrawer(){
   const b = $('drBody'); b.textContent = '';
   if(!auth){ b.append(el('div', { class: 'msg err', id: 'accMsg', text: 'تعذّر تحميل تسجيل الدخول. حدّث الصفحة وجرّب كمان مرة.' })); return; }
   if(!USER){
-    b.append(el('p', { text: 'سجّل دخول عشان تتابع حسابك ومستوى VIP تبعك.' }), el('button', { class: 'btn-main', id: 'btnGoogle', type: 'button', text: 'الدخول بحساب Google' }), el('p', { class: 'hint', text: 'إذا ما عندك حساب، بيتعمل لك أول ما تدخل.' }), el('div', { class: 'msg' + (ACC_MSG ? ' err' : ''), id: 'accMsg', role: 'alert', text: ACC_MSG }));
+    b.append(el('p', { text: 'سجّل دخول عشان تتابع حسابك ومستوى VIP تبعك.' }), el('button', { class: 'btn-main', id: 'btnGoogle', type: 'button', text: 'الدخول بحساب Google' }), el('p', { class: 'hint', text: 'إذا ما عندك حساب، بيتعمل لك أول ما تدخل.' }), el('p', { class: 'hint', id: 'consent' }, 'بالدخول بتوافق على ', el('a', { href: '/store/terms/', target: '_blank', rel: 'noopener noreferrer', text: 'الشروط' }), ' و', el('a', { href: '/store/privacy/', target: '_blank', rel: 'noopener noreferrer', text: 'سياسة الخصوصية' }), '، وإنك 18 سنة أو أكتر.'), el('div', { class: 'msg' + (ACC_MSG ? ' err' : ''), id: 'accMsg', role: 'alert', text: ACC_MSG }));
     return;
   }
   if(ACC === 'loading' || ACC === 'idle'){ b.append(el('p', { id: 'accLoading', text: 'عم نحمّل حسابك...' })); return; }

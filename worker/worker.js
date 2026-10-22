@@ -1377,6 +1377,7 @@ async function handleAdminStore(request, env) {
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
+    if (b.action === "retention_run") return jsonResponse({ ok: true, purged: await storeRetentionSweep(env) }, 200);
     if (b.action === "supplier_get") { const w = await storeLoadSupplier(env); return jsonResponse({ ok: true, hasKey: !!env.FAZER_API_KEY, ...w }, 200); }
     if (b.action === "supplier_save") {
       const cfg = storeParseSupplier(b.cfg), at = Date.now();
@@ -1958,6 +1959,24 @@ async function handleStoreOrderApi(request, env, action) {
 }
 function storeUserName(user) { return { name: cleanText(user.name || (user.email ? String(user.email).split("@")[0] : ""), 60) || "زبون", email: cleanText(user.email || "", 120) }; }
 
+// ===== تنظيف صور الإيصالات: بتنحذف بعد 90 يوم من آخر تحديث للطلب (حسب سياسة الخصوصية) =====
+// بنحتفظ بالطلب ورقم العملية (للمحاسبة)، وبنمسح الصورة بس. بيشتغل يومياً مع الـcron، وبتقدر تشغّله من الأدمن.
+const STORE_PROOF_RETENTION_MS = 90 * 86400000;
+async function storeRetentionSweep(env, now) {
+  now = now || Date.now(); const cutoff = now - STORE_PROOF_RETENTION_MS; let purged = 0;
+  for (const st of ["done", "rejected", "cancelled", "refunded", "payment_submitted", "awaiting_payment"]) {
+    const rows = (await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "status", value: st })).filter(r => r.data.proof && r.data.proof.hasImage && (Number(r.data.updatedAt) || Number(r.data.createdAt) || now) < cutoff);
+    for (let i = 0; i < rows.length; i += 100) {
+      const writes = [];
+      for (const r of rows.slice(i, i + 100)) {
+        writes.push({ delete: docName(env, "storeProofs/" + r.id) });
+        writes.push({ update: { name: docName(env, "storeOrders/" + r.id), fields: objToFields({ proof: { ...r.data.proof, hasImage: false, purgedAt: now } }) }, updateMask: { fieldPaths: ["proof"] } });
+      }
+      await fsCommit(env, writes); purged += writes.length / 2;
+    }
+  }
+  return purged;
+}
 // ===== رقم تعريف الطلب =====
 // كل طلب جديد بياخد رقم تسلسلي: W-1001 للسحب، S-1001 لطلبات المتجر (والشراء P-xxxxx مشتق من معرّف المستند). الطلبات القديمة بدون رقم بتاخد رمز مشتق من معرّفها.
 const REQ_WORD = { ar: "رقم الطلب", tr: "Talep no", en: "Request no" };
@@ -3034,6 +3053,7 @@ export default {
   },
   // مهمة يومية (cron): تذكير، تحذير، وتنفيذ سياسة عدم النشاط إذا الأدمن فعّلها
   async scheduled(event, env, ctx) {
+    ctx.waitUntil(storeRetentionSweep(env).then(n => console.info({ message: "store receipts retention", purged: n })).catch(e => console.error({ message: "store receipts retention failed", error: String(e && e.message || e) })));
     ctx.waitUntil(runInactivity(env, { dryRun: false }).then(r => console.info({ message: "inactivity run", ...r, plan: undefined })).catch(e => console.error({ message: "inactivity run failed", error: String(e.message || e) })));
   },
 };
