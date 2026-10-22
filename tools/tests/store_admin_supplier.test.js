@@ -50,7 +50,7 @@ const click = async (el) => { el.click(); await sleep(80); };
   /* the key was added AFTER the tab opened: a successful check must fix the box without reloading */
   statusMode = "ok"; await click($("btnSpCheck")); ok(!!$("spKeyOk") && !$("spKeyMissing") && /الحساب: partner1/.test($("spStatus").textContent), "if the key was added after the page opened, a successful check updates the key box to 'exists' (no stale 'missing' box)");
   hasKey = true; await (async () => { $("tabCatalog").click(); $("tabSupplier").click(); await sleep(200); })();
-  ok(!!$("spKeyOk") && /موجود/.test($("spKeyOk").textContent) && !$("spKeyMissing") && !/SECRET|sk_/.test($("viewSupplier").textContent), "with a key it only says it exists (the key itself is never on this screen)");
+  ok(!!$("spKeyOk") && /موجود/.test($("spKeyOk").textContent) && !$("spKeyMissing") && !/sk_|FZR-KEY|[A-Za-z0-9]{32,}/.test($("viewSupplier").textContent), "with a key it only says it exists (the key itself is never on this screen)");
 
   /* ---- the connection check ---- */
   await click($("btnSpCheck")); ok(last("supplier_status") && /الحساب: partner1 · الخطة: gold/.test($("spStatus").textContent) && /الاشتراك: فعّال ✅ · ينتهي \d\d\/\d\d\/\d{4} · تجديد تلقائي: نعم/.test($("spStatus").textContent) && /رصيدك عند FazerCards: \$6\.62/.test($("spStatus").textContent) && !$("spInactive") && !$("spExpiring"), "the check shows your login, plan, whether the subscription is active, its expiry date, auto-renew and your FazerCards balance");
@@ -73,9 +73,9 @@ const click = async (el) => { el.click(); await sleep(80); };
   $("gsQuery").value = "xena"; $("gsQuery").dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter" })); await sleep(120); ok(d.querySelectorAll("#gsList .gsrow").length === 2, "Enter starts the search too");
 
   /* ---- the settings ---- */
-  ok($("spEnabled").checked === false && $("spMargin").value === "5" && $("spCap").value === "100" && /هلق ما في أي شراء تلقائي/.test($("viewSupplier").textContent), "the settings show your decisions (off, 5%, $100 a day) and say plainly that nothing is bought automatically yet");
+  ok($("spEnabled").checked === false && $("spMargin").value === "5" && $("spCap").value === "100" && /لما تفعّله/.test($("viewSupplier").textContent) && /بيصرف من رصيدك عندهم/.test($("viewSupplier").textContent) && /اليوم انصرف تلقائياً: \$0\.00 من سقف \$100\.00 \(0 طلب\)/.test($("spToday").textContent), "the settings show your decisions (off, 5%, $100 a day), say plainly that turning it on spends from your FazerCards balance, and show today's usage");
   $("spEnabled").checked = true; $("spMargin").value = "6.5"; $("spCap").value = "150"; await click($("btnSpSave"));
-  ok(last("supplier_save").body.cfg.enabled === true && last("supplier_save").body.cfg.minMarginPct === 6.5 && last("supplier_save").body.cfg.dailyCapUsd === 150 && typeof last("supplier_save").body.cfg.minMarginPct === "number" && /انحفظ/.test($("spMsg").textContent), "saving sends the three values (numbers) and confirms");
+  ok(last("supplier_save").body.cfg.enabled === true && last("supplier_save").body.cfg.minMarginPct === 6.5 && last("supplier_save").body.cfg.dailyCapUsd === 150 && typeof last("supplier_save").body.cfg.minMarginPct === "number" && /انحفظ ✓ التنفيذ التلقائي شغّال/.test($("spMsg").textContent), "saving sends the three values (numbers) and confirms that it is on");
   failNext = "السقف اليومي من 1$ لـ100,000$."; await click($("btnSpSave")); ok(/السقف اليومي/.test($("spMsg").textContent) && !$("btnSpSave").disabled, "a refusal is shown and the button works again");
   $("spMargin").value = "5"; $("spCap").value = "100"; $("spEnabled").checked = false; await click($("btnSpSave"));
 

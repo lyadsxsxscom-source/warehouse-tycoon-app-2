@@ -533,6 +533,11 @@ PUSH_TEXT.store_refund_request = {       // للأدمن: زبون طلب يسح
   tr: (p) => ["💸 Yeni bakiye çekme talebi", `${p.code} · $${p.amount} · ${p.method}`],
   en: (p) => ["💸 New balance withdrawal request", `${p.code} · $${p.amount} · ${p.method}`],
 };
+PUSH_TEXT.store_supplier_issue = {        // للأدمن: التنفيذ التلقائي يحتاج تدخلك، أو مشكلة باشتراك/رصيد FazerCards
+  ar: (p) => ["⚠️ FazerCards: يحتاج تدخل", `${p.code} · ${p.reason}`],
+  tr: (p) => ["⚠️ FazerCards: müdahale gerekli", `${p.code} · ${p.reason}`],
+  en: (p) => ["⚠️ FazerCards: needs attention", `${p.code} · ${p.reason}`],
+};
 PUSH_TEXT.store_payout_done = {
   ar: (p) => ["تم إرسال رصيدك ✅", `${p.code}: أُرسل $${p.amount} وتم حذف حسابك بالمتجر.`],
   tr: (p) => ["Bakiyen gönderildi ✅", `${p.code}: $${p.amount} gönderildi ve mağaza hesabın silindi.`],
@@ -574,7 +579,7 @@ PUSH_TEXT.shop_rejected = {
   en: (p) => ["Your order was declined", `${p.points} points were refunded. Check your in-game mail.`],
 };
 // نوع الإشعار ← مفتاح الإعداد يلي بيقدر المستخدم يطفيه من التطبيق
-const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_refund_request: "orders", store_payout_done: "orders", store_topup_done: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
+const PUSH_PREF = { offerwall: "offerwall", withdraw_ok: "orders", withdraw_rejected: "orders", topup: "orders", topup_rejected: "orders", referral: "offerwall", shop_done: "orders", shop_rejected: "orders", store_proof: "orders", store_supplier_issue: "orders", store_refund_request: "orders", store_payout_done: "orders", store_topup_done: "orders", store_done: "orders", store_rejected: "orders", store_refunded: "orders", inactive_remind: "news", inactive_warn: "news", inactive_suspend: "news" };
 
 async function sendPush(env, uid, type, params) {
   try {
@@ -1292,6 +1297,58 @@ async function handleStoreImage(env, id) {
   const bin = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
   return new Response(bin, { status: 200, headers: { "Content-Type": m[1], "Cache-Control": "public, max-age=604800, immutable", "X-Content-Type-Options": "nosniff", ...corsHeaders() } });
 }
+// ===== تغيير حالة طلب (تنفيذ / رفض مع استرجاع / مرتجع): نفس المنطق للأدمن وللتنفيذ التلقائي (by = "admin" | "auto") =====
+async function storeOrderAction(env, action, id, note, by, extra) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const od = await fsGetDoc(env, "storeOrders/" + id);
+        if (!od.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
+        const o = od.data, now2 = Date.now(), kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy", price = Number(o.priceUsd) || 0;
+        const open = o.status === "awaiting_payment" || o.status === "payment_submitted" || o.status === "processing";
+        const cd = await fsGetDoc(env, "storeCustomers/" + o.uid), bal = cd.exists ? r4(Number(cd.data.balanceUsd) || 0) : 0, led = [];
+        let upd, custUpd = null, plan = null;
+        const ledger = (type, amt, newBal) => led.push({ update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid: o.uid, type, amountUsd: r4(amt), balanceAfter: newBal, ref: String(o.code || ""), note, at: now2, by }) }, currentDocument: { exists: false } });
+        if (action === "order_done") {
+          if (!open || (kind === "order" && o.status !== "processing")) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
+          upd = { status: "done", doneAt: now2, adminNote: note, updatedAt: now2, events: storeEvent(o, "done", by, note, now2), ...(extra || {}) };
+          if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
+          if (kind === "refund") { upd.finalizePending = true; }                    // الرصيد انرسل: بعد الحفظ بينحذف الحساب
+          else if (kind === "topup") { const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("topup", price, nb); }
+          else { plan = storeSpendPlan(env, o.uid, cd.data, price, "طلب " + o.code, "order", now2); custUpd = { ...plan.upd }; }
+        } else if (action === "order_reject") {
+          if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
+          upd = { status: "rejected", rejectReason: note, updatedAt: now2, events: storeEvent(o, "rejected", by, note, now2), ...(extra || {}) };
+          if (kind === "order") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("order_refund", price, nb); }       // الرفض بيرجّع المبلغ لرصيده
+          if (kind === "refund") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb, closing: null }; ledger("payout_return", price, nb); }       // رفض طلب السحب: الرصيد بيرجع وبينفتح الحساب
+        } else {
+          if (kind === "refund") throw new ApiError("bad_status", "طلب السحب ما بينرجّع.");
+          if (o.status !== "done") throw new ApiError("bad_status", "بتقدر ترجّع طلب منفّذ بس.");
+          upd = { status: "refunded", adminNote: note, updatedAt: now2, events: storeEvent(o, "refunded", by, note, now2) };
+          if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
+          if (kind === "topup") { if (bal + 1e-9 < price) throw new ApiError("insufficient_balance", "الزبون صرف جزء من هالإيداع (رصيده " + bal + "$)، ما بتقدر ترجّعه كامل. عدّل رصيده يدوياً إذا بدك."); const nb = r4(bal - price); custUpd = { balanceUsd: nb }; ledger("topup_refund", -price, nb); }
+          else if (kind === "order") { plan = storeSpendPlan(env, o.uid, cd.data, -price, "مرتجع " + o.code, "order", now2); const nb = r4(bal + price); custUpd = { ...plan.upd, balanceUsd: nb }; ledger("refund", price, nb); }
+          else { plan = storeSpendPlan(env, o.uid, cd.data, -price, "مرتجع " + o.code, "order", now2); custUpd = { ...plan.upd }; }
+        }
+        const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
+        if (custUpd) writes.push({ update: { name: docName(env, "storeCustomers/" + o.uid), fields: objToFields(custUpd) }, updateMask: { fieldPaths: Object.keys(custUpd) }, currentDocument: { updateTime: cd.updateTime } });
+        if (plan) writes.push(...plan.writes);
+        writes.push(...led);
+        try {
+          await fsCommit(env, writes);
+          const np = { code: String(o.code || ""), item: String(o.itemName || "") };
+          let warning = "";
+          if (action === "order_done" && kind === "refund") {
+            await storeNotify(env, o.uid, "store_payout_done", { code: np.code, amount: price.toFixed(2) });
+            try { await storeAnonymizeCustomer(env, o.uid, id); upd.finalizePending = false; upd.uid = ""; upd.name = "حساب محذوف"; upd.email = ""; upd.payout = { method: "", account: "" }; }
+            catch (e) { console.error({ message: "store deletion incomplete", code: np.code, error: String(e && e.message || e) }); warning = "انبعت الرصيد لكن تعذّر إكمال حذف الحساب. اضغط 🧹 إكمال الحذف."; }
+          }
+          else if (action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : np);
+          else if (action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
+          else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
+          return { warning, order: storeOrderOut(id, { ...o, ...upd }, now2, true) };
+        } catch (e) { if (!e.conflict || attempt === 2) throw e; }
+      }
+  throw new ApiError("conflict", "تعارض لحظي. جرّب كمان مرة.", 409);
+}
 async function handleAdminStore(request, env) {
   if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   let b = {}; try { b = await request.json(); } catch (e) {}
@@ -1347,54 +1404,15 @@ async function handleAdminStore(request, env) {
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
       const note = cleanText(b.action === "order_reject" ? b.reason : b.note, 200);
       if (b.action === "order_reject" && !note) throw new ApiError("reason_required", "اكتب سبب الرفض (بيوصل للزبون).");
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const od = await fsGetDoc(env, "storeOrders/" + id);
-        if (!od.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
-        const o = od.data, now2 = Date.now(), kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy", price = Number(o.priceUsd) || 0;
-        const open = o.status === "awaiting_payment" || o.status === "payment_submitted" || o.status === "processing";
-        const cd = await fsGetDoc(env, "storeCustomers/" + o.uid), bal = cd.exists ? r4(Number(cd.data.balanceUsd) || 0) : 0, led = [];
-        let upd, custUpd = null, plan = null;
-        const ledger = (type, amt, newBal) => led.push({ update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid: o.uid, type, amountUsd: r4(amt), balanceAfter: newBal, ref: String(o.code || ""), note, at: now2, by: "admin" }) }, currentDocument: { exists: false } });
-        if (b.action === "order_done") {
-          if (!open || (kind === "order" && o.status !== "processing")) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
-          upd = { status: "done", doneAt: now2, adminNote: note, updatedAt: now2, events: storeEvent(o, "done", "admin", note, now2) };
-          if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
-          if (kind === "refund") { upd.finalizePending = true; }                    // الرصيد انرسل: بعد الحفظ بينحذف الحساب
-          else if (kind === "topup") { const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("topup", price, nb); }
-          else { plan = storeSpendPlan(env, o.uid, cd.data, price, "طلب " + o.code, "order", now2); custUpd = { ...plan.upd }; }
-        } else if (b.action === "order_reject") {
-          if (!open) throw new ApiError("bad_status", "هالطلب مو مفتوح (الحالة: " + o.status + ").");
-          upd = { status: "rejected", rejectReason: note, updatedAt: now2, events: storeEvent(o, "rejected", "admin", note, now2) };
-          if (kind === "order") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb }; ledger("order_refund", price, nb); }       // الرفض بيرجّع المبلغ لرصيده
-          if (kind === "refund") { if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404); const nb = r4(bal + price); custUpd = { balanceUsd: nb, closing: null }; ledger("payout_return", price, nb); }       // رفض طلب السحب: الرصيد بيرجع وبينفتح الحساب
-        } else {
-          if (kind === "refund") throw new ApiError("bad_status", "طلب السحب ما بينرجّع.");
-          if (o.status !== "done") throw new ApiError("bad_status", "بتقدر ترجّع طلب منفّذ بس.");
-          upd = { status: "refunded", adminNote: note, updatedAt: now2, events: storeEvent(o, "refunded", "admin", note, now2) };
-          if (!cd.exists) throw new ApiError("no_customer", "حساب الزبون مو موجود.", 404);
-          if (kind === "topup") { if (bal + 1e-9 < price) throw new ApiError("insufficient_balance", "الزبون صرف جزء من هالإيداع (رصيده " + bal + "$)، ما بتقدر ترجّعه كامل. عدّل رصيده يدوياً إذا بدك."); const nb = r4(bal - price); custUpd = { balanceUsd: nb }; ledger("topup_refund", -price, nb); }
-          else if (kind === "order") { plan = storeSpendPlan(env, o.uid, cd.data, -price, "مرتجع " + o.code, "order", now2); const nb = r4(bal + price); custUpd = { ...plan.upd, balanceUsd: nb }; ledger("refund", price, nb); }
-          else { plan = storeSpendPlan(env, o.uid, cd.data, -price, "مرتجع " + o.code, "order", now2); custUpd = { ...plan.upd }; }
-        }
-        const writes = [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }];
-        if (custUpd) writes.push({ update: { name: docName(env, "storeCustomers/" + o.uid), fields: objToFields(custUpd) }, updateMask: { fieldPaths: Object.keys(custUpd) }, currentDocument: { updateTime: cd.updateTime } });
-        if (plan) writes.push(...plan.writes);
-        writes.push(...led);
-        try {
-          await fsCommit(env, writes);
-          const np = { code: String(o.code || ""), item: String(o.itemName || "") };
-          let warning = "";
-          if (b.action === "order_done" && kind === "refund") {
-            await storeNotify(env, o.uid, "store_payout_done", { code: np.code, amount: price.toFixed(2) });
-            try { await storeAnonymizeCustomer(env, o.uid, id); upd.finalizePending = false; upd.uid = ""; upd.name = "حساب محذوف"; upd.email = ""; upd.payout = { method: "", account: "" }; }
-            catch (e) { console.error({ message: "store deletion incomplete", code: np.code, error: String(e && e.message || e) }); warning = "انبعت الرصيد لكن تعذّر إكمال حذف الحساب. اضغط 🧹 إكمال الحذف."; }
-          }
-          else if (b.action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : np);
-          else if (b.action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
-          else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
-          return jsonResponse({ ok: true, ...(warning ? { warning } : {}), order: storeOrderOut(id, { ...o, ...upd }, now2, true) }, 200);
-        } catch (e) { if (!e.conflict || attempt === 2) throw e; }
-      }
+      const r = await storeOrderAction(env, b.action, id, note, "admin");
+      return jsonResponse({ ok: true, ...(r.warning ? { warning: r.warning } : {}), order: r.order }, 200);
+    }
+
+    if (b.action === "order_auto_run" || b.action === "order_auto_sync") {            // تنفيذ تلقائي يدوي الآن / سؤال FazerCards عن الحالة
+      const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      const r = b.action === "order_auto_run" ? await storeAutoFulfill(env, id, { force: true }) : await storeAutoSync(env, id);
+      const fresh = await fsGetDoc(env, "storeOrders/" + id); if (!fresh.exists) throw new ApiError("not_found", "هالطلب مو موجود.", 404);
+      return jsonResponse({ ok: true, outcome: r.outcome, reason: r.reason || "", order: storeOrderOut(id, fresh.data, Date.now(), true) }, 200);
     }
     if (b.action === "order_finish_deletion") {
       const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
@@ -1406,7 +1424,10 @@ async function handleAdminStore(request, env) {
       return jsonResponse({ ok: true, order: storeOrderOut(id, fresh.data, Date.now(), true) }, 200);
     }
     if (b.action === "retention_run") return jsonResponse({ ok: true, purged: await storeRetentionSweep(env) }, 200);
-    if (b.action === "supplier_get") { const w = await storeLoadSupplier(env); return jsonResponse({ ok: true, hasKey: !!env.FAZER_API_KEY, ...w }, 200); }
+    if (b.action === "supplier_get") {
+      const w = await storeLoadSupplier(env), dd = await fsGetDoc(env, "storeSupplierDay/" + storeDayKey(Date.now()));
+      return jsonResponse({ ok: true, hasKey: !!env.FAZER_API_KEY, hasWebhookSecret: !!env.FAZER_WEBHOOK_SECRET, webhookUrl: new URL(request.url).origin + "/supplier/fazer/webhook", todayUsd: dd.exists ? r4(Number(dd.data.spentUsd) || 0) : 0, todayCount: dd.exists ? Number(dd.data.count) || 0 : 0, ...w }, 200);
+    }
     if (b.action === "supplier_save") {
       const cfg = storeParseSupplier(b.cfg), at = Date.now();
       await fsCommit(env, [{ update: { name: docName(env, "config/storeSupplier"), fields: objToFields({ ...cfg, updatedAt: at }) } }]);
@@ -1689,11 +1710,11 @@ async function fzrCall(env, method, path, body, headers) {
   let res, j = {};
   try {
     res = await fetch(FZR_BASE + path, { method, headers: { "X-API-Key": env.FAZER_API_KEY, "Content-Type": "application/json", ...(headers || {}) }, body: body ? JSON.stringify(body) : undefined, signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
-  } catch (e) { throw new ApiError("supplier_unreachable", "تعذّر الوصول لـFazerCards. جرّب بعد شوي.", 502); }
+  } catch (e) { const er = new ApiError("supplier_unreachable", "تعذّر الوصول لـFazerCards. جرّب بعد شوي.", 502); er.supplierStatus = 0; er.supplierMsg = ""; throw er; }
   try { j = await res.json(); } catch (e) {}
   if (!res.ok || j.ok === false) {
     const st = res.status, why = st === 401 ? "المفتاح غير صالح." : st === 403 ? "الخدمة غير مفعّلة بخطتك أو الحساب محظور (ممكن لأنه ما في اشتراك فعّال)." : st === 429 ? "طلبات كتير، جرّب بعد شوي." : cleanText(j.error || "", 160) || "خطأ " + st;
-    throw new ApiError("supplier_error", "FazerCards: " + why, 502);
+    const er = new ApiError("supplier_error", "FazerCards: " + why, 502); er.supplierStatus = st; er.supplierMsg = cleanText((j.error || "") + " " + (j.code || ""), 200); throw er;
   }
   return j;
 }
@@ -1796,6 +1817,166 @@ function storeParseSupplierLink(raw) {
   if (vid && !idRe.test(vid)) throw new ApiError("bad_supplier_link", "معرّف التحقق غلط.");
   return { provider: "fazercards", categoryId, offerId, playerField, categoryName: cleanText(raw.categoryName, 80), validateCategoryId: vid, offerName: cleanText(raw.offerName, 80), costUsd: Number.isFinite(costUsd) && costUsd >= 0 && costUsd < 100000 ? r4(costUsd) : 0 };
 }
+// ===== التنفيذ التلقائي عند FazerCards (الخطوة 7ج) =====
+// الطلب بيبقى "قيد التنفيذ"، والسيرفر بيمرّ على حمايات (اشتراك فعّال، هامش، سقف يومي، رصيد + حجز تجديد الاشتراك)، فإذا كلها تمام بيبعت لـFazerCards بمفتاح تكرار ثابت (ما بيتنفّذ مرتين).
+// النتيجة: completed ← تم التنفيذ (والصرف بينحسب)، failed/refund ← استرجاع تلقائي لرصيد الزبون. أي شك أو انقطاع ← بيضل للأدمن (ما في استرجاع تلقائي لحالة مجهولة).
+const FZR_FAIL_STATUSES = ["failed", "refund", "refunded", "cancelled", "canceled", "rejected"];
+const FZR_RENEW_WINDOW_MS = 7 * 86400000, FZR_LOW_BALANCE_USD = 5, STORE_AUTO_FAIL_REASON = "تعذّر تنفيذ الطلب عند المورّد (غالباً بسبب معرّف اللاعب). أُرجع المبلغ لرصيدك.";
+class AutoGate extends Error { constructor(msg) { super(msg); this.gate = true; } }
+let FZR_CACHE = { me: null, plans: null, offers: {} };
+async function fzrMeCached(env) { const c = FZR_CACHE.me; if (c && Date.now() - c.at < 300000) return c.v; const me = await fzrCall(env, "GET", "/me"); const v = { plan: cleanText(me.plan, 20), planExpiresAt: Date.parse(me.planExpiresAt) || 0, planAutoRenew: me.planAutoRenew === true, subscriptionActive: me.subscriptionActive === true }; FZR_CACHE.me = { at: Date.now(), v }; return v; }
+async function fzrPlanPrice(env, plan) { let c = FZR_CACHE.plans; if (!c || Date.now() - c.at > 3600000) { const j = await fzrCall(env, "GET", "/subscription/plans"); c = FZR_CACHE.plans = { at: Date.now(), v: (Array.isArray(j.plans) ? j.plans : []).map(x => ({ plan: String(x.plan || ""), priceUsd: Number(x.priceUsd) || 0 })) }; } const f = c.v.find(x => x.plan === plan); return f ? f.priceUsd : 0; }
+async function fzrOffersCached(env, categoryId) { const c = FZR_CACHE.offers[categoryId]; if (c && Date.now() - c.at < 300000) return c.v; const v = (await storeSupplierOffers(env, categoryId)).offers; FZR_CACHE.offers[categoryId] = { at: Date.now(), v }; return v; }
+const storeDayKey = (now) => new Date(now).toISOString().slice(0, 10);
+const ctEq = (a, b) => { a = String(a); b = String(b); if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+async function storeAutoAlert(env, o, id, reason) {
+  const au = o.auto || {}; if (au.alertedReason === reason) return false;
+  await storeNotify(env, ADMIN_UID, "store_supplier_issue", { code: String(o.code || id), reason }); return true;
+}
+async function storeAutoSetState(env, id, mutate, attempts) {
+  for (let i = 0; i < (attempts || 3); i++) {
+    const od = await fsGetDoc(env, "storeOrders/" + id); if (!od.exists) return null;
+    const upd = mutate(od.data); if (!upd) return od.data;
+    try { await fsCommit(env, [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { updateTime: od.updateTime } }]); return { ...od.data, ...upd }; }
+    catch (e) { if (!e.conflict || i === (attempts || 3) - 1) throw e; }
+  }
+  return null;
+}
+async function storeAutoReleaseCap(env, now, cost) {
+  try { const day = storeDayKey(now), dd = await fsGetDoc(env, "storeSupplierDay/" + day); if (!dd.exists) return; await fsCommit(env, [{ update: { name: docName(env, "storeSupplierDay/" + day), fields: objToFields({ spentUsd: r4(Math.max(0, (Number(dd.data.spentUsd) || 0) - cost)), count: Math.max(0, (Number(dd.data.count) || 0) - 1) }) }, updateMask: { fieldPaths: ["spentUsd", "count"] }, currentDocument: { updateTime: dd.updateTime } }]); } catch (e) { /* مو مهم */ }
+}
+async function storeAutoGates(env, cfg, o, link) {
+  if (!env.FAZER_API_KEY) throw new AutoGate("مفتاح FazerCards مو مضاف.");
+  if (!/^[\p{L}\p{N}_#@.\- ]{3,40}$/u.test(String(o.playerId || ""))) throw new AutoGate("معرّف اللاعب بصيغة غير مقبولة.");
+  const me = await fzrMeCached(env); if (!me.subscriptionActive) throw new AutoGate("اشتراك FazerCards غير فعّال.");
+  const offer = (await fzrOffersCached(env, link.categoryId)).find(x => x.offerId === link.offerId); if (!offer) throw new AutoGate("الخيار ما عاد موجود عند FazerCards.");
+  const cost = offer.priceUsd, price = Number(o.priceUsd) || 0; if (!(cost > 0) || !(price > 0)) throw new AutoGate("سعر غير معروف.");
+  const margin = (price - cost) / price * 100; if (margin + 1e-9 < cfg.minMarginPct) throw new AutoGate("الهامش " + margin.toFixed(1) + "% أقل من حدّك (" + cfg.minMarginPct + "%): بيع " + price + "$ مقابل تكلفة " + cost + "$.");
+  const bal = Number((await fzrCall(env, "GET", "/balance")).balance); if (!Number.isFinite(bal)) throw new AutoGate("رصيدك عند FazerCards غير معروف.");
+  const now = Date.now(), reserve = me.planAutoRenew && me.planExpiresAt && me.planExpiresAt - now <= FZR_RENEW_WINDOW_MS ? await fzrPlanPrice(env, me.plan) : 0;       // قريب التجديد: ما بنمسّ مبلغ الاشتراك
+  if (bal + 1e-9 < cost) throw new AutoGate("رصيدك عند FazerCards (" + bal + "$) ما بيكفي (التكلفة " + cost + "$). اشحنه.");
+  if (bal - cost + 1e-9 < reserve) throw new AutoGate("الاشتراك بيتجدد قريباً (" + reserve + "$): التنفيذ بيخلّي رصيدك تحت المبلغ المحجوز. اشحن رصيدك عند FazerCards.");
+  return { cost, bal };
+}
+async function storeAutoGateFail(env, id, od, e, now, counted) {
+  let state, reason;
+  if (e && e.gate) { state = "manual"; reason = e.message; }
+  else if (e && (e.supplierStatus === 401 || e.supplierStatus === 403)) { state = "manual"; reason = "مفتاح FazerCards غير صالح أو الاشتراك/الخدمة غير مفعّلة."; }
+  else if (e && e.supplierStatus !== undefined) { state = "retry"; reason = "تعذّر الاتصال بـFazerCards (" + (e.supplierStatus || "شبكة") + ")."; }
+  else throw e;
+  const au = od.data.auto || {}, tries = (Number(au.tries) || 0) + (state === "retry" && !counted ? 1 : 0);
+  if (state === "retry" && tries >= 6) { state = "manual"; reason = "تعذّر الاتصال بـFazerCards عدة مرات. ما نعرف إذا الطلب وصل لهم: تحقق من لوحتهم قبل ما تنفّذه يدوياً."; }
+  const alert = state === "manual" ? await storeAutoAlert(env, od.data, id, reason) : false;
+  const next = await storeAutoSetState(env, id, o => (o.status === "processing" && !["sent", "done", "refunded"].includes((o.auto || {}).state)) ? { auto: { ...(o.auto || {}), state, reason, at: now, tries, ...(alert ? { alertedReason: reason } : {}) }, updatedAt: now } : null);
+  return { outcome: state, reason, order: next };
+}
+async function storeAutoApplyStatus(env, id, status, supplierOrderId, now) {
+  status = String(status || "").toLowerCase();
+  const od = await fsGetDoc(env, "storeOrders/" + id); if (!od.exists || od.data.status !== "processing") return { outcome: "closed" };
+  const au = od.data.auto || {};
+  try {
+    if (status === "completed") {
+      const r = await storeOrderAction(env, "order_done", id, "FazerCards " + supplierOrderId, "auto", { costUsd: r4(Number(au.costUsd) || 0), auto: { ...au, state: "done", doneAt: now } });
+      return { outcome: "done", order: r.order };
+    }
+    if (FZR_FAIL_STATUSES.includes(status)) {
+      const r = await storeOrderAction(env, "order_reject", id, STORE_AUTO_FAIL_REASON, "auto", { auto: { ...au, state: "refunded", supplierStatus: status, doneAt: now } });
+      await storeAutoReleaseCap(env, Number(au.at) || now, Number(au.costUsd) || 0);
+      return { outcome: "refunded", order: r.order };
+    }
+  } catch (e) { if (e instanceof ApiError && (e.code === "bad_status" || e.code === "conflict")) return { outcome: "closed" }; throw e; }
+  await storeAutoSetState(env, id, o => ({ auto: { ...(o.auto || {}), supplierStatus: status } }));
+  return { outcome: "processing" };
+}
+async function storeAutoFulfill(env, id, opts) {
+  opts = opts || {}; const now = Date.now(), { cfg } = await storeLoadSupplier(env);
+  if (!cfg.enabled && !opts.force) return { outcome: "disabled" };
+  const od = await fsGetDoc(env, "storeOrders/" + id); if (!od.exists) return { outcome: "missing" };
+  const o = od.data; if (o.kind !== "order" || o.status !== "processing") return { outcome: "not_open" };
+  const au = o.auto || {};
+  if (["sent", "done", "refunded"].includes(au.state)) return { outcome: au.state };
+  if (au.state === "sending" && now - (Number(au.at) || 0) < 120000 && !opts.force) return { outcome: "busy" };
+  const nodes = await storeAllNodes(env), item = nodes.find(n => n.id === o.itemId), link = item && item.supplier && item.supplier.offerId ? item.supplier : null;
+  if (!link) return { outcome: "not_linked" };
+  let g; try { g = await storeAutoGates(env, cfg, o, link); } catch (e) { return await storeAutoGateFail(env, id, od, e, now); }
+  const day = storeDayKey(now), dd = await fsGetDoc(env, "storeSupplierDay/" + day), spent = dd.exists ? Number(dd.data.spentUsd) || 0 : 0;
+  if (spent + g.cost > cfg.dailyCapUsd + 1e-9) return await storeAutoGateFail(env, id, od, new AutoGate("السقف اليومي (" + cfg.dailyCapUsd + "$) ما بيكفي لهالطلب (انصرف اليوم " + r4(spent) + "$)."), now);
+  const mark = { auto: { ...au, state: "sending", at: now, costUsd: g.cost, tries: (Number(au.tries) || 0) + 1, reason: "" }, updatedAt: now };
+  try {
+    await fsCommit(env, [{ update: { name: docName(env, "storeOrders/" + id), fields: objToFields(mark) }, updateMask: { fieldPaths: Object.keys(mark) }, currentDocument: { updateTime: od.updateTime } },
+      { update: { name: docName(env, "storeSupplierDay/" + day), fields: objToFields({ spentUsd: r4(spent + g.cost), count: (dd.exists ? Number(dd.data.count) || 0 : 0) + 1 }) }, ...(dd.exists ? { updateMask: { fieldPaths: ["spentUsd", "count"] }, currentDocument: { updateTime: dd.updateTime } } : { currentDocument: { exists: false } }) }]);
+  } catch (e) { if (e.conflict) return { outcome: "busy" }; throw e; }
+  let j;
+  try { j = await fzrCall(env, "POST", "/topups/order", { category_id: link.categoryId, offer_id: link.offerId, fields: { [link.playerField || "player_id"]: String(o.playerId) } }, { "Idempotency-Key": "ys-" + id }); }
+  catch (e) {
+    if (!(e && e.supplierStatus !== undefined)) throw e;
+    const st = e.supplierStatus, msg = String(e.supplierMsg || ""), ours = /balance|fund|insufficient|subscription|plan|limit|rate|api.?key|forbidden|unauthori|blocked|disabled/i.test(msg);
+    if ((st === 400 || st === 409 || st === 422) && !ours) {                  // رفض واضح: ما انخلق طلب عندهم ← استرجاع تلقائي
+      const r = await storeOrderAction(env, "order_reject", id, STORE_AUTO_FAIL_REASON, "auto", { auto: { ...mark.auto, state: "refunded", supplierMsg: msg, doneAt: now } });
+      await storeAutoReleaseCap(env, now, g.cost); return { outcome: "refunded", order: r.order };
+    }
+    if (st === 401 || st === 403 || ((st === 400 || st === 409 || st === 422) && ours)) {     // مشكلتنا (رصيد/اشتراك/مفتاح): بيضل للأدمن
+      await storeAutoReleaseCap(env, now, g.cost);
+      return await storeAutoGateFail(env, id, { data: { ...o, auto: mark.auto } }, Object.assign(new Error(msg), { supplierStatus: st === 401 || st === 403 ? st : 403 }), now, true);
+    }
+    return await storeAutoGateFail(env, id, { data: { ...o, auto: mark.auto } }, e, now, true);   // انقطاع/خطأ مؤقت: retry بنفس المفتاح (ما بيتكرر)
+  }
+  const so = String((j.order && j.order.id) || ""), stNow = String((j.order && j.order.status) || "processing");
+  if (!/^ord-\d+$/.test(so)) return await storeAutoGateFail(env, id, { data: { ...o, auto: mark.auto } }, Object.assign(new Error("bad"), { supplierStatus: 0 }), now, true);
+  const sent = await storeAutoSetState(env, id, o2 => o2.status === "processing" ? { supplierOrderId: so, auto: { ...(o2.auto || {}), state: "sent", at: now, supplierOrderId: so, supplierStatus: stNow, costUsd: g.cost, reason: "" }, events: storeEvent(o2, "sent", "auto", "FazerCards " + so, now), updatedAt: now } : null, 4);
+  const applied = await storeAutoApplyStatus(env, id, stNow, so, now);
+  return { outcome: applied.outcome === "processing" ? "sent" : applied.outcome, supplierOrderId: so, order: applied.order || sent };
+}
+async function storeAutoSync(env, id) {
+  const od = await fsGetDoc(env, "storeOrders/" + id); if (!od.exists) return { outcome: "missing" };
+  if (od.data.status !== "processing") return { outcome: "closed" };
+  const so = String(od.data.supplierOrderId || ""); if (!/^ord-\d+$/.test(so)) return { outcome: "no_supplier_order" };
+  const j = await fzrCall(env, "GET", "/orders/" + so);
+  return await storeAutoApplyStatus(env, id, j.order && j.order.status, so, Date.now());
+}
+async function storeAutoSweep(env, now) {
+  now = now || Date.now(); const { cfg } = await storeLoadSupplier(env); if (!cfg.enabled || !env.FAZER_API_KEY) return { skipped: true };
+  const rows = (await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "status", value: "processing" })).filter(r => r.data.kind === "order" && r.data.auto && r.data.auto.state), stats = { retried: 0, synced: 0, late: 0, errors: 0 };
+  for (const r of rows.slice(0, 25)) {
+    const au = r.data.auto, age = now - (Number(au.at) || 0);
+    try {
+      if (au.state === "retry" || (au.state === "sending" && age > 120000)) { await storeAutoFulfill(env, r.id, { retry: true, force: true }); stats.retried++; }
+      else if (au.state === "sent" && age > 120000) {
+        await storeAutoSync(env, r.id); stats.synced++;
+        if (age > 90 * 60000 && !au.lateAlerted) { const fresh = await fsGetDoc(env, "storeOrders/" + r.id); if (fresh.exists && fresh.data.status === "processing") { await storeNotify(env, ADMIN_UID, "store_supplier_issue", { code: String(r.data.code || r.id), reason: "الطلب متأخر عند FazerCards (" + Math.round(age / 60000) + " دقيقة). تحقق من لوحتهم." }); await storeAutoSetState(env, r.id, o => ({ auto: { ...(o.auto || {}), lateAlerted: true } })); stats.late++; } }
+      }
+    } catch (e) { stats.errors++; console.warn({ message: "auto sweep item failed", id: r.id, error: String(e && e.message || e) }); }
+  }
+  return stats;
+}
+// مراقبة يومية: اشتراك FazerCards ورصيدك عندهم (تنبيه للأدمن قبل ما توقف الخدمة)
+async function storeSupplierWatch(env, now) {
+  now = now || Date.now(); if (!env.FAZER_API_KEY) return { skipped: true };
+  const me = await fzrCall(env, "GET", "/me"), bal = Number((await fzrCall(env, "GET", "/balance")).balance), alerts = [];
+  const exp = Date.parse(me.planExpiresAt) || 0, days = exp ? Math.ceil((exp - now) / 86400000) : null, price = me.subscriptionActive ? await fzrPlanPrice(env, cleanText(me.plan, 20)) : 0;
+  if (me.subscriptionActive !== true) alerts.push("اشتراك FazerCards غير فعّال: التنفيذ التلقائي والطلب عندهم متوقف.");
+  else if (days !== null && days <= 3 && me.planAutoRenew !== true) alerts.push("اشتراك FazerCards بينتهي خلال " + Math.max(0, days) + " يوم وما فيه تجديد تلقائي.");
+  else if (days !== null && days <= 3 && Number.isFinite(bal) && bal < price) alerts.push("اشتراك FazerCards بيتجدد خلال " + Math.max(0, days) + " يوم، ورصيدك (" + bal + "$) أقل من سعر الخطة (" + price + "$). اشحن رصيدك.");
+  if (Number.isFinite(bal) && bal < FZR_LOW_BALANCE_USD) alerts.push("رصيدك عند FazerCards منخفض: " + bal + "$.");
+  for (const reason of alerts) await storeNotify(env, ADMIN_UID, "store_supplier_issue", { code: "FazerCards", reason });
+  return { alerts, balance: bal, days };
+}
+async function handleFazerWebhook(request, env) {
+  const raw = await request.text();
+  if (!env.FAZER_WEBHOOK_SECRET) return jsonResponse({ ok: false, error: "not_configured" }, 503);
+  const expected = "sha256=" + await hmacHex(env.FAZER_WEBHOOK_SECRET, raw);
+  if (!ctEq(request.headers.get("X-Webhook-Signature") || "", expected)) return jsonResponse({ ok: false, error: "bad_signature" }, 401);
+  let ev; try { ev = JSON.parse(raw); } catch (e) { return jsonResponse({ ok: false, error: "bad_json" }, 400); }
+  const eid = String(ev.event_id || ""), oid = String(ev.data && ev.data.order_id || "");
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(eid)) return jsonResponse({ ok: false, error: "bad_event" }, 400);
+  try { await fsCommit(env, [{ update: { name: docName(env, "storeSupplierEvents/" + eid), fields: objToFields({ at: Date.now(), event: cleanText(ev.event, 40), orderId: cleanText(oid, 30) }) }, currentDocument: { exists: false } }]); }
+  catch (e) { if (e.conflict) return jsonResponse({ ok: true, duplicate: true }, 200); throw e; }
+  if (ev.event === "order.status_changed" && /^ord-\d+$/.test(oid)) {
+    try { const rows = await fsRunQuery(env, "storeOrders", null, 5, 0, { field: "supplierOrderId", value: oid }); if (rows.length === 1) await storeAutoSync(env, rows[0].id); }
+    catch (e) { console.warn({ message: "fazer webhook sync failed", oid, error: String(e && e.message || e) }); }          // الـsweeper بيلحقها
+  }
+  return jsonResponse({ ok: true }, 200);
+}
 async function handleStoreMe(request, env) {
   try {
     const user = await requireUser(request);
@@ -1856,7 +2037,7 @@ function storeOrderOut(id, o, now, admin) {
     method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || "") },
     amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
     payout: kind === "refund" ? { method: String((o.payout && o.payout.method) || ""), account: String((o.payout && o.payout.account) || "") } : null, finalizePending: o.finalizePending === true, proof: pr && pr.submittedAt ? { ref: String(pr.ref || ""), hasImage: !!pr.hasImage, submittedAt: Number(pr.submittedAt) || 0, late: !!pr.late } : null, rejectReason: String(o.rejectReason || ""), doneAt: Number(o.doneAt) || 0 };
-  if (admin) Object.assign(out, { uid: String(o.uid || ""), name: String(o.name || ""), email: String(o.email || ""), adminNote: String(o.adminNote || ""), events: Array.isArray(o.events) ? o.events : [] });
+  if (admin) Object.assign(out, { uid: String(o.uid || ""), name: String(o.name || ""), email: String(o.email || ""), adminNote: String(o.adminNote || ""), events: Array.isArray(o.events) ? o.events : [], supplierOrderId: String(o.supplierOrderId || ""), costUsd: Number(o.costUsd) || 0, auto: o.auto && o.auto.state ? { state: String(o.auto.state), reason: String(o.auto.reason || ""), supplierMsg: String(o.auto.supplierMsg || ""), supplierStatus: String(o.auto.supplierStatus || ""), costUsd: Number(o.auto.costUsd) || 0, at: Number(o.auto.at) || 0, tries: Number(o.auto.tries) || 0 } : null });
   return out;
 }
 const storeEvent = (o, action, by, note, at) => [...(Array.isArray(o.events) ? o.events : []), { at, action, by, note: note || "" }].slice(-20);
@@ -1892,7 +2073,7 @@ async function storeAnonymizeCustomer(env, uid, keepOrderId) {
   }
   await fsCommit(env, [{ delete: docName(env, "storeCustomers/" + uid) }, { delete: docName(env, "storeRate/validate_" + uid) }]);
 }
-async function handleStoreOrderApi(request, env, action) {
+async function handleStoreOrderApi(request, env, action, ctx) {
   try {
     const user = await requireUser(request);
     const uid = validId(String(user.sub || "")); if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
@@ -1927,6 +2108,7 @@ async function handleStoreOrderApi(request, env, action) {
           await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } },
             { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: newBal }) }, updateMask: { fieldPaths: ["balanceUsd"] }, currentDocument: { updateTime: cd.updateTime } },
             { update: { name: docName(env, "storeLedger/" + randomId()), fields: objToFields({ uid, type: "order", amountUsd: -priceUsd, balanceAfter: newBal, ref: code, note: String(item.name), at: now, by: "customer" }) }, currentDocument: { exists: false } }]);
+          if (ctx && ctx.waitUntil) ctx.waitUntil(storeAutoFulfill(env, id).catch(e2 => console.warn({ message: "auto fulfill failed", id, error: String(e2 && e2.message || e2) })));   // التنفيذ التلقائي بالخلفية (ما بيأخّر ردّ الزبون)
           return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false), balanceUsd: newBal }, 200);
         } catch (e) {
           if (!e.conflict || attempt === 2) throw e;
@@ -3157,7 +3339,8 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7));
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7), ctx);
+    if (url.pathname === "/supplier/fazer/webhook" && request.method === "POST") return handleFazerWebhook(request, env);
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
@@ -3168,6 +3351,11 @@ export default {
   },
   // مهمة يومية (cron): تذكير، تحذير، وتنفيذ سياسة عدم النشاط إذا الأدمن فعّلها
   async scheduled(event, env, ctx) {
+    if (event && event.cron === "*/5 * * * *") {         // كل 5 دقايق: متابعة طلبات FazerCards (إعادة المحاولة بنفس المفتاح + سؤال عن الحالة + تنبيه التأخير)
+      ctx.waitUntil(storeAutoSweep(env).then(r => console.info({ message: "auto sweep", ...r })).catch(e => console.error({ message: "auto sweep failed", error: String(e && e.message || e) })));
+      return;
+    }
+    ctx.waitUntil(storeSupplierWatch(env).then(r => console.info({ message: "supplier watch", ...r })).catch(e => console.error({ message: "supplier watch failed", error: String(e && e.message || e) })));
     ctx.waitUntil(storeRetentionSweep(env).then(n => console.info({ message: "store receipts retention", purged: n })).catch(e => console.error({ message: "store receipts retention failed", error: String(e && e.message || e) })));
     ctx.waitUntil(runInactivity(env, { dryRun: false }).then(r => console.info({ message: "inactivity run", ...r, plan: undefined })).catch(e => console.error({ message: "inactivity run failed", error: String(e.message || e) })));
   },
