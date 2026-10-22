@@ -1935,7 +1935,7 @@ async function storeAutoSync(env, id) {
   return await storeAutoApplyStatus(env, id, j.order && j.order.status, so, Date.now());
 }
 async function storeAutoSweep(env, now) {
-  now = now || Date.now(); const { cfg } = await storeLoadSupplier(env); if (!cfg.enabled || !env.FAZER_API_KEY) return { skipped: true };
+  now = now || Date.now(); if (!env.FAZER_API_KEY) return { skipped: true };       // المتابعة مو مربوطة بالمفتاح العام: أي طلب انبعت فعلاً لازم يكتمل (المفتاح العام بيتحكم بالإرسال الجديد بس)
   const rows = (await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "status", value: "processing" })).filter(r => r.data.kind === "order" && r.data.auto && r.data.auto.state), stats = { retried: 0, synced: 0, late: 0, errors: 0 };
   for (const r of rows.slice(0, 25)) {
     const au = r.data.auto, age = now - (Number(au.at) || 0);
