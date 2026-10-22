@@ -116,6 +116,15 @@ body.lock{overflow:hidden}
 #osBody .dellist{margin:8px 0;padding-inline-start:22px;line-height:1.9}
 .stat{display:inline-block;background:var(--tape);color:#10211C;font-weight:700;border-radius:999px;padding:1px 14px}
 #osBody img.pv{max-width:100%;max-height:200px;border:2px solid var(--edge);border-radius:8px;margin-top:6px;display:block}
+.ophead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ophead h2{margin:6px 0 8px;font-size:1.3rem}
+.optabs{display:flex;gap:6px;margin:10px 0}
+.optabs button{flex:1;font:inherit;font-weight:700;font-size:.95rem;color:var(--ink);background:transparent;border:2px solid var(--line);border-radius:10px;padding:8px 4px;cursor:pointer}
+.optabs button[aria-selected="true"]{background:var(--tape);color:#10211C;border-color:var(--edge)}
+.opage .myrow{margin-top:10px;padding:10px 12px}
+.opage .myrow .c{color:var(--muted);font-size:.85rem;margin-top:2px}
+.depbanner{border:3px solid var(--edge);border-radius:12px;padding:10px 12px;background:var(--panel);margin:10px 0;line-height:1.8}
+.depbanner button{margin-top:8px}
 .myrow{display:block;width:100%;text-align:start;font:inherit;color:var(--ink);background:transparent;border:2px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px;cursor:pointer}
 .myrow .a{display:flex;justify-content:space-between;gap:8px;font-weight:700}
 .myrow .b{color:var(--muted);font-size:.9rem}
@@ -221,6 +230,7 @@ function itemCard(n){
 }
 function render(){
   const box = $('catalog'), cr = $('crumbs'); box.textContent = ''; cr.textContent = '';
+  const rt = orderRoute(); if(rt !== false){ if(rt) OP_TAB = rt; renderWallet(); renderOrdersPage(box, cr); return; }      // صفحة الطلبات (#!orders)
   if(TREE === null) return;
   renderWallet();
   const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
@@ -233,6 +243,7 @@ function render(){
   cr.append(trail.length ? el('a', { href: '#', text: 'الرئيسية' }) : el('b', { text: 'الرئيسية' }));
   trail.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === trail.length - 1 ? el('b', { text: n.name }) : el('a', { href: '#/' + encodeURIComponent(n.id), text: n.name })); });
   document.title = (trail.length ? trail[trail.length - 1].name + ' | ' : '') + 'Yardova Card';
+  const dbn = openDepBanner(); if(dbn) box.append(dbn);
   if(note) box.append(el('div', { class: 'state', id: 'noteMsg', text: note }));
   if(!nodes || !nodes.length){ box.append(el('div', { class: 'empty', id: 'emptyNote', text: 'ما في منتجات هلق.' })); return; }
   const grid = el('div', { class: 'grid' });
@@ -295,7 +306,7 @@ function renderDrawer(){
     el('div', { class: 'acc-row' }, el('span', { text: 'رصيدك' }), el('b', { id: 'accBalance', dir: 'ltr', text: money(c.balanceUsd) })),
     el('button', { class: 'btn-main', id: 'btnDrTopup', type: 'button', style: 'margin-top:10px;', text: '➕ شحن الرصيد' }),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
-    ordersSection(),
+    ordersLink(),
     el('button', { class: 'btn-ghost', id: 'btnMerchant', type: 'button', text: '🏪 هل أنت تاجر؟ تواصل معنا' }),
     c.closing ? '' : el('button', { class: 'btn-ghost', id: 'btnDelete', type: 'button', text: '🗑️ احذف حسابي بالمتجر' }),
     el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
@@ -435,19 +446,59 @@ async function refreshBalance(){
   try{ const j = await apiAuth('/store/me'); if(j.customer){ CUSTOMER = j.customer; if(j.wallet) WALLET = { ...WALLET, ...j.wallet }; renderWallet(); renderDrawer(); } }catch(e){}
 }
 async function loadMyOrders(){
-  MY_STATE = 'loading'; if(!$('drawer').hidden) renderDrawer();
+  MY_STATE = 'loading'; if(!$('drawer').hidden) renderDrawer(); if(orderRoute() !== false) render();
   try{ const j = await apiAuth('/store/orders'); MY = Array.isArray(j.orders) ? j.orders : []; MY_STATE = 'ok'; }catch(e){ MY_STATE = 'error'; }
   if(!$('drawer').hidden) renderDrawer();
+  if(TREE !== null || orderRoute() !== false) render();
+  if(MY_STATE === 'ok') maybeResumeDeposit();
 }
-function ordersSection(){
-  const box = el('div', { class: 'myorders', id: 'myOrders', style: 'padding:8px 0 4px;' });
-  box.append(el('div', { class: 'acc-row', style: 'border-top:2px solid var(--line);' }, el('b', { text: 'طلباتي' }), el('button', { class: 'dr-close', id: 'btnRefreshOrders', type: 'button', 'aria-label': 'تحديث', text: '🔄' })));
-  if(MY_STATE === 'loading' || MY_STATE === 'idle') box.append(el('p', { class: 'hint', id: 'myLoading', text: 'عم نحمّل طلباتك...' }));
-  else if(MY_STATE === 'error') box.append(el('p', { class: 'hint', id: 'myError', text: 'تعذّر تحميل طلباتك. اضغط 🔄.' }));
-  else if(!MY.length) box.append(el('p', { class: 'hint', id: 'myEmpty', text: 'ما عندك طلبات بعد.' }));
-  else MY.slice(0, 10).forEach(o => box.append(el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: o.kind === 'refund' && o.status === 'processing' ? 'بانتظار إرسال رصيدك' : (ORDER_ST[o.status] || o.status) })), el('div', { class: 'b', text: o.kind === 'topup' ? 'إيداع رصيد · ' + money(o.priceUsd) : o.itemName + ' · ' + (o.kind === 'order' || o.kind === 'refund' ? money(o.priceUsd) : orderAmount(o)) }))));
-  return box;
+// ---- صفحة الطلبات (#!orders): مشتريات، إيداعات، وسحب كل واحد بتبويبه
+let OP_TAB = 'orders', RESUMED = false;
+const OP_TABS = [['orders', '🛒 المشتريات'], ['topups', '💰 الإيداعات'], ['refunds', '💸 السحب']];
+const opKind = o => o.kind === 'topup' ? 'topups' : o.kind === 'refund' ? 'refunds' : 'orders';
+const isOpenOrder = o => o.status === 'awaiting_payment' || o.status === 'payment_submitted' || o.status === 'processing';
+const openDeposit = () => MY.find(o => o.kind === 'topup' && o.status === 'awaiting_payment') || null;
+function orderRoute(){ const m = /^#!orders(?:\/(orders|topups|refunds))?$/.exec(location.hash || ''); return m ? (m[1] || null) : false; }
+function ordersLink(){
+  const open = MY.filter(isOpenOrder).length;
+  return el('button', { class: 'btn-ghost', id: 'btnMyOrders', type: 'button', style: 'margin-top:8px;', text: '📦 طلباتي' + (open ? ' (' + open + ' مفتوح)' : '') });
 }
+function openDepBanner(){
+  const o = USER && MY_STATE === 'ok' ? openDeposit() : null; if(!o) return '';
+  return el('div', { class: 'depbanner', id: 'openDep', role: 'status' }, el('div', { style: 'font-weight:700;', text: '💰 عندك إيداع مفتوح ' + o.code }), el('div', { text: orderAmount(o) + ' عبر ' + o.method.name + ' · بانتظار الدفع' + (o.method.autoVerify ? ' ورقم العملية' : '') }), el('button', { class: 'btn-main', id: 'btnOpenDep', type: 'button', 'data-oid': o.id, text: 'أكمل الإيداع' }));
+}
+function orderRow(o){
+  const st = o.kind === 'refund' && o.status === 'processing' ? 'بانتظار إرسال رصيدك' : (ORDER_ST[o.status] || o.status);
+  const what = o.kind === 'topup' ? 'إيداع رصيد · ' + money(o.priceUsd) + ' · ' + o.method.name : o.kind === 'refund' ? 'سحب الرصيد وحذف الحساب · ' + money(o.priceUsd) : o.itemName + ' · ' + (o.kind === 'order' ? money(o.priceUsd) : orderAmount(o));
+  return el('button', { class: 'myrow', type: 'button', 'data-oid': o.id }, el('div', { class: 'a' }, el('span', { dir: 'ltr', text: o.code }), el('span', { text: st })), el('div', { class: 'b', text: what }), el('div', { class: 'c', text: new Date(o.createdAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) }));
+}
+function renderOrdersPage(box, cr){
+  cr.append(el('a', { href: '#', text: 'الرئيسية' }), el('span', { class: 'sep', text: '‹' }), el('b', { text: 'طلباتي' }));
+  document.title = 'طلباتي | Yardova Card';
+  const pg = el('section', { class: 'opage', id: 'opage' }); box.append(pg);
+  pg.append(el('div', { class: 'ophead' }, el('h2', { id: 'opTitle', text: '📦 طلباتي' }), el('button', { class: 'dr-close', id: 'opRefresh', type: 'button', 'aria-label': 'تحديث', text: '🔄' })));
+  if(!auth || !USER){ pg.append(el('div', { class: 'state', id: 'opSignin' }, el('p', { text: 'سجّل دخول لتشوف طلباتك وإيداعاتك.' }), el('button', { class: 'btn-main', id: 'opSigninBtn', type: 'button', text: 'الدخول بحساب Google' }))); return; }
+  const dep = openDepBanner(); if(dep) pg.append(dep);
+  const counts = { orders: 0, topups: 0, refunds: 0 }; MY.forEach(o => { if(isOpenOrder(o)) counts[opKind(o)]++; });
+  const tabs = el('div', { class: 'optabs', role: 'tablist', 'aria-label': 'أنواع الطلبات' }); OP_TABS.forEach(([k, t]) => tabs.append(el('button', { type: 'button', role: 'tab', 'data-optab': k, 'aria-selected': OP_TAB === k ? 'true' : 'false', text: t + (counts[k] ? ' (' + counts[k] + ')' : '') }))); pg.append(tabs);
+  if(MY_STATE === 'loading' || MY_STATE === 'idle'){ pg.append(el('p', { class: 'hint', id: 'myLoading', text: 'عم نحمّل طلباتك...' })); return; }
+  if(MY_STATE === 'error'){ pg.append(el('p', { class: 'hint', id: 'myError', text: 'تعذّر تحميل طلباتك. اضغط 🔄.' })); return; }
+  const list = MY.filter(o => opKind(o) === OP_TAB);
+  if(!list.length){ pg.append(el('p', { class: 'hint', id: 'myEmpty', text: OP_TAB === 'orders' ? 'ما عندك طلبات شراء بعد.' : OP_TAB === 'topups' ? 'ما عندك إيداعات بعد.' : 'ما عندك طلبات سحب.' })); return; }
+  const lst = el('div', { id: 'opList' }); list.slice(0, 50).forEach(o => lst.append(orderRow(o))); pg.append(lst);
+}
+// لما يرجع الزبون (أو يسجّل دخول) وعنده إيداع مفتوح بانتظار الدفع: بيطلعله لحتى يكمّله ويلصق رقم العملية (بدل ما يعمل طلب جديد)
+function maybeResumeDeposit(){
+  if(RESUMED) return; RESUMED = true;
+  const o = openDeposit(); if(!o || !$('osheet').hidden || SH.step !== 'closed') return;
+  openExisting(o.id);
+}
+$('catalog').addEventListener('click', e => {
+  const t = e.target.closest('[data-optab]'); if(t){ OP_TAB = t.dataset.optab; const h = '#!orders/' + OP_TAB; if(location.hash === h) render(); else location.hash = h; return; }
+  if(e.target.closest('#opRefresh')){ loadMyOrders(); refreshBalance(); return; }
+  if(e.target.closest('#opSigninBtn')){ openDrawer(); return; }
+  const r = e.target.closest('[data-oid]'); if(r){ ordTriggerSel = ''; openExisting(r.dataset.oid); }
+});
 // ---- النافذة
 function showSheet(){ $('osheet').hidden = false; $('scrim2').hidden = false; document.body.classList.add('lock'); }
 function stopPoll(){ if(SH.poll){ clearInterval(SH.poll); SH.poll = null; } }
@@ -527,6 +578,10 @@ function renderDeleteForm(b){
   b.append(el('label', { class: 'f', style: 'display:flex;gap:8px;align-items:center;' }, ck, el('span', { text: 'أفهم أن الحذف نهائي' })), msgBox(), el('button', { class: 'btn-main', id: 'osDelGo', type: 'button', text: hasBal ? 'إرسال طلب السحب وحذف الحساب' : 'احذف حسابي نهائياً' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'تراجع' }));
   if(SH.busy) b.querySelector('#osDelGo').disabled = true;
 }
+function renderTopAsk(b){
+  const o = SH.od; $('osTitle').textContent = 'عندك إيداع مفتوح';
+  b.append(el('div', { class: 'warn', id: 'osTopAsk', text: 'عندك إيداع ' + o.code + ' (' + orderAmount(o) + ' عبر ' + o.method.name + ') بانتظار الدفع. كمّله أول: إذا حوّلت، الصق رقم العملية بنفس الإيداع. إيداع جديد بدون ما تكمل القديم ممكن يلخبط التحويلات.' }), el('button', { class: 'btn-main', id: 'osTopAskResume', type: 'button', text: 'أكمل الإيداع ' + o.code }), el('button', { class: 'btn-ghost', id: 'osTopAskNew', type: 'button', text: 'إيداع جديد' }));
+}
 function renderDeleteDone(b){
   $('osTitle').textContent = 'تم';
   b.append(el('div', { class: 'warn', id: 'delDone', text: 'انحذف حسابك بالمتجر. شكراً لاستعمالك Yardova Card.' }), el('button', { class: 'btn-main', id: 'osDelFinish', type: 'button', text: 'تمام' }));
@@ -550,7 +605,7 @@ function renderSheet(){
   if(SH.step === 'closed') return;
   if(SH.step === 'loading' || SH.step === 'dloading'){ $('osTitle').textContent = 'اطلب'; b.append(el('p', { id: 'osLoading', text: 'عم نحمّل السعر...' })); return; }
   if(SH.step === 'error'){ $('osTitle').textContent = 'اطلب'; b.append(el('div', { class: 'warn', id: 'osError', role: 'alert', text: SH.msg || 'تعذّر تحميل السعر. جرّب كمان مرة.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return; }
-  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else if(SH.step === 'dform') renderDeleteForm(b); else if(SH.step === 'ddone') renderDeleteDone(b); else renderPay(b);
+  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else if(SH.step === 'dform') renderDeleteForm(b); else if(SH.step === 'ddone') renderDeleteDone(b); else if(SH.step === 'topask') renderTopAsk(b); else renderPay(b);
 }
 function msgBox(){ return el('div', { class: 'msg' + (SH.msg ? ' err' : ''), id: 'osMsg', role: 'alert', text: SH.msg || SH.ok || '' }); }
 // ---- التحقق من الـPlayer ID (اسم اللاعب) قبل الشراء
@@ -586,10 +641,12 @@ function renderForm(b){
   if(SH.busy) b.querySelector('#osSubmit').disabled = true;
 }
 // ---- إيداع الرصيد
-async function openTopup(pre){
+async function openTopup(pre, fresh){
   if(!ordTriggerSel) ordTriggerSel = '#btnMenu';
   if(!(await needAccount('سجّل دخول عشان تشحن رصيدك.'))) return;
   if(closedGuard()) return;
+  const od = fresh ? null : openDeposit();
+  if(od){ closeDrawerQuiet(); SH = freshSheet('topask'); SH.od = od; SH.pre = pre; showSheet(); renderSheet(); $('osClose').focus(); return; }       // عنده إيداع مفتوح: يكمّله أول (ما يعمل طلب ثاني)
   const min = Number(WALLET.minTopupUsd) || 5, max = Number(WALLET.maxTopupUsd) || 1000;
   let amt = pre ? Math.ceil(Number(pre)) : 10; amt = Math.min(max, Math.max(min, amt));
   closeDrawerQuiet(); SH = freshSheet('tform'); SH.amt = String(amt); SH.rid = newRid(); TQ = null;
@@ -710,6 +767,8 @@ $('osBody').addEventListener('click', async e => {
   if(b.dataset.copy !== undefined){ const okc = await copyText(b.dataset.copy); b.textContent = okc ? '✅ تم النسخ' : 'انسخ يدوياً'; return; }
   if(b.id === 'osImgDel'){ SH.img = undefined; renderSheet(); return; }
   if(b.id === 'osTopup'){ openTopup(QUOTE ? QUOTE.shortUsd : 0); return; }
+  if(b.id === 'osTopAskResume'){ ORD = SH.od; SH = freshSheet('pay'); renderSheet(); startTimer(); return; }
+  if(b.id === 'osTopAskNew'){ const pre = SH.pre; closeSheet(); await openTopup(pre, true); return; }
   if(b.id === 'osDelFinish'){ try{ await auth.signOut(); }catch(err){} closeSheet(); return; }
   if(b.id === 'osCancelClose'){ SH.msg = ''; const r = await cancelClosing(); if(r === null) return; if(r){ SH.msg = r; renderSheet(); return; } ORD = { ...ORD, status: 'cancelled' }; renderSheet(); return; }
   if(b.id === 'osDelGo'){
@@ -768,10 +827,10 @@ $('osBody').addEventListener('click', async e => {
 });
 $('drBody').addEventListener('click', e => {
   const r = e.target.closest('[data-oid]'); if(r){ openExisting(r.dataset.oid); return; }
-  if(e.target.closest('#btnRefreshOrders')){ loadMyOrders(); refreshBalance(); return; }
+  if(e.target.closest('#btnMyOrders')){ closeDrawer(); location.hash = '#!orders'; return; }
   if(e.target.closest('#btnDrTopup')){ ordTriggerSel = '#btnMenu'; openTopup(); }
 });
-if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); } });
+if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; RESUMED = false; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); } });
 
 </script>
 </body>
