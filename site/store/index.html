@@ -243,6 +243,7 @@ function render(){
   cr.append(trail.length ? el('a', { href: '#', text: 'الرئيسية' }) : el('b', { text: 'الرئيسية' }));
   trail.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === trail.length - 1 ? el('b', { text: n.name }) : el('a', { href: '#/' + encodeURIComponent(n.id), text: n.name })); });
   document.title = (trail.length ? trail[trail.length - 1].name + ' | ' : '') + 'Yardova Card';
+  if(trail.length) box.append(el('button', { class: 'btn-ghost', id: 'btnBack', type: 'button', 'data-go': trail.length > 1 ? trail[trail.length - 2].id : '', style: 'margin:0 0 12px;', text: '↩️ رجوع' }));
   const dbn = openDepBanner(); if(dbn) box.append(dbn);
   if(note) box.append(el('div', { class: 'state', id: 'noteMsg', text: note }));
   if(!nodes || !nodes.length){ box.append(el('div', { class: 'empty', id: 'emptyNote', text: 'ما في منتجات هلق.' })); return; }
@@ -339,11 +340,12 @@ async function _loadCustomer(){
 }
 function openDrawer(){
   renderDrawer();
-  $('drawer').hidden = false; $('scrim').hidden = false; document.body.classList.add('lock'); $('btnMenu').setAttribute('aria-expanded', 'true');
+  $('drawer').hidden = false; $('scrim').hidden = false; document.body.classList.add('lock'); $('btnMenu').setAttribute('aria-expanded', 'true'); pushUi();
   $('btnCloseDrawer').focus();
 }
 function closeDrawer(){
   $('drawer').hidden = true; $('scrim').hidden = true; document.body.classList.remove('lock'); $('btnMenu').setAttribute('aria-expanded', 'false');
+  if($('osheet').hidden) popUi();
   $('btnMenu').focus();      // دايماً لزر القائمة (بعض الجوالات ما بتعطي الزر تركيز عند اللمس)
 }
 $('btnMenu').addEventListener('click', openDrawer);
@@ -500,7 +502,14 @@ $('catalog').addEventListener('click', e => {
   const r = e.target.closest('[data-oid]'); if(r){ ordTriggerSel = ''; openExisting(r.dataset.oid); }
 });
 // ---- النافذة
-function showSheet(){ $('osheet').hidden = false; $('scrim2').hidden = false; document.body.classList.add('lock'); }
+// ===== زر الرجوع: القائمة الجانبية وشاشات الطلب لهم مدخل واحد بتاريخ المتصفح، فزر الرجوع بيسكّرهم بدل ما يطلّع الزبون من الصفحة =====
+let UIH = false, SKIP_POP = false;
+function pushUi(){ if(UIH) return; UIH = true; history.pushState({ ui: 1 }, '', location.href); }
+function popUi(){ if(!UIH) return; UIH = false; if(history.state && history.state.ui){ SKIP_POP = true; history.back(); } }
+function closeOverlaysQuiet(){ UIH = false; if(!$('osheet').hidden){ stopTimer(); clearTimeout(tqTimer); clearTimeout(idTimer); $('osheet').hidden = true; $('scrim2').hidden = true; SH.step = 'closed'; } if(!$('drawer').hidden) closeDrawerQuiet(); document.body.classList.remove('lock'); $('btnMenu').setAttribute('aria-expanded', 'false'); }
+window.addEventListener('popstate', () => { if(SKIP_POP){ SKIP_POP = false; return; } if(UIH && !(history.state && history.state.ui)) closeOverlaysQuiet(); });
+function navHash(h){ if(UIH){ UIH = false; closeOverlaysQuiet(); history.replaceState(null, '', h); render(); } else location.hash = h; }      // تنقّل من داخل نافذة: بنبدّل مدخلها بالمسار الجديد (ما بيضل مدخل قديم)
+function showSheet(){ $('osheet').hidden = false; $('scrim2').hidden = false; document.body.classList.add('lock'); pushUi(); }
 function stopPoll(){ if(SH.poll){ clearInterval(SH.poll); SH.poll = null; } }
 function stopTimer(){ if(SH.timer){ clearInterval(SH.timer); SH.timer = null; } stopPoll(); }
 // متابعة حالة التحقق من الشبكة بعد إرسال رقم العملية (حتى دقيقة تقريباً، وبترجع للمراجعة اليدوية إذا ما خلص)
@@ -516,7 +525,7 @@ function startChainPoll(){
 const chainSig = () => ORD ? ORD.status + '|' + (ORD.chain ? ORD.chain.state + ':' + ORD.chain.confirmations : '') : '';
 function closeSheet(){
   stopTimer(); clearTimeout(tqTimer); clearTimeout(idTimer); $('osheet').hidden = true; $('scrim2').hidden = true; SH.step = 'closed';
-  if($('drawer').hidden) document.body.classList.remove('lock');
+  if($('drawer').hidden){ document.body.classList.remove('lock'); popUi(); }
   const t = (ordTriggerSel && document.querySelector(ordTriggerSel)) || $('btnMenu'); t.focus();
 }
 async function needAccount(msg){
@@ -827,7 +836,7 @@ $('osBody').addEventListener('click', async e => {
 });
 $('drBody').addEventListener('click', e => {
   const r = e.target.closest('[data-oid]'); if(r){ openExisting(r.dataset.oid); return; }
-  if(e.target.closest('#btnMyOrders')){ closeDrawer(); location.hash = '#!orders'; return; }
+  if(e.target.closest('#btnMyOrders')){ navHash('#!orders'); return; }
   if(e.target.closest('#btnDrTopup')){ ordTriggerSel = '#btnMenu'; openTopup(); }
 });
 if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; RESUMED = false; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); } });

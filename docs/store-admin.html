@@ -104,6 +104,8 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .vrow select{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
 .pr .sm{color:var(--dim);font-size:.88rem;line-height:1.8}.pr .bad{color:#ffb4a8}.pr .up{color:#ffd48a}.pr .down{color:#8fe0a8}
 .prall{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-top:6px;font-size:.85rem}.prall div{background:#0E1B17;border-radius:6px;padding:3px 6px}
+.mvrow{display:block;width:100%;text-align:start;margin:4px 0;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;cursor:pointer}
+.mvrow[disabled]{opacity:.5;cursor:default}.mvrow.cur{border-color:var(--tape)}
 .spbox{background:#12281F;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
 .spbox ol{margin:6px 0;padding-inline-start:20px;line-height:1.9;font-size:.9rem}
 .spwarn{border:1px solid var(--tape);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:.9rem;line-height:1.8}
@@ -151,6 +153,13 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         <button id="btnAddItem">＋ منتج</button>
       </div>
       <div id="listMsg" role="alert"></div>
+      <div class="spbox" id="mover" hidden>
+        <div class="h" id="mvTitle">نقل</div>
+        <div class="sm" id="mvHint">اختار المكان الجديد (المجلد اللي بدك تحط فيه):</div>
+        <div id="mvList" role="listbox" aria-label="المجلدات"></div>
+        <div id="mvMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+        <div class="bar"><button id="mvCancel" type="button">إلغاء</button></div>
+      </div>
       <div id="list"></div>
     </div>
     <div class="card" id="viewSupplier" hidden>
@@ -307,7 +316,7 @@ fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
-    loadCatalog(); refreshOrderBadge();
+    loadCatalog().then(() => { if(parseRoute().tab !== 'catalog') applyRoute(); }); refreshOrderBadge();
     if(!window.__ordTick) window.__ordTick = setInterval(refreshOrderBadge, 60000);        // الرقم الأحمر بيتحدّث كل دقيقة
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
@@ -341,9 +350,10 @@ function fmtUsd(n){ return '$' + Number(n).toLocaleString('en-US', { minimumFrac
 function renderCatalog(){
   const cr = $('crumbs'); cr.textContent = '';
   const path = pathOf(CUR);
-  cr.append(path.length ? el('a', { text: 'الرئيسية', 'data-go': '' }) : el('b', { text: 'الرئيسية' }));
-  path.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === path.length - 1 ? el('b', { text: n.name }) : el('a', { text: n.name, 'data-go': n.id })); });
+  cr.append(path.length ? el('a', { href: '#catalog', text: 'الرئيسية', 'data-go': '' }) : el('b', { text: 'الرئيسية' }));
+  path.forEach((n, i) => { cr.append(el('span', { class: 'sep', text: '›' })); cr.append(i === path.length - 1 ? el('b', { text: n.name }) : el('a', { href: '#catalog/' + n.id, text: n.name, 'data-go': n.id })); });
   const list = $('list'); list.textContent = '';
+  if(CUR) list.append(el('button', { class: 'mvrow', id: 'btnUp', type: 'button', 'data-go': (byId(CUR) || {}).parentId || '', text: '↩️ رجوع' }));
   const kids = childrenOf(CUR);
   if(!kids.length){ list.append(el('div', { class: 'empty', id: 'emptyNote', text: CUR ? 'هالمجلد فاضي. ضيف مجلد أو منتج.' : 'الكتالوج فاضي. ضيف أول مجلد (مثلاً PUBG).' })); return; }
   kids.forEach((n, i) => {
@@ -355,22 +365,47 @@ function renderCatalog(){
     const info = el('div', { class: 'info', 'data-open': n.id }, name, sub);
     const up = el('button', { 'data-act': 'up', 'data-id': n.id, title: 'فوق', text: '▲' }); if(i === 0) up.disabled = true;
     const down = el('button', { 'data-act': 'down', 'data-id': n.id, title: 'تحت', text: '▼' }); if(i === kids.length - 1) down.disabled = true;
-    const acts = el('div', { class: 'acts' }, up, down, el('button', { 'data-act': 'edit', 'data-id': n.id, title: 'تعديل', text: '✏️' }), el('button', { 'data-act': 'del', 'data-id': n.id, title: 'حذف', text: '🗑' }));
+    const acts = el('div', { class: 'acts' }, up, down, el('button', { 'data-act': 'move', 'data-id': n.id, title: 'نقل لمجلد تاني', text: '📂' }), el('button', { 'data-act': 'edit', 'data-id': n.id, title: 'تعديل', text: '✏️' }), el('button', { 'data-act': 'del', 'data-id': n.id, title: 'حذف', text: '🗑' }));
     list.append(el('div', { class: 'row', 'data-row': n.id }, thumb, info, acts));
   });
 }
 async function loadCatalog(){
   $('listMsg').textContent = '';
-  try{ NODES = (await storeApi({ action: 'list' })).nodes; if(CUR && !byId(CUR)) CUR = ''; renderCatalog(); }
+  try{ NODES = (await storeApi({ action: 'list' })).nodes; const rt = parseRoute(); if(rt.tab === 'catalog') CUR = rt.folder && byId(rt.folder) ? rt.folder : ''; else if(CUR && !byId(CUR)) CUR = ''; renderCatalog(); }
   catch(e){ $('listMsg').textContent = 'تعذّر تحميل الكتالوج: ' + e.message; }
 }
-$('crumbs').addEventListener('click', e => { const a = e.target.closest('[data-go]'); if(!a) return; CUR = a.dataset.go; renderCatalog(); });
+// ===== نقل مجلد أو منتج لمجلد تاني =====
+let MV = null;
+function mvFolderPath(id){ const parts = []; let cur = id, g = 0; while(cur && g++ < 12){ const n = byId(cur); if(!n) break; parts.unshift(n.name); cur = n.parentId || ''; } return parts.join(' › ') || 'الرئيسية'; }
+function mvInside(id, root){ let cur = id, g = 0; while(cur && g++ < 20){ if(cur === root) return true; const n = byId(cur); cur = n ? (n.parentId || '') : ''; } return false; }
+function openMover(n){
+  MV = n; $('mvTitle').textContent = 'نقل "' + n.name + '"'; $('mvMsg').textContent = ''; const box = $('mvList'); box.textContent = '';
+  const add = (id, label, depth) => {
+    const dest = n.type === 'folder' && mvInside(id, n.id), same = (n.parentId || '') === id;
+    const b = el('button', { class: 'mvrow' + (same ? ' cur' : ''), type: 'button', 'data-mvto': id, role: 'option', style: 'padding-inline-start:' + (10 + depth * 18) + 'px;', text: (id ? '📁 ' : '🏠 ') + label + (same ? ' (مكانه الحالي)' : dest ? ' (ما بيصير)' : '') });
+    b.disabled = same || dest; box.append(b);
+  };
+  add('', 'الرئيسية', 0);
+  const walk = (parent, depth) => childrenOf(parent).filter(x => x.type === 'folder').forEach(f => { add(f.id, f.name, depth); walk(f.id, depth + 1); });
+  walk('', 1); $('editor').hidden = true; $('mover').hidden = false; if($('mover').scrollIntoView) $('mover').scrollIntoView({ block: 'nearest' }); pushOverlay();
+}
+function closeMover(){ MV = null; $('mover').hidden = true; popOverlay(); }
+$('mvCancel').onclick = closeMover;
+$('mvList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-mvto]'); if(!b || b.disabled || !MV) return; const n = MV, to = b.dataset.mvto;
+  $('mvMsg').textContent = '';
+  try{ NODES = (await storeApi({ action: 'move', id: n.id, parentId: to })).nodes; closeMover(); renderCatalog(); $('listMsg').style.color = 'var(--ok, #4caf50)'; $('listMsg').textContent = 'انتقل "' + n.name + '" إلى: ' + mvFolderPath(to); }
+  catch(err){ $('mvMsg').style.color = 'var(--err)'; $('mvMsg').textContent = err.message; }
+});
+$('crumbs').addEventListener('click', e => { const a = e.target.closest('[data-go]'); if(!a) return; e.preventDefault(); goRoute('catalog', a.dataset.go); });
 $('list').addEventListener('click', async e => {
+  const up = e.target.closest('#btnUp'); if(up){ goRoute('catalog', up.dataset.go); return; }
   const open = e.target.closest('[data-open]');
-  if(open){ const n = byId(open.dataset.open); if(n.type === 'folder'){ CUR = n.id; renderCatalog(); } else openEditor(n); return; }
+  if(open){ const n = byId(open.dataset.open); if(n.type === 'folder'){ goRoute('catalog', n.id); } else openEditor(n); return; }
   const b = e.target.closest('button[data-act]'); if(!b) return;
   const n = byId(b.dataset.id); $('listMsg').textContent = '';
   if(b.dataset.act === 'edit') return openEditor(n);
+  if(b.dataset.act === 'move') return openMover(n);
   try{
     if(b.dataset.act === 'up' || b.dataset.act === 'down'){ NODES = (await storeApi({ action: 'reorder', id: n.id, dir: b.dataset.act })).nodes; renderCatalog(); }
     else if(b.dataset.act === 'del'){
@@ -394,15 +429,17 @@ function openEditor(n, type){
   $('edEnabled').checked = n ? n.enabled : true;
   $('edFile').value = ''; $('edMsg').textContent = '';
   showPreview(n && n.hasImage ? API + n.imageUrl : '');
-  $('editor').hidden = false; $('edName').focus();
+  if(MV){ MV = null; $('mover').hidden = true; }
+  $('editor').hidden = false; $('edName').focus(); pushOverlay();
 }
+function closeEditor(){ $('editor').hidden = true; popOverlay(); }
 function showPreview(src){
   const pv = $('edPv'); pv.textContent = '';
   if(src) pv.append(el('img', { src, alt: '' })); else pv.append(el('span', { id: 'edPvPh', text: 'لا صورة' }));
 }
 $('btnAddFolder').onclick = () => openEditor(null, 'folder');
 $('btnAddItem').onclick = () => openEditor(null, 'item');
-$('edCancel').onclick = () => { $('editor').hidden = true; };
+$('edCancel').onclick = closeEditor;
 $('edImgDel').onclick = () => { EDIMG = ''; $('edFile').value = ''; showPreview(''); };
 // صورة: بنصغّرها بالمتصفح (أقصى 400px) وبنضغطها (WebP) حتى تضل صغيرة
 async function fileToDataUrl(file){
@@ -439,7 +476,7 @@ $('edSave').onclick = async () => {
   if(EDIT.id) body.id = EDIT.id; else { body.type = EDIT.type; body.parentId = CUR; }
   if(EDIMG !== undefined) body.image = EDIMG;
   $('edSave').disabled = true; $('edMsg').textContent = '';
-  try{ NODES = (await storeApi(body)).nodes; $('editor').hidden = true; renderCatalog(); }
+  try{ NODES = (await storeApi(body)).nodes; closeEditor(); renderCatalog(); }
   catch(err){ $('edMsg').textContent = err.message; }
   $('edSave').disabled = false;
 };
@@ -456,7 +493,20 @@ function showTab(which){
   if(which === 'payments'){ loadMethods(); loadWallet(); }
   if(which === 'customers'){ loadWallet(); loadVip(); loadCustomers(); }
 }
-$('tabCatalog').onclick = () => showTab('catalog'); $('tabPayments').onclick = () => showTab('payments'); $('tabCustomers').onclick = () => showTab('customers'); $('tabOrders').onclick = () => showTab('orders'); $('tabSupplier').onclick = () => showTab('supplier');
+// ===== زر الرجوع: كل تنقل (تبويب أو مجلد) بيدخل بتاريخ المتصفح، والنوافذ (التعديل والنقل) بتسكّر بزر الرجوع =====
+const ROUTES = ['catalog', 'payments', 'customers', 'orders', 'supplier'];
+function parseRoute(){ const m = /^#\/?([a-z]+)(?:\/([A-Za-z0-9_-]+))?$/.exec(location.hash || ''); return { tab: m && ROUTES.includes(m[1]) ? m[1] : 'catalog', folder: m && m[2] ? m[2] : '' }; }
+const routeHash = (tab, folder) => '#' + tab + (tab === 'catalog' && folder ? '/' + folder : '');
+let APPLIED = '';                                                                  // آخر مسار انطبّق (حتى ما ينعمل مرتين لما يجي حدث hashchange)
+function goRoute(tab, folder){ const h = routeHash(tab, folder || ''); if(OVL){ OVL = false; history.replaceState(null, '', h); applyRoute(true); } else if(location.hash === h || (!location.hash && h === '#catalog')) applyRoute(true); else { location.hash = h; applyRoute(); } }
+function applyRoute(force){ const r = parseRoute(), h = routeHash(r.tab, r.folder); if(!force && h === APPLIED) return; APPLIED = h; if(r.tab === 'catalog') CUR = r.folder && byId(r.folder) ? r.folder : ''; showTab(r.tab); if(r.tab === 'catalog') renderCatalog(); }
+let OVL = false, SKIP_POP = false;                                                    // OVL: نافذة (تعديل/نقل) مفتوحة وإلها مدخل بالتاريخ
+function pushOverlay(){ if(OVL) return; OVL = true; history.pushState({ ovl: 1 }, '', location.href); }
+function popOverlay(){ if(!OVL) return; OVL = false; if(history.state && history.state.ovl){ SKIP_POP = true; history.back(); } }
+function closeOverlaysQuiet(){ OVL = false; $('editor').hidden = true; MV = null; $('mover').hidden = true; }
+window.addEventListener('popstate', () => { if(SKIP_POP){ SKIP_POP = false; return; } if(OVL && !(history.state && history.state.ovl)) closeOverlaysQuiet(); });      // بنسكّر النافذة بس لما يطلع المتصفح من مدخلها (مو لحدث متأخر من تنقّل قبلها)
+window.addEventListener('hashchange', () => { const r = parseRoute(); if(routeHash(r.tab, r.folder) === APPLIED) return; if(OVL) closeOverlaysQuiet(); applyRoute(); });      // لو المسار هو نفسه اللي طبّقناه (حدث من تنقّلنا) ما نعمل شي
+$('tabCatalog').onclick = () => goRoute('catalog', CUR); $('tabPayments').onclick = () => goRoute('payments'); $('tabCustomers').onclick = () => goRoute('customers'); $('tabOrders').onclick = () => goRoute('orders'); $('tabSupplier').onclick = () => goRoute('supplier');
 
 // ===== طرق الدفع =====
 let METHODS = [];

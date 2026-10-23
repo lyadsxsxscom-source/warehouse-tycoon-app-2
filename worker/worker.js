@@ -1615,6 +1615,20 @@ async function handleAdminStore(request, env) {
       await fsCommit(env, [{ delete: docName(env, "storeNodes/" + id) }, { delete: docName(env, "storeImages/" + id) }]);
       return out(nodes.filter(x => x.id !== id));
     }
+    if (b.action === "move") {                    // نقل مجلد أو منتج لمجلد تاني (أو للرئيسية)
+      const id = validId(String(b.id || "")), n = nodes.find(x => x.id === id); if (!n) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
+      const parentId = b.parentId ? validId(String(b.parentId)) : ""; if (b.parentId && !parentId) throw new ApiError("bad_parent", "الوجهة غلط.");
+      if (parentId) { const par = nodes.find(x => x.id === parentId); if (!par) throw new ApiError("not_found", "المجلد الوجهة مو موجود.", 404); if (par.type !== "folder") throw new ApiError("bad_parent", "الوجهة لازم تكون مجلد."); }
+      if (String(n.parentId || "") === parentId) return out(nodes);
+      const by = new Map(nodes.map(x => [x.id, x]));
+      for (let cur = parentId, d = 0; cur && d < 20; d++) { if (cur === id) throw new ApiError("bad_move", "ما بتقدر تنقل مجلد لجوّا نفسه أو لجوّا مجلد فرعي منه."); cur = String((by.get(cur) || {}).parentId || ""); }
+      const kids = new Map(); for (const x of nodes) { const k = String(x.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(x.id); }
+      const height = (nid, g) => g > 12 ? 1 : 1 + Math.max(0, ...(kids.get(nid) || []).map(c => height(c, g + 1)));
+      if ((parentId ? storeDepth(nodes, parentId) : 0) + height(id, 0) > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات. الوجهة عميقة كتير لهالعنصر.`);
+      const sibs = nodes.filter(x => String(x.parentId || "") === parentId);
+      await fsCommit(env, [{ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId, sort: sibs.length ? Math.max(...sibs.map(x => Number(x.sort) || 0)) + 1 : 1, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["parentId", "sort", "updatedAt"] }, currentDocument: { exists: true } }]);
+      return out(await storeAllNodes(env));
+    }
     if (b.action === "reorder") {
       const id = validId(String(b.id || "")); const n = nodes.find(x => x.id === id);
       if (!n || (b.dir !== "up" && b.dir !== "down")) throw new ApiError("bad_request", "طلب غلط.");
