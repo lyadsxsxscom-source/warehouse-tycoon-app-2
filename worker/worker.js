@@ -1456,6 +1456,20 @@ async function handleAdminStore(request, env) {
     if (b.action === "supplier_validators") return jsonResponse({ ok: true, validators: (await storeSupplierValidators(env)).map(v => ({ categoryId: v.categoryId, name: v.name })) }, 200);
     if (b.action === "supplier_search") return jsonResponse({ ok: true, ...(await storeSupplierSearch(env, b.q)) }, 200);
     if (b.action === "supplier_section_offers") return jsonResponse({ ok: true, offers: await storeSupplierSectionOffers(env, String(b.section || ""), String(b.id || "")) }, 200);
+    if (b.action === "prices_preview" || b.action === "prices_apply") {            // أداة الأسعار: معاينة، ثم تطبيق على المحدّد (السيرفر بيعيد الحساب بتكلفة FazerCards الحالية ولا بيصدّق أرقام الواجهة)
+      const { cfg: sc } = await storeLoadSupplier(env), params = storePriceParams(b, sc.minMarginPct);
+      if (b.action === "prices_preview") return jsonResponse({ ok: true, minMarginPct: sc.minMarginPct, params, items: await storePricePlan(env, nodes, params, sc.minMarginPct, null) }, 200);
+      const ids = Array.isArray(b.ids) ? b.ids.map(x => String(x || "")).filter(Boolean) : []; if (!ids.length || ids.length > 400) throw new ApiError("bad_request", "اختار منتجات (حتى 400).");
+      const plan = await storePricePlan(env, nodes, params, sc.minMarginPct, new Set(ids)), at = Date.now(), skipped = [], writes = [];
+      for (const id of ids) if (!plan.some(x => x.id === id)) skipped.push({ id, reason: "not_linked" });
+      for (const it of plan) {
+        if (it.status !== "ok") { skipped.push({ id: it.id, reason: it.status }); continue; }
+        const node = nodes.find(n => n.id === it.id), prices = storeParsePrices(it.proposed);
+        writes.push({ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ prices, supplier: { ...node.supplier, costUsd: it.costUsd }, updatedAt: at }) }, updateMask: { fieldPaths: ["prices", "supplier", "updatedAt"] }, currentDocument: { exists: true } });
+      }
+      if (writes.length) await fsCommit(env, writes);
+      return jsonResponse({ ok: true, applied: writes.length, skipped }, 200);
+    }
     if (b.action === "supplier_link") {            // ربط منتج بخيار عند FazerCards (أو فك الربط)؛ بره محرّر المنتج حتى ما ينمسح بالغلط
       const it = nodes.find(n => n.id === String(b.id || ""));
       if (!it) throw new ApiError("not_found", "هالمنتج مو موجود.", 404);
@@ -2133,6 +2147,39 @@ async function storeChainSweep(env) {
   const rows = (await fsRunQuery(env, "storeOrders", null, 300, 0, { field: "status", value: "payment_submitted" })).filter(r => r.data.kind === "topup" && r.data.autoVerify && r.data.proof && r.data.proof.ref && (!r.data.chain || ["pending", "retry"].includes(r.data.chain.state))), stats = { checked: 0, done: 0, errors: 0 };
   for (const r of rows.slice(0, 20)) { try { const x = await storeChainVerifyOnce(env, r.id); stats.checked++; if (x.outcome === "done") stats.done++; } catch (e) { stats.errors++; console.warn({ message: "chain sweep item failed", id: r.id, error: String(e && e.message || e) }); } }
   return stats;
+}
+// ===== أداة الأسعار: حساب أسعار VIP 1..10 لكل المنتجات المربوطة من تكلفة FazerCards الحالية =====
+// الهامش = (سعر البيع − التكلفة) ÷ سعر البيع (نفس تعريف حماية التنفيذ التلقائي). السعر بيقرّب لفوق لأقرب خطوة، ودايماً ≥ حدّ الهامش الأدنى، وبينزل تدريجياً من VIP1 لـ10.
+const STORE_PRICE_STEPS = [0.01, 0.05, 0.1];
+function storeProposePrices(cost, m1, m10, step, minMargin) {
+  const ceilS = (x) => Math.round(Math.ceil(x / step - 1e-9) * step * 10000) / 10000, floor = ceilS(cost / (1 - minMargin / 100)), out = [];
+  for (let k = 0; k < STORE_VIP_LEVELS; k++) {
+    const m = m1 + (m10 - m1) * k / (STORE_VIP_LEVELS - 1);
+    let p = Math.max(ceilS(cost / (1 - m / 100)), floor); if (k > 0) p = Math.min(p, out[k - 1]); out.push(p);
+  }
+  return out;
+}
+function storePriceParams(b, minMargin) {
+  const m1 = Number(b.m1), m10 = Number(b.m10), step = Number(b.step);
+  if (!Number.isFinite(m1) || !Number.isFinite(m10) || m10 <= 0 || m1 >= 90) throw new ApiError("bad_margin", "هوامش الربح لازم تكون أرقام بين 0 و90%.");
+  if (m1 < m10) throw new ApiError("bad_margin", "هامش VIP 1 لازم يكون أكبر من أو يساوي هامش VIP 10.");
+  if (m10 + 1e-9 < minMargin) throw new ApiError("margin_below_min", "هامش VIP 10 (" + m10 + "%) أقل من حدّك الأدنى (" + minMargin + "%) بإعدادات التنفيذ التلقائي. ارفعه أو عدّل الحد.");
+  if (!STORE_PRICE_STEPS.includes(step)) throw new ApiError("bad_step", "خطوة التقريب غير مقبولة.");
+  return { m1, m10, step };
+}
+async function storePricePlan(env, nodes, params, minMargin, onlyIds) {
+  if (!env.FAZER_API_KEY) throw new ApiError("no_key", "مفتاح FazerCards مو مضاف.");
+  const by = new Map(nodes.map(n => [n.id, n])), pathOf = (n) => { const names = []; let cur = String(n.parentId || ""), d = 0; while (cur && d++ < 12) { const q = by.get(cur); if (!q) break; names.unshift(String(q.name || "")); cur = String(q.parentId || ""); } return names.join(" › "); };
+  const items = nodes.filter(n => n.type === "item" && n.supplier && n.supplier.offerId && (!onlyIds || onlyIds.has(n.id)));
+  const cats = new Map();
+  for (const n of items) { const c = String(n.supplier.categoryId || ""); if (cats.has(c)) continue; try { cats.set(c, { offers: (await storeSupplierOffers(env, c)).offers }); } catch (e) { cats.set(c, { error: true }); } }
+  return items.map(n => {
+    const cat = cats.get(String(n.supplier.categoryId || "")), base = { id: n.id, name: String(n.name || ""), path: pathOf(n), current: Array.isArray(n.prices) ? n.prices.map(Number) : [], oldCostUsd: Number(n.supplier.costUsd) || 0 };
+    if (!cat || cat.error) return { ...base, status: "category_error", costUsd: 0, proposed: [] };
+    const offer = cat.offers.find(o => o.offerId === n.supplier.offerId); if (!offer) return { ...base, status: "missing_offer", costUsd: 0, proposed: [] };
+    if (!(offer.priceUsd > 0)) return { ...base, status: "bad_cost", costUsd: 0, proposed: [] };
+    return { ...base, status: "ok", costUsd: offer.priceUsd, proposed: storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, minMargin) };
+  }).sort((a, b) => (a.path + "|" + a.name).localeCompare(b.path + "|" + b.name));
 }
 async function handleStoreMe(request, env) {
   try {

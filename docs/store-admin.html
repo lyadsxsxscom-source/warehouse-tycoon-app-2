@@ -101,6 +101,9 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .ord form input{padding:7px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit;width:100%}
 .ord img.proof{max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--line)}
 .ord .ev{margin-top:6px;font-size:.8rem;color:var(--dim)}
+.vrow select{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0E1B17;color:var(--ink);font:inherit}
+.pr .sm{color:var(--dim);font-size:.88rem;line-height:1.8}.pr .bad{color:#ffb4a8}.pr .up{color:#ffd48a}.pr .down{color:#8fe0a8}
+.prall{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-top:6px;font-size:.85rem}.prall div{background:#0E1B17;border-radius:6px;padding:3px 6px}
 .spbox{background:#12281F;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
 .spbox ol{margin:6px 0;padding-inline-start:20px;line-height:1.9;font-size:.9rem}
 .spwarn{border:1px solid var(--tape);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:.9rem;line-height:1.8}
@@ -182,6 +185,21 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         </ol>
         <div class="bar"><button id="btnCopyHook" type="button">📋 نسخ العنوان</button></div>
         <div class="sm">من دون هالإشعارات التنفيذ بيشتغل عادي، بس الإتمام بيتأخر لحد 5 دقايق (مهمة بتسأل FazerCards). ⚠️ لا تبعت السر لأي حدا، ولا لي.</div>
+      </div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="h">🧮 حساب الأسعار من التكلفة</div>
+      <div class="hint">بيحسب أسعار <b>VIP 1 لـ10</b> لكل المنتجات المربوطة من <b>تكلفة FazerCards الحالية</b>: الهامش بينزل تدريجياً من VIP 1 لـVIP 10، والسعر بيقرّب لفوق، ودايماً فوق حدّ الهامش الأدنى اللي فوق. بتشوف معاينة وبتختار شو بيتطبّق (المنتجات اللي ما بتختارها ما بتتغيّر). الهامش = (سعر البيع − التكلفة) ÷ سعر البيع.</div>
+      <div class="vrow"><label for="prM1">هامش VIP 1 (%)</label><input type="number" id="prM1" min="0" max="90" step="0.1" inputmode="decimal" value="10"></div>
+      <div class="vrow"><label for="prM10">هامش VIP 10 (%)</label><input type="number" id="prM10" min="0" max="90" step="0.1" inputmode="decimal" value="5"></div>
+      <div class="vrow"><label for="prStep">التقريب لفوق</label><select id="prStep"><option value="0.01">لأقرب سنت</option><option value="0.05">لأقرب 5 سنت</option><option value="0.1">لأقرب 10 سنت</option></select></div>
+      <div class="bar"><button id="btnPrPreview" type="button">👁️ معاينة</button></div>
+      <div id="prMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+      <div id="prBox" hidden>
+        <div id="prSummary" class="sm" style="margin-bottom:8px;"></div>
+        <div class="bar"><button id="btnPrAll" type="button">تحديد الكل</button><button id="btnPrNone" type="button">إلغاء التحديد</button></div>
+        <div id="prList"></div>
+        <div class="bar"><button id="btnPrApply" type="button">✅ طبّق على المحدّد</button></div>
+        <div id="prApplyMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
       </div>
       <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
       <div class="h">ربط المنتجات مع FazerCards</div>
@@ -826,10 +844,63 @@ function renderKeyBox(){
     el('div', { class: 'spwarn', text: '⚠️ لا تبعت المفتاح لأي حدا، ولا لي. إذا انكشف بأي لقطة، ولّد مفتاح جديد.' }));
   b.append(box);
 }
+// ===== أداة الأسعار =====
+const PR = { items: [], sel: new Set(), params: null, min: 0 };
+const prParams = () => ({ m1: Number($('prM1').value), m10: Number($('prM10').value), step: Number($('prStep').value) });
+const prSame = (it) => it.status === 'ok' && it.current.length === 10 && it.proposed.every((v, k) => Math.abs(v - it.current[k]) < 1e-9);
+const prMargin = (p, c) => p > 0 ? (p - c) / p * 100 : 0;
+const prPct = (v) => v.toFixed(1) + '%';
+const PR_BAD = { missing_offer: 'الخيار ما عاد موجود عند FazerCards: أعد ربط المنتج.', category_error: 'تعذّر الوصول لقسمه عند FazerCards: جرّب بعد شوي.', bad_cost: 'تكلفته عندهم صفر أو غير معروفة: ما بيتحسب.' };
+function renderPr(){
+  const box = $('prList'); box.textContent = '';
+  const ok = PR.items.filter(i => i.status === 'ok'), same = ok.filter(prSame), bad = PR.items.length - ok.length;
+  $('prSummary').textContent = PR.items.length + ' منتج مربوط: ' + (ok.length - same.length) + ' بتتغيّر أسعارهم، ' + same.length + ' بدون تغيير' + (bad ? '، ' + bad + ' فيهم مشكلة' : '') + '. (الحد الأدنى للهامش: ' + PR.min + '%)';
+  PR.items.forEach(it => {
+    const row = el('div', { class: 'spbox pr', 'data-prrow': it.id });
+    const cb = el('input', { type: 'checkbox', 'data-prsel': it.id }); cb.checked = PR.sel.has(it.id); cb.disabled = it.status !== 'ok';
+    row.append(el('label', { style: 'display:flex;gap:8px;align-items:center;' }, cb, el('b', { text: it.name })), el('div', { class: 'sm', text: it.path || 'الرئيسية' }));
+    if(it.status !== 'ok'){ row.append(el('div', { class: 'sm bad', 'data-prbad': it.id, text: '⚠️ ' + PR_BAD[it.status] })); box.append(row); return; }
+    const c = it.costUsd, cur = it.current, nw = it.proposed;
+    row.append(el('div', { class: 'sm', text: 'التكلفة ' + usd4(c) + (Math.abs(c - it.oldCostUsd) > 1e-9 ? ' (كانت ' + usd4(it.oldCostUsd) + ')' : '') }));
+    const cm = prMargin(cur[9], c), lowNow = cm + 1e-9 < PR.min;
+    row.append(el('div', { class: 'sm' + (lowNow ? ' bad' : ''), text: 'حالياً: VIP 1 ' + usd4(cur[0]) + ' (' + prPct(prMargin(cur[0], c)) + ') ← VIP 10 ' + usd4(cur[9]) + ' (' + prPct(cm) + ')' + (lowNow ? ' ⚠️ تحت الحد الأدنى' : '') }));
+    const delta = nw.reduce((a, v, k) => a + (v - cur[k]), 0), same1 = prSame(it);
+    row.append(el('div', { class: 'sm', 'data-prnew': it.id }, el('b', { text: 'الجديد: ' }), 'VIP 1 ' + usd4(nw[0]) + ' (' + prPct(prMargin(nw[0], c)) + ') ← VIP 10 ' + usd4(nw[9]) + ' (' + prPct(prMargin(nw[9], c)) + ') ', el('span', { class: same1 ? '' : delta > 0 ? 'up' : 'down', text: same1 ? '· بدون تغيير' : delta > 0 ? '· ↑ أغلى' : delta < 0 ? '· ↓ أرخص' : '· تغيير' })));
+    const all = el('div', { class: 'prall', 'data-prall': it.id, hidden: '' }); nw.forEach((v, k) => all.append(el('div', { text: 'VIP ' + (k + 1) + ': ' + usd4(v) + ' (حالي ' + usd4(cur[k]) + ')' })));
+    row.append(el('button', { type: 'button', 'data-prtog': it.id, text: '📊 كل المستويات' }), all); box.append(row);
+  });
+  $('btnPrApply').textContent = '✅ طبّق على المحدّد (' + PR.sel.size + ')'; $('btnPrApply').disabled = !PR.sel.size;
+}
+$('btnPrPreview').onclick = async () => {
+  $('btnPrPreview').disabled = true; $('prMsg').textContent = ''; $('prApplyMsg').textContent = ''; $('prMsg').style.color = 'var(--dim)'; $('prMsg').textContent = 'عم نجيب التكلفة الحالية من FazerCards...';
+  try{
+    const j = await storeApi({ action: 'prices_preview', ...prParams() }); PR.items = j.items; PR.params = j.params; PR.min = j.minMarginPct; PR.sel = new Set(j.items.filter(i => i.status === 'ok' && !prSame(i)).map(i => i.id));
+    $('prMsg').textContent = ''; $('prBox').hidden = false; renderPr();
+  }catch(e){ $('prMsg').style.color = 'var(--err)'; $('prMsg').textContent = e.message; }
+  $('btnPrPreview').disabled = false;
+};
+$('prBox').addEventListener('click', e => {
+  const t = e.target.closest('[data-prtog]'); if(t){ const n = $('prList').querySelector('[data-prall="' + t.dataset.prtog + '"]'); n.hidden = !n.hidden; return; }
+});
+$('prBox').addEventListener('change', e => { const c = e.target.closest('[data-prsel]'); if(!c) return; if(c.checked) PR.sel.add(c.dataset.prsel); else PR.sel.delete(c.dataset.prsel); $('btnPrApply').textContent = '✅ طبّق على المحدّد (' + PR.sel.size + ')'; $('btnPrApply').disabled = !PR.sel.size; });
+$('btnPrAll').onclick = () => { PR.sel = new Set(PR.items.filter(i => i.status === 'ok').map(i => i.id)); renderPr(); };
+$('btnPrNone').onclick = () => { PR.sel = new Set(); renderPr(); };
+$('btnPrApply').onclick = async () => {
+  const ids = [...PR.sel]; if(!ids.length || !PR.params) return; const p = PR.params;
+  if(!window.confirm('تغيير أسعار ' + ids.length + ' منتج (كل مستويات VIP)؟ بيتطبّق فوراً على المتجر.\nهامش VIP 1: ' + p.m1 + '% · هامش VIP 10: ' + p.m10 + '% · التقريب لأقرب ' + (p.step * 100) + ' سنت.')) return;
+  $('btnPrApply').disabled = true; $('prApplyMsg').textContent = '';
+  try{
+    const j = await storeApi({ action: 'prices_apply', ...p, ids });
+    const msg = 'انطبّقت أسعار ' + j.applied + ' منتج ✓' + (j.skipped.length ? ' · ما انطبّق ' + j.skipped.length + ' (مشكلة بهالمنتجات)' : '');
+    await loadCatalog(); await $('btnPrPreview').onclick();                                  // بنحدّث المعاينة بالأسعار الجديدة
+    $('prApplyMsg').style.color = 'var(--ok, #4caf50)'; $('prApplyMsg').textContent = msg;
+  }catch(e){ $('prApplyMsg').style.color = 'var(--err)'; $('prApplyMsg').textContent = e.message; $('btnPrApply').disabled = false; }
+};
 async function loadSupplier(){
   $('spMsg').textContent = '';
   try{
     const j = await storeApi({ action: 'supplier_get' }); SP.hasKey = !!j.hasKey; SP.cfg = j.cfg; SP.hook = { has: !!j.hasWebhookSecret, url: j.webhookUrl || '' }; SP.today = { usd: j.todayUsd || 0, count: j.todayCount || 0 };
+    if(Number($('prM10').value) < Number(j.cfg.minMarginPct)) $('prM10').value = j.cfg.minMarginPct;
     $('spEnabled').checked = !!j.cfg.enabled; $('spMargin').value = j.cfg.minMarginPct; $('spCap').value = j.cfg.dailyCapUsd;
     renderKeyBox(); renderSpItems(); renderSpToday(); renderHook();
     if(SP.hasKey){ await ensureValidators(); renderSpItems(); }
