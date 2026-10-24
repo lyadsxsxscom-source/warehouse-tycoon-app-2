@@ -269,6 +269,9 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
     <h3 id="edTitle"></h3>
     <label for="edName">الاسم</label>
     <input type="text" id="edName" maxlength="60" autocomplete="off">
+    <label for="edNote">ملاحظة للزبون (اختياري)</label>
+    <textarea id="edNote" maxlength="400" rows="3" placeholder="مثلاً: لحسابات سيرفر الشرق الأوسط فقط. بعد الإرسال ما بيمكن الإلغاء."></textarea>
+    <div style="color:var(--dim);font-size:.85rem;margin:-4px 0 8px;">بتظهر بأول صفحة هالمجلد، وعلى شاشة الطلب لمنتجاته (أقرب ملاحظة). منتج إلو ملاحظة خاصة بيظهر ملاحظته هو.</div>
     <div id="edPriceBox">
       <label for="edPrice">سعر VIP 1 — الأساسي ($ دولار)</label>
       <input type="number" id="edPrice" min="0" step="0.0001" inputmode="decimal">
@@ -360,6 +363,7 @@ function renderCatalog(){
     const thumb = n.hasImage ? el('img', { class: 'thumb', src: API + n.imageUrl, alt: '' }) : el('div', { class: 'thumb', text: n.type === 'folder' ? '📁' : '📄' });
     const name = el('div', { class: 'nm', text: n.name });
     if(!n.enabled) name.append(el('span', { class: 'badge', text: 'مخفي' }));
+    if(n.note) name.append(el('span', { class: 'badge', 'data-note': n.id, title: n.note, text: '📝 ملاحظة' }));
     const pr = n.prices || [];
     const sub = el('div', { class: 'sub', text: n.type === 'folder' ? ('مجلد · ' + childrenOf(n.id).length + ' عنصر') : (pr.length ? ('منتج · ' + fmtUsd(pr[0]) + (pr[pr.length - 1] < pr[0] ? ' · VIP 10: ' + fmtUsd(pr[pr.length - 1]) : '')) : 'منتج · بدون سعر ⚠️') });
     const info = el('div', { class: 'info', 'data-open': n.id }, name, sub);
@@ -420,7 +424,7 @@ function openEditor(n, type){
   EDIMG = undefined;
   const isFolder = EDIT.type === 'folder';
   $('edTitle').textContent = n ? (isFolder ? 'تعديل المجلد' : 'تعديل المنتج') : (isFolder ? 'مجلد جديد' : 'منتج جديد');
-  $('edName').value = n ? n.name : '';
+  $('edName').value = n ? n.name : ''; $('edNote').value = n ? (n.note || '') : '';
   $('edPriceBox').hidden = isFolder;
   const pr = (n && n.prices) || [];
   $('edPrice').value = pr.length ? pr[0] : '';
@@ -467,7 +471,7 @@ $('edFile').onchange = async () => {
 $('edSave').onclick = async () => {
   const name = $('edName').value.trim();
   if(!name){ $('edMsg').textContent = 'اكتب اسم.'; return; }
-  const body = { action: 'save', name, enabled: $('edEnabled').checked };
+  const body = { action: 'save', name, enabled: $('edEnabled').checked, note: $('edNote').value.trim() };
   if(EDIT.type === 'item'){
     if($('edPrice').value === ''){ $('edMsg').textContent = 'اكتب سعر VIP 1 بالدولار.'; return; }
     body.prices = [Number($('edPrice').value)];

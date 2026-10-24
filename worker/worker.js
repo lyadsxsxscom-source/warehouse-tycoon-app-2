@@ -1227,7 +1227,7 @@ async function handleWannadsPostback(request, env, ctx) {
 // ===== متجر الشدات (الخطوة 1): شجرة مجلدات ومنتجات =====
 // storeNodes/{id}: { parentId ("" = الجذر), type: folder|item, name, price (ل.س), enabled, sort, imageVer }، والصورة بمستند لحاله storeImages/{id} (حتى ما تنقل الصور مع كل قراءة).
 // الأدمن بيبني الشجرة (/admin/store)، والصفحة العامة بتقرأ الشجرة المفعّلة بس (/store/catalog) والصور (/store/img/{id}).
-const STORE_MAX_DEPTH = 4, STORE_MAX_NODES = 300, STORE_IMG_MAX = 280000;
+const STORE_MAX_DEPTH = 4, STORE_MAX_NODES = 300, STORE_IMG_MAX = 280000, STORE_NOTE_MAX = 400;
 const STORE_VIP_LEVELS = 10;
 function storePricesOf(n) { return Array.isArray(n.prices) ? n.prices.map(Number).filter(x => Number.isFinite(x) && x > 0) : []; }
 // أسعار VIP 1..10 بالدولار: VIP 1 لازم يكون موجود، والباقي إذا ترك فاضي بياخد سعر المستوى اللي قبله، والمستوى الأعلى ما بيكون أغلى
@@ -1246,7 +1246,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "" };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || "") };
 }
 async function storeAllNodes(env) { return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data })); }
 function storeSorted(list) { return [...list].sort((a, b) => ((Number(a.sort) || 0) - (Number(b.sort) || 0)) || a.id.localeCompare(b.id)); }
@@ -1575,7 +1575,7 @@ async function handleAdminStore(request, env) {
       const existing = b.id ? nodes.find(n => n.id === validId(String(b.id))) : null;
       if (b.id && !existing) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
       const name = cleanText(b.name, 60); if (!name) throw new ApiError("bad_name", "اكتب اسم.");
-      const enabled = b.enabled !== false;
+      const enabled = b.enabled !== false, note = b.note === undefined ? undefined : cleanText(b.note, STORE_NOTE_MAX);       // ملاحظة اختيارية بتظهر للزبون (مجلد أو منتج)
       let image; // undefined = ما منغيّر، "" = منحذف، data URL = منحط
       if (b.image !== undefined) {
         if (b.image === "" || b.image === null) image = "";
@@ -1587,7 +1587,7 @@ async function handleAdminStore(request, env) {
       const prices = kind === "item" ? storeParsePrices(b.prices) : null;
       let id, writes = [], node;
       if (existing) {
-        id = existing.id; node = { name, enabled, updatedAt: now, ...(prices ? { prices } : {}) };
+        id = existing.id; node = { name, enabled, updatedAt: now, ...(prices ? { prices } : {}), ...(note !== undefined ? { note } : {}) };
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, updateMask: { fieldPaths: Object.keys(node) }, currentDocument: { exists: true } });
       } else {
         const type = kind;
@@ -1597,7 +1597,7 @@ async function handleAdminStore(request, env) {
         if (nodes.length >= STORE_MAX_NODES) throw new ApiError("too_many", `وصلت للحد الأقصى (${STORE_MAX_NODES} عنصر).`);
         const sibs = nodes.filter(n => String(n.parentId || "") === parentId);
         id = "n" + randomId().slice(0, 12);
-        node = { parentId, type, name, enabled, ...(prices ? { prices } : {}), sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
+        node = { parentId, type, name, enabled, note: note || "", ...(prices ? { prices } : {}), sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, currentDocument: { exists: false } });
       }
       if (image !== undefined) {

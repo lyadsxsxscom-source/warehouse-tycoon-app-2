@@ -123,6 +123,7 @@ body.lock{overflow:hidden}
 .optabs button[aria-selected="true"]{background:var(--tape);color:#10211C;border-color:var(--edge)}
 .opage .myrow{margin-top:10px;padding:10px 12px}
 .opage .myrow .c{color:var(--muted);font-size:.85rem;margin-top:2px}
+.notebox{border:2px solid var(--edge);border-radius:12px;padding:10px 12px;background:var(--panel);margin:0 0 14px;line-height:1.8;font-size:1rem}
 .depbanner{border:3px solid var(--edge);border-radius:12px;padding:10px 12px;background:var(--panel);margin:10px 0;line-height:1.8}
 .depbanner button{margin-top:8px}
 .myrow{display:block;width:100%;text-align:start;font:inherit;color:var(--ink);background:transparent;border:2px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px;cursor:pointer}
@@ -205,6 +206,7 @@ function priceBox(usd){
   return box;
 }
 function imgSrc(u){ return typeof u === 'string' && /^\/store\/img\/[A-Za-z0-9_-]+(\?v=\d+)?$/.test(u) ? API + u : ''; }   // بس صور من سيرفرنا
+function noteFor(id){ const path = findPath(TREE || [], id, []) || []; for(let i = path.length - 1; i >= 0; i--) if(path[i].note) return path[i].note; return ''; }      // أقرب ملاحظة (للمنتج نفسه أو لمجلداته)
 function findPath(nodes, id, trail){
   for(const n of nodes){
     if(n.id === id) return [...trail, n];
@@ -245,6 +247,7 @@ function render(){
   document.title = (trail.length ? trail[trail.length - 1].name + ' | ' : '') + 'Yardova Card';
   if(trail.length) box.append(el('button', { class: 'btn-ghost', id: 'btnBack', type: 'button', 'data-go': trail.length > 1 ? trail[trail.length - 2].id : '', style: 'margin:0 0 12px;', text: '↩️ رجوع' }));
   const dbn = openDepBanner(); if(dbn) box.append(dbn);
+  const fold = trail.length ? trail[trail.length - 1] : null; if(fold && fold.note) box.append(el('div', { class: 'notebox', id: 'folderNote', role: 'note', text: 'ℹ️ ' + fold.note }));
   if(note) box.append(el('div', { class: 'state', id: 'noteMsg', text: note }));
   if(!nodes || !nodes.length){ box.append(el('div', { class: 'empty', id: 'emptyNote', text: 'ما في منتجات هلق.' })); return; }
   const grid = el('div', { class: 'grid' });
@@ -643,6 +646,7 @@ async function checkPlayerId(){
 function renderForm(b){
   const it = SH.item, q = QUOTE; $('osTitle').textContent = 'اطلب: ' + it.name;
   b.append(el('div', { class: 'sum' }, el('div', { id: 'osPrice', text: 'سعرك حسب مستواك VIP ' + q.vip + ': ' + money(q.priceUsd) }), el('div', { id: 'osBal', text: 'رصيدك: ' + money(q.balanceUsd) }), q.enough ? el('div', { id: 'osAfter', text: 'بعد الشراء: ' + money(q.balanceUsd - q.priceUsd) }) : document.createTextNode('')));
+  const nt = noteFor(it.id); if(nt) b.append(el('div', { class: 'warn', id: 'osNote', role: 'note', text: 'ℹ️ ' + nt }));
   const pid = el('input', { class: 'tx', id: 'osPid', type: 'text', maxlength: '40', autocomplete: 'off', inputmode: 'text', 'aria-describedby': 'osPidHint' }); pid.value = SH.pid;
   b.append(el('label', { class: 'f', for: 'osPid', text: 'معرّف اللاعب (Player ID)' }), pid, el('div', { class: 'idcheck', id: 'osIdCheck', role: 'status', 'aria-live': 'polite' }), el('div', { class: 'warn', id: 'osPidHint', text: '⚠️ تأكد من المعرّف: الشحن بيتم عليه، وما في استرجاع إذا كان غلط.' })); updateIdStatus();
   if(!q.enough){ b.append(el('div', { class: 'warn', id: 'osShort', role: 'alert', text: 'رصيدك ما بيكفي: ناقصك ' + money(q.shortUsd) + '.' }), msgBox(), el('button', { class: 'btn-main', id: 'osTopup', type: 'button', text: '➕ شحن الرصيد' })); return; }
