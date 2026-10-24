@@ -320,7 +320,7 @@ fbAuth.onAuthStateChanged(user => {
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
     loadCatalog().then(() => { if(parseRoute().tab !== 'catalog') applyRoute(); }); refreshOrderBadge();
-    if(!window.__ordTick) window.__ordTick = setInterval(refreshOrderBadge, 60000);        // الرقم الأحمر بيتحدّث كل دقيقة
+    if(!window.__ordTick) window.__ordTick = setInterval(refreshOrderBadge, 120000);        // الرقم الأحمر بيتحدّث كل دقيقة
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
     gateMsg.textContent = 'هالحساب مو مشرف.';
@@ -751,7 +751,8 @@ async function loadOrders(){
     ORDERS = j.orders; updateOrderBadge(j.counts); updateFilterLabels(j.counts, j.total); $('ordCount').textContent = '(' + j.orders.length + ')'; renderOrders();
   }catch(e){ $('ordMsg').textContent = 'تعذّر تحميل الطلبات: ' + e.message; }
 }
-async function refreshOrderBadge(){ try{ const j = await storeApi({ action: 'orders_list', status: 'waiting' }); updateOrderBadge(j.counts); }catch(e){} }
+async function refreshOrderBadge(){ if(document.hidden) return; try{ const j = await storeApi({ action: 'orders_badge' }); updateOrderBadge(j.counts); }catch(e){} }      // عدّ خفيف، وما بيشتغل والتبويب مخفي
+document.addEventListener('visibilitychange', () => { if(!document.hidden && window.__ordTick) refreshOrderBadge(); });
 function renderOrders(){
   const box = $('ordList'); box.textContent = '';
   if(!ORDERS.length){ box.append(el('div', { class: 'empty', id: 'ordEmpty', text: 'ما في طلبات هون.' })); return; }

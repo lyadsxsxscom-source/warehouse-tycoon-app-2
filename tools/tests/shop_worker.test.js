@@ -29,7 +29,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   };
   c.fsRunQuery = async (e, coll, field, limit, offset, filter) => {
     let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) }));
-    if (filter) rows = rows.filter(r => r.data[filter.field] === filter.value);
+    if (filter) rows = rows.filter(r => filter.field.split(".").reduce((o, k) => (o == null ? o : o[k]), r.data) === filter.value);
     return rows.slice(0, limit);
   };
   const CFG = { game: { workers: {} }, pricing: { minWithdrawUsd: 5 }, shop: {} };

@@ -252,6 +252,23 @@ async function fsRunQuery(env, collectionId, orderField, limit, offset, filter) 
   return rows.filter(x => x.document).map(x => ({ id: x.document.name.split("/").pop(), data: fieldsToObj(x.document.fields || {}) }));
 }
 
+// عدّ المستندات بدون قراءتها (Firestore بتحاسب قراءة وحدة لكل 1000 مستند). إذا فشل بنرجع لقراءة محدودة.
+async function fsCount(env, collectionId, filter) {
+  try {
+    const token = await getGoogleAccessToken(env), sq = { from: [{ collectionId }] };
+    if (filter) sq.where = { fieldFilter: { field: { fieldPath: filter.field }, op: "EQUAL", value: toFs(filter.value) } };
+    const r = await fetch(fsUrl(env, ":runAggregationQuery"), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ structuredAggregationQuery: { structuredQuery: sq, aggregations: [{ alias: "n", count: {} }] } }) });
+    if (!r.ok) throw new Error("fsCount " + r.status);
+    const rows = await r.json(), f = rows[0] && rows[0].result && rows[0].result.aggregateFields && rows[0].result.aggregateFields.n;
+    return Number(f && f.integerValue) || 0;
+  } catch (e) { return (await fsRunQuery(env, collectionId, null, 200, 0, filter)).length; }
+}
+// استعلامات صغيرة بالحالة (بدل قراءة كل الطلبات): بتجمع نتائج كل حالة من الحالات المطلوبة
+async function storeOrdersByState(env, field, states, limit) {
+  const out = new Map(); for (const st of states) for (const r of await fsRunQuery(env, "storeOrders", null, limit, 0, { field, value: st })) out.set(r.id, r);
+  return [...out.values()];
+}
+
 // ===== الإحصائيات اليومية (analytics/{اليوم}) =====
 // عدّادات ذرّية (increment + appendMissingElements)، ما بتتعارض مع حفظ اللاعب ولا بتحتاج قراءة.
 // uids = مين فات اليوم، newUids = مين أول يوم إله اليوم → منهن بتنحسب DAU/MAU والاحتفاظ D1/D7 بصفحة الأدمن.
@@ -1297,6 +1314,21 @@ async function handleStoreCatalog(env) {
   const { cfg: wcfg } = await storeLoadWallet(env);
   const r = jsonResponse({ ok: true, items: tree, methods, wallet: { pointsPerUsd: wcfg.pointsPerUsd } }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
 }
+// الكتالوج (نفسه لكل الزوار) بينخزّن بكاش Cloudflare دقيقة: ما بيقرا من Firestore إلا مرة بالدقيقة بدل كل زيارة
+async function storeCatalogCached(request, env, ctx) {
+  if (request.method !== "GET" || typeof caches === "undefined" || !caches.default) return handleStoreCatalog(env);
+  const origin = new URL(request.url).origin, key = new Request(origin + "/store/catalog", { method: "GET" }), keyStale = new Request(origin + "/store/catalog?stale=1", { method: "GET" });
+  try { const hit = await caches.default.match(key); if (hit) return hit; } catch (e) { /* بنكمّل بدون كاش */ }
+  try {
+    const res = await handleStoreCatalog(env);
+    if (res.status === 200) { try { const stale = new Response(res.clone().body, res); stale.headers.set("Cache-Control", "public, max-age=86400"); ctx.waitUntil(Promise.all([caches.default.put(key, res.clone()), caches.default.put(keyStale, stale)]).catch(() => {})); } catch (e) { /* مو مهم */ } }
+    return res;
+  } catch (e) {
+    // قاعدة البيانات واقفة (مثلاً وصلت الحد اليومي): بنعرض آخر كتالوج انحفظ (لحد يوم) ليضل المتجر قابل للتصفّح
+    try { const old = await caches.default.match(keyStale); if (old) { const r2 = new Response(old.body, old); r2.headers.set("X-Catalog-Stale", "1"); r2.headers.set("Cache-Control", "no-store"); return r2; } } catch (e2) { /* ولا نسخة قديمة */ }
+    return jsonResponse({ ok: false, error: "unavailable", message: "المتجر مشغول مؤقتاً. جرّب بعد شوي." }, 503);
+  }
+}
 async function handleStoreImage(env, id) {
   const d = id ? await fsGetDoc(env, "storeImages/" + id) : { exists: false };
   const m = d.exists && d.data ? /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(d.data.data || "")) : null;
@@ -1360,7 +1392,8 @@ async function handleAdminStore(request, env) {
   if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   let b = {}; try { b = await request.json(); } catch (e) {}
   try {
-    const nodes = await storeAllNodes(env);
+    // الكتالوج (حتى 350 مستند) بيتحمّل بس للإجراءات اللي بتحتاجه. قبل هيك كل إجراء (حتى عدّاد الطلبات كل دقيقة) كان يقراه كله.
+    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "save", "delete", "move", "reorder"].includes(b.action) ? await storeAllNodes(env) : [];
     const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: STORE_MAX_NODES } }, 200);
     if (b.action === "list") return out(nodes);
     if (b.action === "vip_get") { const v = await storeLoadVipSizes(env); return jsonResponse({ ok: true, ...v }, 200); }
@@ -1391,6 +1424,10 @@ async function handleAdminStore(request, env) {
           return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, ...plan.upd }, sizes, { admin: true }) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
+    }
+    if (b.action === "orders_badge") {            // عدّاد الطلبات بالأدمن (بيتحدّث كل دقيقتين): عدّ بدون قراءة المستندات
+      const [a, p] = await Promise.all([fsCount(env, "storeOrders", { field: "status", value: "payment_submitted" }), fsCount(env, "storeOrders", { field: "status", value: "processing" })]);
+      return jsonResponse({ ok: true, counts: { payment_submitted: a, processing: p }, waiting: a + p }, 200);
     }
     if (b.action === "orders_list") {
       const now2 = Date.now(), q = cleanText(b.q, 60).toLowerCase(), st = String(b.status || "all"), kd = String(b.kind || "all");
@@ -1980,7 +2017,7 @@ async function storeAutoSync(env, id) {
 }
 async function storeAutoSweep(env, now) {
   now = now || Date.now(); if (!env.FAZER_API_KEY) return { skipped: true };       // المتابعة مو مربوطة بالمفتاح العام: أي طلب انبعت فعلاً لازم يكتمل (المفتاح العام بيتحكم بالإرسال الجديد بس)
-  const rows = (await fsRunQuery(env, "storeOrders", null, 500, 0, { field: "status", value: "processing" })).filter(r => r.data.kind === "order" && r.data.auto && r.data.auto.state), stats = { retried: 0, synced: 0, late: 0, errors: 0 };
+  const rows = (await storeOrdersByState(env, "auto.state", ["sent", "retry", "sending"], 100)).filter(r => r.data.kind === "order" && r.data.status === "processing"), stats = { retried: 0, synced: 0, late: 0, errors: 0 };
   for (const r of rows.slice(0, 25)) {
     const au = r.data.auto, age = now - (Number(au.at) || 0);
     try {
@@ -2157,8 +2194,11 @@ async function storeChainVerify(env, id, opts) {
   if (opts && opts.fast) for (const ms of CHAIN_FAST_MS) { if (r.outcome !== "pending" && r.outcome !== "retry") break; await chainSleep(ms); r = await storeChainVerifyOnce(env, id); }
   return r;
 }
-async function storeChainSweep(env) {
-  const rows = (await fsRunQuery(env, "storeOrders", null, 300, 0, { field: "status", value: "payment_submitted" })).filter(r => r.data.kind === "topup" && r.data.autoVerify && r.data.proof && r.data.proof.ref && (!r.data.chain || ["pending", "retry"].includes(r.data.chain.state))), stats = { checked: 0, done: 0, errors: 0 };
+async function storeChainSweep(env, opts) {
+  const full = !opts || opts.full !== false;                  // الفحص الشامل (طلبات إلها رقم عملية بدون حالة تحقق) مرة بالساعة بالـcron، وكل مرة لو انطلب مباشرة
+  const found = new Map(); for (const r of await storeOrdersByState(env, "chain.state", ["pending", "retry"], 100)) found.set(r.id, r);
+  if (full) for (const r of await fsRunQuery(env, "storeOrders", null, 300, 0, { field: "status", value: "payment_submitted" })) if (!r.data.chain) found.set(r.id, r);
+  const rows = [...found.values()].filter(r => r.data.kind === "topup" && r.data.status === "payment_submitted" && r.data.autoVerify && r.data.proof && r.data.proof.ref), stats = { checked: 0, done: 0, errors: 0 };
   for (const r of rows.slice(0, 20)) { try { const x = await storeChainVerifyOnce(env, r.id); stats.checked++; if (x.outcome === "done") stats.done++; } catch (e) { stats.errors++; console.warn({ message: "chain sweep item failed", id: r.id, error: String(e && e.message || e) }); } }
   return stats;
 }
@@ -3564,7 +3604,7 @@ export default {
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
     if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7), ctx);
     if (url.pathname === "/supplier/fazer/webhook" && request.method === "POST") return handleFazerWebhook(request, env);
-    if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return handleStoreCatalog(env);
+    if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return storeCatalogCached(request, env, ctx);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
     if (url.pathname === "/admin/wallet-reindex" && request.method === "POST") return handleAdminWalletReindex(request, env);
@@ -3576,7 +3616,7 @@ export default {
   async scheduled(event, env, ctx) {
     if (event && event.cron === "*/5 * * * *") {         // كل 5 دقايق: متابعة طلبات FazerCards (إعادة المحاولة بنفس المفتاح + سؤال عن الحالة + تنبيه التأخير)
       ctx.waitUntil(storeAutoSweep(env).then(r => console.info({ message: "auto sweep", ...r })).catch(e => console.error({ message: "auto sweep failed", error: String(e && e.message || e) })));
-      ctx.waitUntil(storeChainSweep(env).then(r => console.info({ message: "chain sweep", ...r })).catch(e => console.error({ message: "chain sweep failed", error: String(e && e.message || e) })));
+      ctx.waitUntil(storeChainSweep(env, { full: new Date().getUTCMinutes() < 5 }).then(r => console.info({ message: "chain sweep", ...r })).catch(e => console.error({ message: "chain sweep failed", error: String(e && e.message || e) })));
       return;
     }
     ctx.waitUntil(storeChainBackfill(env).then(n => console.info({ message: "chain backfill", locked: n })).catch(e => console.error({ message: "chain backfill failed", error: String(e && e.message || e) })));

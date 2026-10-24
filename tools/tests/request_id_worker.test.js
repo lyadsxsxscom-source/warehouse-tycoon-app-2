@@ -21,7 +21,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   } return {}; };
   c.fsRunQuery = async (e, coll, field, limit, offset, filter) => {
     let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) }));
-    if (filter) rows = rows.filter(r => r.data[filter.field] === filter.value);
+    if (filter) rows = rows.filter(r => filter.field.split(".").reduce((o, k) => (o == null ? o : o[k]), r.data) === filter.value);
     return rows.slice(0, limit);
   };
   c.fetch = async (url, o) => { fetchCalls.push({ url: String(url), auth: o.headers.Authorization, body: JSON.parse(o.body) }); return { ok: authOk, status: authOk ? 200 : 403, text: async () => "denied", json: async () => ({}) }; };
@@ -50,7 +50,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   };
   c.fsRunQuery = async (e, coll, field, limit, offset, filter) => {
     let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) }));
-    if (filter) rows = rows.filter(r => r.data[filter.field] === filter.value); return rows.slice(0, limit);
+    if (filter) rows = rows.filter(r => filter.field.split(".").reduce((o, k) => (o == null ? o : o[k]), r.data) === filter.value); return rows.slice(0, limit);
   };
   fetchCalls.length = 0; c.fetch = async (url, o) => { fetchCalls.push({ url: String(url) }); return { ok: true, status: 200, text: async () => "", json: async () => ({}) }; };
   const pushes = []; c.sendPush = async (e, uid, type, params) => { pushes.push({ uid, type, params }); };

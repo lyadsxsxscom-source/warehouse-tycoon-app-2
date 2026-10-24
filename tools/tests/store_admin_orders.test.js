@@ -23,6 +23,7 @@ let METHODS = [{ id: "sham", name: "شام كاش", currency: "ل.س", rate: 142
 let WCFG = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000, maxProcessing: 10 }, wconfigured = false;
 function server(b) {
   if (failNext) { const f = failNext; failNext = null; return { st: 400, j: { ok: false, error: "x", message: f } }; }
+  if (b.action === "orders_badge") { const c = counts(); return { st: 200, j: { ok: true, counts: { payment_submitted: c.payment_submitted || 0, processing: c.processing || 0 }, waiting: (c.payment_submitted || 0) + (c.processing || 0) } }; }
   if (b.action === "orders_list") {
     const q = (b.q || "").toLowerCase(), st = b.status, kd = b.kind || "all"; const OPEN = ["payment_submitted", "awaiting_payment", "processing"];
     let rows = ORD.filter(o => (kd === "all" || o.kind === kd) && (st === "all" || (st === "open" ? OPEN.includes(o.status) : st === "waiting" ? ["payment_submitted", "processing"].includes(o.status) : o.status === st)));
@@ -53,8 +54,8 @@ const submit = f => f.dispatchEvent(new dom.window.Event("submit", { cancelable:
 const setSel = async (id, v) => { $(id).value = v; $(id).dispatchEvent(new dom.window.Event("change")); await sleep(80); };
 (async () => {
   await sleep(100); authCb({ uid: ADMIN, email: "a@x.com" }); await sleep(150);
-  ok(!$("ordBadge").hidden && $("ordBadge").textContent === "3" && calls.some(c => c.body.action === "orders_list" && c.body.status === "waiting"), "right after signing in the tab shows a red number: 3 things are waiting for you (2 payments to confirm + 1 order to deliver)");
-  ok(intervals.some(i => i.ms === 60000), "the red number refreshes itself every minute"); const bc = calls.length; intervals.find(i => i.ms === 60000).fn(); await sleep(60); ok(calls.length > bc && last("orders_list").body.status === "waiting", "(and asks only for what is waiting)");
+  ok(!$("ordBadge").hidden && $("ordBadge").textContent === "3" && calls.some(c => c.body.action === "orders_badge") && !calls.some(c => c.body.action === "orders_list"), "right after signing in the tab shows a red number: 3 things are waiting for you (2 payments to confirm + 1 order to deliver), from the light count action (the full list is not loaded yet)");
+  ok(intervals.some(i => i.ms === 120000) && !intervals.some(i => i.ms === 60000), "the red number refreshes itself every two minutes"); const bc = calls.length; intervals.find(i => i.ms === 120000).fn(); await sleep(60); ok(calls.length > bc && last("orders_badge") && !calls.slice(bc).some(c => c.body.action === "orders_list"), "(and only by counting, not by loading the orders)");
   $("tabOrders").click(); await sleep(150);
   ok(!$("viewOrders").hidden && $("viewCatalog").hidden && $("tabOrders").classList.contains("active") && $("ordFilter").value === "waiting" && codes().join() === "T-1005,D-1003,D-1002", "the tab opens on 'waiting for you': paid orders to deliver and payments to confirm, newest first");
   const lab = [...$("ordFilter").options].map(o => o.textContent).join("|");

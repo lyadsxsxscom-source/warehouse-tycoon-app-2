@@ -21,7 +21,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   } return {}; };
   c.fsRunQuery = async (e, coll, field, limit, offset, filter) => {
     let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) }));
-    if (filter) rows = rows.filter(r => r.data[filter.field] === filter.value);
+    if (filter) rows = rows.filter(r => filter.field.split(".").reduce((o, k) => (o == null ? o : o[k]), r.data) === filter.value);
     return rows.slice(0, limit);
   };
   c.fetch = async (url, o) => { fetchCalls.push({ url: String(url), auth: o.headers.Authorization, body: JSON.parse(o.body) }); return { ok: authOk, status: authOk ? 200 : 403, text: async () => "denied", json: async () => ({}) }; };
@@ -42,7 +42,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
       store.set(path, { fields: w.updateMask ? { ...(cur ? cur.fields : {}), ...w.update.fields } : w.update.fields, t: String(++tick) }); }
     return {};
   };
-  c.fsRunQuery = async (e, coll, field, limit, offset, filter) => { let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) })); if (filter) rows = rows.filter(r => r.data[filter.field] === filter.value); return rows.slice(0, limit); };
+  c.fsRunQuery = async (e, coll, field, limit, offset, filter) => { let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) })); if (filter) rows = rows.filter(r => filter.field.split(".").reduce((o, k) => (o == null ? o : o[k]), r.data) === filter.value); return rows.slice(0, limit); };
   const ADMIN = vm.runInContext("ADMIN_UID", c);
   const TOKS = { admin: { sub: ADMIN }, u1: { sub: "u1", name: "Ali", email: "ali@x.com" }, u2: { sub: "u2", name: "Omar", email: "omar@x.com" }, u3: { sub: "u3", email: "noacct@x.com" } };
   c.verifyFirebaseToken = async (t) => TOKS[t] || null;
@@ -176,7 +176,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   chain.down = new Set(); const sw2 = await F("storeChainSweep")(env); ok(ord(w4.id).status === "done" && sw2.done === 1, "…and the job finishes it as soon as the network is back");
   reset(); put("storeOrders/mm", { kind: "topup", code: "D-mm", uid: "u4", status: "payment_submitted", autoVerify: "bep20", methodAccount: BEP, amount: 10.0001, priceUsd: 10, createdAt: Date.now(), proof: { ref: txh(5), hasImage: false, submittedAt: Date.now() }, chain: { state: "manual", reason: "x" }, events: [] }); const s3 = await F("storeChainSweep")(env); ok(s3.checked === 0 && chain.calls.length === 0, "the job leaves orders already held for you alone");
   /* the cron */
-  reset(); const w5 = await newDep("u4"); bscTx(txh(1020), BEP, w5.amount); put("storeOrders/" + w5.id, { ...ord(w5.id), status: "payment_submitted", proof: { ref: txh(1020), hasImage: false, submittedAt: Date.now() } }); const cw5 = []; await W.scheduled({ cron: "*/5 * * * *" }, env, { waitUntil: p => cw5.push(p) }); await Promise.all(cw5); ok(ord(w5.id).status === "done", "the 5-minute trigger runs the blockchain follow-up");
+  reset(); const w5 = await newDep("u4"); bscTx(txh(1020), BEP, w5.amount); put("storeOrders/" + w5.id, { ...ord(w5.id), status: "payment_submitted", chain: { state: "pending" }, proof: { ref: txh(1020), hasImage: false, submittedAt: Date.now() } }); const cw5 = []; await W.scheduled({ cron: "*/5 * * * *" }, env, { waitUntil: p => cw5.push(p) }); await Promise.all(cw5); ok(ord(w5.id).status === "done", "the 5-minute trigger runs the blockchain follow-up");
 
   /* ---- H) TRC20 ---- */
   reset(); const t1 = await newDep("u5", 10, "usdtt"); ok(t1.amount > 10 && t1.amount <= 10.0099, "(TRC20 deposit also gets a unique small amount)"); const T1 = tid(1);

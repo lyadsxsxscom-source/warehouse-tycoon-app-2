@@ -31,7 +31,7 @@ const WEBHOOK_SECRET = hmac(env.TELEGRAM_BOT_TOKEN, "yardova:webhook");
   };
   c.fsRunQuery = async (e, coll, field, limit, offset, filter) => {
     let rows = [...store.entries()].filter(([k]) => k.startsWith(coll + "/")).map(([k, v]) => ({ id: k.slice(coll.length + 1), data: c.fieldsToObj(v.fields) }));
-    if (filter) rows = rows.filter(r => r.data[filter.field] === filter.value);
+    if (filter) rows = rows.filter(r => filter.field.split(".").reduce((o, k) => (o == null ? o : o[k]), r.data) === filter.value);
     return rows.slice(0, limit);
   };
   c.fetch = async (url, o) => {
