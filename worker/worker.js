@@ -1321,7 +1321,7 @@ async function storeCatalogCached(request, env, ctx) {
   try { const hit = await caches.default.match(key); if (hit) return hit; } catch (e) { /* بنكمّل بدون كاش */ }
   try {
     const res = await handleStoreCatalog(env);
-    if (res.status === 200) { try { const stale = new Response(res.clone().body, res); stale.headers.set("Cache-Control", "public, max-age=86400"); ctx.waitUntil(Promise.all([caches.default.put(key, res.clone()), caches.default.put(keyStale, stale)]).catch(() => {})); } catch (e) { /* مو مهم */ } }
+    if (res.status === 200) { try { const stale = new Response(res.clone().body, res); stale.headers.set("Cache-Control", "public, max-age=86400"); const fresh = new Response(res.clone().body, res); fresh.headers.set("Cache-Control", "public, max-age=60, s-maxage=300"); ctx.waitUntil(Promise.all([caches.default.put(key, fresh), caches.default.put(keyStale, stale)]).catch(() => {})); } catch (e) { /* مو مهم */ } }
     return res;
   } catch (e) {
     // قاعدة البيانات واقفة (مثلاً وصلت الحد اليومي): بنعرض آخر كتالوج انحفظ (لحد يوم) ليضل المتجر قابل للتصفّح
@@ -1388,7 +1388,17 @@ async function storeOrderAction(env, action, id, note, by, extra) {
       }
   throw new ApiError("conflict", "تعارض لحظي. جرّب كمان مرة.", 409);
 }
-async function handleAdminStore(request, env) {
+async function storeCatalogPurge(request) {
+  if (typeof caches === "undefined" || !caches.default) return;
+  try { await caches.default.delete(new Request(new URL(request.url).origin + "/store/catalog", { method: "GET" })); } catch (e) { /* مو مهم */ }
+}
+async function handleAdminStore(request, env) {            // غلاف: بعد أي تعديل على الكتالوج بنمسح نسخة الكاش الطازجة (حتى يبين التعديل فوراً)
+  let act = ""; try { act = String((await request.clone().json()).action || ""); } catch (e) { /* بدون جسم */ }
+  const res = await handleAdminStoreInner(request, env);
+  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply"].includes(act)) await storeCatalogPurge(request);
+  return res;
+}
+async function handleAdminStoreInner(request, env) {
   if (!(await adminOnly(request))) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   let b = {}; try { b = await request.json(); } catch (e) {}
   try {
