@@ -153,13 +153,6 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         <button id="btnAddItem">＋ منتج</button>
       </div>
       <div id="listMsg" role="alert"></div>
-      <div class="spbox" id="snapBox" style="margin-top:14px;">
-        <div style="font-weight:700;">⚡ الكتالوج السريع</div>
-        <div class="sm" id="snapState">...</div>
-        <div class="hint">بيخلّي المتجر يقرا الكتالوج بقراءة وحدة بدل مئات (بيوفّر حصة Firestore)، وبيرفع حد العناصر من 300 لـ700. بيتحدّث تلقائياً مع كل تعديل. بتقدر توقفه بأي وقت (إذا العناصر 300 أو أقل).</div>
-        <div class="bar"><button id="btnSnapOn" type="button">⚡ تفعيل / إعادة بناء</button><button id="btnSnapOff" type="button">إيقاف</button></div>
-        <div id="snapMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
-      </div>
       <div class="spbox" id="mover" hidden>
         <div class="h" id="mvTitle">نقل</div>
         <div class="sm" id="mvHint">اختار المكان الجديد (المجلد اللي بدك تحط فيه):</div>
@@ -168,6 +161,13 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         <div class="bar"><button id="mvCancel" type="button">إلغاء</button></div>
       </div>
       <div id="list"></div>
+      <div class="spbox" id="snapBox" style="margin-top:14px;">
+        <div style="font-weight:700;">⚡ الكتالوج السريع</div>
+        <div class="sm" id="snapState">...</div>
+        <div class="hint">بيخلّي المتجر يقرا الكتالوج بقراءة وحدة بدل مئات (بيوفّر حصة Firestore)، وبيرفع حد العناصر من 300 لـ700. بيتحدّث تلقائياً مع كل تعديل. بتقدر توقفه بأي وقت (إذا العناصر 300 أو أقل).</div>
+        <div class="bar"><button id="btnSnapOn" type="button">⚡ تفعيل / إعادة بناء</button><button id="btnSnapOff" type="button">إيقاف</button></div>
+        <div id="snapMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+      </div>
     </div>
     <div class="card" id="viewSupplier" hidden>
       <div class="h">الاتصال مع FazerCards</div>
