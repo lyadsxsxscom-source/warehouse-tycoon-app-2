@@ -145,6 +145,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <button class="tab" id="tabOrders">📦 الطلبات <span id="ordBadge" hidden></span></button>
       <button class="tab" id="tabCustomers">👥 الزباين وVIP</button>
       <button class="tab" id="tabSupplier">🔗 FazerCards</button>
+      <button class="tab" id="tabSuggest">💡 الاقتراحات <span id="sugBadge" hidden></span></button>
     </div>
     <div class="card" id="viewCatalog">
       <div class="crumbs" id="crumbs"></div>
@@ -187,6 +188,11 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         </div>
         <details id="aiLogBox" style="margin-top:8px;"><summary>📜 السجل (آخر العمليات)</summary><div id="aiLog" class="sm"></div></details>
       </div>
+    </div>
+    <div class="card" id="viewSuggest" hidden>
+      <div class="sm" style="margin-bottom:8px;">اقتراحات الزباين (لعبة أو تطبيق ما لقوه). علّم الاقتراح ✔ لما تشوفه أو تضيفه.</div>
+      <div id="sugMsg" role="alert"></div>
+      <div id="sugList"></div>
     </div>
     <div class="card" id="viewSupplier" hidden>
       <div class="h">الاتصال مع FazerCards</div>
@@ -593,15 +599,16 @@ $('edSave').onclick = async () => {
 
 // ===== التبويبات =====
 function showTab(which){
-  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders'; $('viewSupplier').hidden = which !== 'supplier'; $('tabSupplier').classList.toggle('active', which === 'supplier');
+  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders'; $('viewSupplier').hidden = which !== 'supplier'; $('tabSupplier').classList.toggle('active', which === 'supplier'); $('viewSuggest').hidden = which !== 'suggest'; $('tabSuggest').classList.toggle('active', which === 'suggest');
   $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers'); $('tabOrders').classList.toggle('active', which === 'orders');
   if(which === 'orders') loadOrders();
+  if(which === 'suggest') loadSuggestions();
   if(which === 'supplier'){ loadSupplier(); loadCatalog().then(renderSpItems); }
   if(which === 'payments'){ loadMethods(); loadWallet(); }
   if(which === 'customers'){ loadWallet(); loadVip(); loadCustomers(); }
 }
 // ===== زر الرجوع: كل تنقل (تبويب أو مجلد) بيدخل بتاريخ المتصفح، والنوافذ (التعديل والنقل) بتسكّر بزر الرجوع =====
-const ROUTES = ['catalog', 'payments', 'customers', 'orders', 'supplier'];
+const ROUTES = ['catalog', 'payments', 'customers', 'orders', 'supplier', 'suggest'];
 function parseRoute(){ const m = /^#\/?([a-z]+)(?:\/([A-Za-z0-9_-]+))?$/.exec(location.hash || ''); return { tab: m && ROUTES.includes(m[1]) ? m[1] : 'catalog', folder: m && m[2] ? m[2] : '' }; }
 const routeHash = (tab, folder) => '#' + tab + (tab === 'catalog' && folder ? '/' + folder : '');
 let APPLIED = '';                                                                  // آخر مسار انطبّق (حتى ما ينعمل مرتين لما يجي حدث hashchange)
@@ -613,7 +620,31 @@ function popOverlay(){ if(!OVL) return; OVL = false; if(history.state && history
 function closeOverlaysQuiet(){ OVL = false; $('editor').hidden = true; MV = null; $('mover').hidden = true; }
 window.addEventListener('popstate', () => { if(SKIP_POP){ SKIP_POP = false; return; } if(OVL && !(history.state && history.state.ovl)) closeOverlaysQuiet(); });      // بنسكّر النافذة بس لما يطلع المتصفح من مدخلها (مو لحدث متأخر من تنقّل قبلها)
 window.addEventListener('hashchange', () => { const r = parseRoute(); if(routeHash(r.tab, r.folder) === APPLIED) return; if(OVL) closeOverlaysQuiet(); applyRoute(); });      // لو المسار هو نفسه اللي طبّقناه (حدث من تنقّلنا) ما نعمل شي
-$('tabCatalog').onclick = () => goRoute('catalog', CUR); $('tabPayments').onclick = () => goRoute('payments'); $('tabCustomers').onclick = () => goRoute('customers'); $('tabOrders').onclick = () => goRoute('orders'); $('tabSupplier').onclick = () => goRoute('supplier');
+$('tabCatalog').onclick = () => goRoute('catalog', CUR); $('tabPayments').onclick = () => goRoute('payments'); $('tabCustomers').onclick = () => goRoute('customers'); $('tabOrders').onclick = () => goRoute('orders'); $('tabSupplier').onclick = () => goRoute('supplier'); $('tabSuggest').onclick = () => goRoute('suggest');
+
+// ===== اقتراحات الزباين =====
+function sugBadge(n){ const bd = $('sugBadge'); bd.hidden = !n; bd.textContent = n ? String(n) : ''; }
+async function loadSuggestions(){
+  const box = $('sugList'); $('sugMsg').textContent = ''; box.textContent = 'عم نحمّل...';
+  try{
+    const j = await storeApi({ action: 'suggestions_list' }); box.textContent = ''; sugBadge(j.newCount);
+    if(!j.suggestions.length){ box.append(el('div', { class: 'sm', id: 'sugEmpty', text: 'ما في اقتراحات لسا.' })); return; }
+    for(const s of j.suggestions){
+      const done = s.status === 'done';
+      box.append(el('div', { class: 'spbox', 'data-sid': s.id, style: done ? 'opacity:.6;' : '' },
+        el('div', { class: 'h', text: (s.kind === 'app' ? '📱 ' : '🎮 ') + s.name + (done ? ' ✔' : '') }),
+        s.note ? el('div', { class: 'sm', text: s.note }) : '',
+        el('div', { class: 'sm', text: (s.custName || 'زبون') + (s.email ? ' · ' + s.email : '') + ' · ' + new Date(s.createdAt).toLocaleString('en-GB') }),
+        el('div', { style: 'display:flex;gap:8px;margin-top:6px;' }, el('button', { class: 'ghost', type: 'button', 'data-sact': done ? 'new' : 'done', text: done ? '↩️ رجّعه جديد' : '✔ شفته' }), el('button', { class: 'ghost', type: 'button', 'data-sact': 'del', text: '🗑️ حذف' }))));
+    }
+  }catch(err){ box.textContent = ''; $('sugMsg').textContent = err.message; }
+}
+$('sugList').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-sact]'); if(!b) return; const id = b.closest('[data-sid]').dataset.sid, act = b.dataset.sact;
+  if(act === 'del' && !window.confirm('حذف هالاقتراح؟')) return;
+  try{ await storeApi(act === 'del' ? { action: 'suggestion_delete', id } : { action: 'suggestion_set', id, status: act }); await loadSuggestions(); }
+  catch(err){ $('sugMsg').textContent = err.message; }
+});
 
 // ===== طرق الدفع =====
 let METHODS = [];

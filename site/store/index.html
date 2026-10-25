@@ -311,6 +311,7 @@ function renderDrawer(){
     el('button', { class: 'btn-main', id: 'btnDrTopup', type: 'button', style: 'margin-top:10px;', text: '➕ شحن الرصيد' }),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
     ordersLink(),
+    el('button', { class: 'btn-ghost', id: 'btnSuggest', type: 'button', text: '💡 اقترح لعبة أو تطبيق' }),
     el('button', { class: 'btn-ghost', id: 'btnMerchant', type: 'button', text: '🏪 هل أنت تاجر؟ تواصل معنا' }),
     c.closing ? '' : el('button', { class: 'btn-ghost', id: 'btnDelete', type: 'button', text: '🗑️ احذف حسابي بالمتجر' }),
     el('button', { class: 'btn-ghost', id: 'btnLogout', type: 'button', text: 'تسجيل الخروج' })
@@ -384,6 +385,7 @@ $('drBody').addEventListener('click', async e => {
   else if(b.id === 'btnLogout'){ try{ await auth.signOut(); }catch(err){} }
   else if(b.id === 'btnRetryAcc'){ loadCustomer(); }
   else if(b.id === 'btnDelete'){ openDelete(); }
+  else if(b.id === 'btnSuggest'){ openSuggest(); }
   else if(b.id === 'btnCancelClose'){ DEL_MSG = ''; const r = await cancelClosing(); if(r === null) return; DEL_MSG = r; renderDrawer(); }
 });
 
@@ -408,7 +410,7 @@ const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', processing: '�
 let WALLET = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000 };
 let UNIT = (() => { try{ return localStorage.getItem('store_unit') === 'pts' ? 'pts' : 'usd'; }catch(e){ return 'usd'; } })();      // وحدة العرض: دولار أو نقاط (المخزّن دايماً دولار)
 let MY = [], MY_STATE = 'idle', QUOTE = null, TQ = null, ORD = null, ordTriggerSel = '', tqTimer = null;      // ordTriggerSel: الزر اللي فتح النافذة (بنرجّع له التركيز حتى لو انرسم من جديد)
-const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', zone: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false });
+const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', zone: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false, sn: '', sk: '', snote: '' });
 let idTimer = null;
 let SH = freshSheet('closed');
 const rate = () => Number(WALLET.pointsPerUsd) || 1000;
@@ -569,6 +571,27 @@ function closedGuard(){
   if(CUSTOMER && CUSTOMER.closing){ closeDrawerQuiet(); SH = freshSheet('error'); SH.msg = 'حسابك قيد الحذف (طلب ' + CUSTOMER.closing.code + '). ما بتقدر تعمل طلبات أو إيداعات لحد ما ينتهي. بتقدر تلغي طلب الحذف من ☰.'; showSheet(); renderSheet(); $('osClose').focus(); return true; }
   return false;
 }
+async function openSuggest(){
+  ordTriggerSel = '#btnMenu';
+  if(!(await needAccount('سجّل دخول عشان تقترح.'))) return;
+  closeDrawerQuiet(); SH = freshSheet('sform'); showSheet(); renderSheet(); $('osClose').focus();
+}
+function renderSuggestForm(b){
+  $('osTitle').textContent = '💡 اقترح لعبة أو تطبيق';
+  const kb = (k, t) => { const x = el('button', { class: 'chip', type: 'button', role: 'radio', 'data-sk': k, 'aria-checked': SH.sk === k ? 'true' : 'false', 'aria-pressed': SH.sk === k ? 'true' : 'false', text: t }); return x; };
+  const nm = el('input', { class: 'tx', id: 'osSugName', type: 'text', maxlength: '60', autocomplete: 'off', placeholder: 'مثلاً: Genshin Impact' }); nm.value = SH.sn;
+  const nt = el('textarea', { class: 'tx', id: 'osSugNote', maxlength: '300', rows: '3', placeholder: 'اختياري: شو بدك تشحن فيه، المنطقة، أو أي تفصيل' }); nt.value = SH.snote;
+  b.append(el('p', { class: 'hint', text: 'ما لقيت لعبتك أو تطبيقك؟ اكتبلنا اسمه ومنحاول نضيفه.' }),
+    el('div', { class: 'f', text: 'النوع' }), el('div', { class: 'methods', id: 'osSugKind', role: 'radiogroup', 'aria-label': 'النوع' }, kb('game', '🎮 لعبة'), kb('app', '📱 تطبيق')),
+    el('label', { class: 'f', for: 'osSugName', text: 'الاسم' }), nm,
+    el('label', { class: 'f', for: 'osSugNote', text: 'ملاحظة (اختياري)' }), nt,
+    msgBox(), el('button', { class: 'btn-main', id: 'osSugGo', type: 'button', text: 'إرسال الاقتراح' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إلغاء' }));
+  if(SH.busy) b.querySelector('#osSugGo').disabled = true;
+}
+function renderSuggestDone(b){
+  $('osTitle').textContent = '💡 اقترح لعبة أو تطبيق';
+  b.append(el('div', { class: 'warn', id: 'osSugOk', role: 'status', text: 'وصلنا اقتراحك ✅ شكراً إلك! إذا ضفناه بيظهر بالمتجر.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'تمام' }));
+}
 async function openDelete(){
   ordTriggerSel = '#btnMenu';
   if(!(await needAccount('سجّل دخول أول.'))) return;
@@ -617,7 +640,7 @@ function renderSheet(){
   if(SH.step === 'closed') return;
   if(SH.step === 'loading' || SH.step === 'dloading'){ $('osTitle').textContent = 'اطلب'; b.append(el('p', { id: 'osLoading', text: 'عم نحمّل السعر...' })); return; }
   if(SH.step === 'error'){ $('osTitle').textContent = 'اطلب'; b.append(el('div', { class: 'warn', id: 'osError', role: 'alert', text: SH.msg || 'تعذّر تحميل السعر. جرّب كمان مرة.' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return; }
-  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else if(SH.step === 'dform') renderDeleteForm(b); else if(SH.step === 'ddone') renderDeleteDone(b); else if(SH.step === 'topask') renderTopAsk(b); else renderPay(b);
+  if(SH.step === 'form') renderForm(b); else if(SH.step === 'tform') renderTopupForm(b); else if(SH.step === 'dform') renderDeleteForm(b); else if(SH.step === 'ddone') renderDeleteDone(b); else if(SH.step === 'topask') renderTopAsk(b); else if(SH.step === 'sform') renderSuggestForm(b); else if(SH.step === 'sdone') renderSuggestDone(b); else renderPay(b);
 }
 function msgBox(){ return el('div', { class: 'msg' + (SH.msg ? ' err' : ''), id: 'osMsg', role: 'alert', text: SH.msg || SH.ok || '' }); }
 // ---- التحقق من الـPlayer ID (اسم اللاعب) قبل الشراء
@@ -767,6 +790,8 @@ $('osBody').addEventListener('input', e => {
   if(e.target.id === 'osPid' || e.target.id === 'osZone'){ if(e.target.id === 'osPid') SH.pid = e.target.value; else SH.zone = e.target.value; SH.idRes = null; updateIdStatus(); clearTimeout(idTimer); if(SH.idSupported !== false && idReady()) idTimer = setTimeout(checkPlayerId, 700); }
   if(e.target.id === 'osRef') SH.ref = e.target.value;
   if(e.target.id === 'osDelMethod') SH.dm = e.target.value;
+  if(e.target.id === 'osSugName') SH.sn = e.target.value;
+  if(e.target.id === 'osSugNote') SH.snote = e.target.value;
   if(e.target.id === 'osDelAcct') SH.da = e.target.value;
   if(e.target.id === 'tqAmount'){ SH.amt = e.target.value; updateTopupPts(); clearTimeout(tqTimer); tqTimer = setTimeout(loadTopupQuote, 350); }
 });
@@ -782,6 +807,16 @@ $('osBody').addEventListener('click', async e => {
   if(b.dataset.preset){ SH.amt = b.dataset.preset; const i = $('tqAmount'); if(i) i.value = SH.amt; updateTopupPts(); clearTimeout(tqTimer); loadTopupQuote(); return; }
   if(b.dataset.mid){ SH.methodId = b.dataset.mid; if(SH.step === 'tform') renderTopupDynamic(); else renderSheet(); return; }
   if(b.id === 'osDone'){ closeSheet(); return; }
+  if(b.dataset.sk){ SH.sk = b.dataset.sk; SH.msg = ''; renderSheet(); const k = b.dataset.sk; const nb = $('osBody').querySelector('[data-sk="' + k + '"]'); if(nb) nb.focus(); return; }
+  if(b.id === 'osSugGo'){
+    SH.msg = ''; const name = SH.sn.trim();
+    if(!SH.sk){ SH.msg = 'اختار: لعبة ولا تطبيق.'; renderSheet(); return; }
+    if(name.length < 2){ SH.msg = 'اكتب اسم اللعبة أو التطبيق.'; renderSheet(); $('osSugName').focus(); return; }
+    SH.busy = true; renderSheet();
+    try{ await apiAuth('/store/suggest', { kind: SH.sk, name, note: SH.snote.trim() }); SH.busy = false; SH.step = 'sdone'; renderSheet(); $('osDone').focus(); }
+    catch(err){ SH.busy = false; SH.msg = err.message; renderSheet(); }
+    return;
+  }
   if(b.dataset.copy !== undefined){ const okc = await copyText(b.dataset.copy); b.textContent = okc ? '✅ تم النسخ' : 'انسخ يدوياً'; return; }
   if(b.id === 'osImgDel'){ SH.img = undefined; renderSheet(); return; }
   if(b.id === 'osTopup'){ openTopup(QUOTE ? QUOTE.shortUsd : 0); return; }

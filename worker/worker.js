@@ -1518,6 +1518,17 @@ async function handleAdminStoreInner(request, env) {
       const [a, p] = await Promise.all([fsCount(env, "storeOrders", { field: "status", value: "payment_submitted" }), fsCount(env, "storeOrders", { field: "status", value: "processing" })]);
       return jsonResponse({ ok: true, counts: { payment_submitted: a, processing: p }, waiting: a + p }, 200);
     }
+    if (b.action === "suggestions_list") {                 // اقتراحات الزباين (الأحدث أول)
+      const rows = (await fsRunQuery(env, "storeSuggestions", null, 500, 0)).map(r => ({ id: r.id, name: String(r.data.name || ""), kind: r.data.kind === "app" ? "app" : "game", note: String(r.data.note || ""), custName: String(r.data.custName || ""), email: String(r.data.email || ""), status: r.data.status === "done" ? "done" : "new", createdAt: Number(r.data.createdAt) || 0 })).sort((a, c2) => c2.createdAt - a.createdAt);
+      return jsonResponse({ ok: true, newCount: rows.filter(x => x.status === "new").length, suggestions: rows.slice(0, 300) }, 200);
+    }
+    if (b.action === "suggestion_set" || b.action === "suggestion_delete") {
+      const id = validId(String(b.id || "")); if (!id) throw new ApiError("bad_request", "طلب غلط.");
+      if (!(await fsGetDoc(env, "storeSuggestions/" + id)).exists) throw new ApiError("not_found", "هالاقتراح مو موجود.", 404);
+      if (b.action === "suggestion_delete") await fsCommit(env, [{ delete: docName(env, "storeSuggestions/" + id) }]);
+      else await fsCommit(env, [{ update: { name: docName(env, "storeSuggestions/" + id), fields: objToFields({ status: b.status === "done" ? "done" : "new" }) }, updateMask: { fieldPaths: ["status"] } }]);
+      return jsonResponse({ ok: true }, 200);
+    }
     if (b.action === "orders_list") {
       const now2 = Date.now(), q = cleanText(b.q, 60).toLowerCase(), st = String(b.status || "all"), kd = String(b.kind || "all");
       const all = (await fsRunQuery(env, "storeOrders", null, 500, 0)).map(r => storeOrderOut(r.id, r.data, now2, true)).sort((a, c2) => c2.createdAt - a.createdAt);
@@ -2611,6 +2622,15 @@ async function handleStoreOrderApi(request, env, action, ctx) {
     const uid = validId(String(user.sub || "")); if (!uid) throw new ApiError("unauthorized", "تسجيل الدخول مطلوب.", 401);
     let b = {}; try { b = await request.json(); } catch (e) {}
     const now = Date.now();
+    if (action === "suggest") {                    // اقتراح لعبة أو تطبيق: للمسجّلين بس، بيوصل للأدمن (تبويب الاقتراحات)
+      const name = cleanText(b.name, 60), kind = b.kind === "app" ? "app" : b.kind === "game" ? "game" : "", note = cleanText(b.note, 300);
+      if (!kind) throw new ApiError("bad_kind", "اختار: لعبة ولا تطبيق.");
+      if (name.length < 2) throw new ApiError("bad_name", "اكتب اسم اللعبة أو التطبيق.");
+      try { await storeRateHit(env, uid, "suggest", 5, 86400); } catch (e) { if (e.code === "rate_limited") throw new ApiError("rate_limited", "بعتت 5 اقتراحات اليوم. شكراً إلك! جرّب بكرا.", 429); throw e; }
+      const cd = await fsGetDoc(env, "storeCustomers/" + uid), id = "s" + randomId().slice(0, 16);
+      await fsCommit(env, [{ update: { name: docName(env, "storeSuggestions/" + id), fields: objToFields({ uid, custName: cd.exists ? String(cd.data.name || "") : "", email: cd.exists ? String(cd.data.email || "") : "", name, kind, note, status: "new", createdAt: now }) }, currentDocument: { exists: false } }]);
+      return jsonResponse({ ok: true }, 200);
+    }
     if (action === "quote") {                      // سعر منتج بمستوى الزبون + رصيده
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
@@ -3879,7 +3899,7 @@ export default {
     if (url.pathname === "/admin/shop" && request.method === "POST") return handleAdminShop(request, env);
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
-    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7), ctx);
+    if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel", "/store/suggest"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7), ctx);
     if (url.pathname.startsWith("/ai/mcp/")) return handleAiMcp(request, env, url.pathname.slice(8));
     if (url.pathname === "/supplier/fazer/webhook" && request.method === "POST") return handleFazerWebhook(request, env);
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return storeCatalogCached(request, env, ctx);
