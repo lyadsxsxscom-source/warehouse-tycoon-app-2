@@ -1428,7 +1428,7 @@ async function storeCatalogPurge(request) {
 async function handleAdminStore(request, env) {            // غلاف: بعد أي تعديل على الكتالوج بنمسح نسخة الكاش الطازجة (حتى يبين التعديل فوراً)
   let act = ""; try { act = String((await request.clone().json()).action || ""); } catch (e) { /* بدون جسم */ }
   const res = await handleAdminStoreInner(request, env);
-  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply"].includes(act)) await storeCatalogPurge(request);
+  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply", "ai_enable"].includes(act)) await storeCatalogPurge(request);
   return res;
 }
 async function handleAdminStoreInner(request, env) {
@@ -1436,8 +1436,8 @@ async function handleAdminStoreInner(request, env) {
   let b = {}; try { b = await request.json(); } catch (e) {}
   try {
     // الكتالوج (حتى 350 مستند) بيتحمّل بس للإجراءات اللي بتحتاجه. قبل هيك كل إجراء (حتى عدّاد الطلبات كل دقيقة) كان يقراه كله.
-    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "save", "delete", "move", "reorder"].includes(b.action) ? await storeAllNodes(env) : [];
-    const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: storeNodeLimit(nodes) } }, 200);
+    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "save", "delete", "move", "reorder", "ai_pending", "ai_enable"].includes(b.action) ? await storeAllNodes(env) : [];
+    const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(n => ({ ...storeNodeOut(n), ai: n.ai === true })), max: { depth: STORE_MAX_DEPTH, nodes: storeNodeLimit(nodes) } }, 200);
     if (b.action === "list") return out(nodes);
     if (b.action === "vip_get") { const v = await storeLoadVipSizes(env); return jsonResponse({ ok: true, ...v }, 200); }
     if (b.action === "vip_save") {
@@ -1467,6 +1467,34 @@ async function handleAdminStoreInner(request, env) {
           return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, ...plan.upd }, sizes, { admin: true }) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
+    }
+    if (b.action === "ai_link_status") {
+      const d = await aiLoad(env), now = Date.now(); if (!d || !d.tokenHash) return jsonResponse({ ok: true, exists: false, active: false, maxCreates: AI_MAX_CREATES }, 200);
+      return jsonResponse({ ok: true, exists: true, active: !d.revokedAt && now <= Number(d.expiresAt || 0), revoked: !!d.revokedAt, expired: now > Number(d.expiresAt || 0), expiresAt: Number(d.expiresAt) || 0, createdAt: Number(d.createdAt) || 0, hours: Number(d.hours) || 0, creates: Number(d.creates) || 0, maxCreates: AI_MAX_CREATES, calls: Number(d.calls) || 0, lastUsedAt: Number(d.lastUsedAt) || 0 }, 200);
+    }
+    if (b.action === "ai_link_create") {                       // إنشاء/تجديد: توكن جديد بيلغي القديم. بيظهر الرابط مرة وحدة بس
+      const hours = Number(b.hours); if (!AI_HOURS.includes(hours)) throw new ApiError("bad_request", "المدة: ساعة أو 6 أو 24.");
+      const token = aiNewToken(), now = Date.now();
+      await fsCommit(env, [{ update: { name: docName(env, AI_DOC), fields: objToFields({ tokenHash: await sha256Hex(token), createdAt: now, expiresAt: now + hours * 3600000, hours, creates: 0, calls: 0, lastUsedAt: 0, revokedAt: 0 }) } }]);
+      return jsonResponse({ ok: true, url: new URL(request.url).origin + "/ai/mcp/" + token, expiresAt: now + hours * 3600000, hours }, 200);
+    }
+    if (b.action === "ai_link_revoke") {
+      const d = await aiLoad(env); if (!d) throw new ApiError("not_found", "ما في رابط.", 404);
+      await fsCommit(env, [{ update: { name: docName(env, AI_DOC), fields: objToFields({ revokedAt: Date.now() }) }, updateMask: { fieldPaths: ["revokedAt"] }, currentDocument: { exists: true } }]);
+      return jsonResponse({ ok: true }, 200);
+    }
+    if (b.action === "ai_link_log") {
+      const rows = (await fsRunQuery(env, "storeAiLog", null, 200, 0)).map(r => ({ at: Number(r.data.at) || 0, tool: String(r.data.tool || ""), summary: String(r.data.summary || ""), ok: r.data.ok === true })).sort((x, y) => y.at - x.at).slice(0, 60);
+      return jsonResponse({ ok: true, log: rows }, 200);
+    }
+    if (b.action === "ai_pending" || b.action === "ai_enable") {
+      const by = new Map(nodes.map(n => [n.id, n])), pend = nodes.filter(n => n.ai === true && n.enabled === false);
+      if (b.action === "ai_pending") return jsonResponse({ ok: true, pending: storeSorted(pend).map(n => ({ id: n.id, type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), path: aiPathOf(by, n), note: String(n.note || ""), ...(n.type === "item" ? { costUsd: Number(n.supplier && n.supplier.costUsd) || 0, vip1: storePricesOf(n)[0], vip10: storePricesOf(n)[9], offerName: String(n.supplier && n.supplier.offerName || "") } : {}) })).sort((x, y) => (x.path + "|" + x.name).localeCompare(y.path + "|" + y.name)) }, 200);
+      const want = b.all === true ? pend.map(n => n.id) : (Array.isArray(b.ids) ? b.ids.map(x => String(x)).slice(0, 400) : []); if (!want.length) throw new ApiError("bad_request", "اختار شي لتفعّله.");
+      const sel = new Set(); for (const id of want) { let cur = by.get(id); if (!cur || cur.ai !== true || cur.enabled !== false) continue; let g = 0; while (cur && cur.ai === true && cur.enabled === false && g++ < 12) { sel.add(cur.id); cur = by.get(String(cur.parentId || "")); } }
+      if (!sel.size) throw new ApiError("not_found", "ما في شي بانتظار الموافقة من اللي اخترته.", 404);
+      const at = Date.now(); await fsCommitNodes(env, [...sel].map(id => ({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ enabled: true, ai: false, updatedAt: at }) }, updateMask: { fieldPaths: ["enabled", "ai", "updatedAt"] }, currentDocument: { exists: true } })));
+      return jsonResponse({ ok: true, enabled: sel.size }, 200);
     }
     if (b.action === "catalog_snap_status") return jsonResponse({ ok: true, ...(await storeSnapStatus(env)) }, 200);
     if (b.action === "catalog_snap_rebuild") {                    // تفعيل الكتالوج السريع (أو إعادة بنائه من مستندات العناصر)
@@ -2295,6 +2323,147 @@ async function storePricePlan(env, nodes, params, minMargin, onlyIds) {
     if (!(offer.priceUsd > 0)) return { ...base, status: "bad_cost", costUsd: 0, proposed: [] };
     return { ...base, status: "ok", costUsd: offer.priceUsd, proposed: storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, minMargin) };
   }).sort((a, b) => (a.path + "|" + a.name).localeCompare(b.path + "|" + b.name));
+}
+// ===== رابط الذكاء الاصطناعي (MCP): موصّل بمدة محدودة، بيضيف منتجات مخفية ويربطها ويحسب أسعارها، وما بيلمس الفلوس ولا الزبائن =====
+// الرابط سرّي (توكن بآخره)، بيتخزّن مشفّر (SHA-256)، بيتجدد وبينلغى من الأدمن، وكل استعمال بينسجّل. اللي بيضيفه الذكاء الاصطناعي بيطلع مخفي لحد ما توافق عليه.
+const AI_DOC = "config/storeAi", AI_MAX_CREATES = 150, AI_HOURS = [1, 6, 24], AI_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"], AI_RATE = new Map();
+const aiNewToken = () => [...crypto.getRandomValues(new Uint8Array(24))].map(x => x.toString(16).padStart(2, "0")).join("");
+async function aiLoad(env) { const d = await fsGetDoc(env, AI_DOC); return d.exists ? { ...d.data } : null; }
+async function aiAuth(env, token) {
+  if (!/^[0-9a-f]{48}$/.test(token)) return { err: "bad" };
+  const doc = await aiLoad(env); if (!doc || !doc.tokenHash || !ctEq(await sha256Hex(token), String(doc.tokenHash))) return { err: "bad" };
+  if (doc.revokedAt) return { err: "revoked" }; if (Date.now() > Number(doc.expiresAt || 0)) return { err: "expired" };
+  return { doc };
+}
+async function aiLog(env, tool, summary, ok) { try { await fsCommit(env, [{ update: { name: docName(env, "storeAiLog/" + Date.now().toString(36) + randomId().slice(0, 4)), fields: objToFields({ at: Date.now(), tool, summary: cleanText(summary, 240), ok: !!ok }) } }]); } catch (e) { /* السجل مو أساسي */ } }
+async function aiBumpCreates(env, n) { try { const d = await aiLoad(env); if (d) await fsCommit(env, [{ update: { name: docName(env, AI_DOC), fields: objToFields({ creates: (Number(d.creates) || 0) + n }) }, updateMask: { fieldPaths: ["creates"] }, currentDocument: { exists: true } }]); } catch (e) { /* مو أساسي */ } }
+const aiPathOf = (by, n) => { const names = []; let cur = String(n.parentId || ""), d = 0; while (cur && d++ < 12) { const q = by.get(cur); if (!q) break; names.unshift(String(q.name || "")); cur = String(q.parentId || ""); } return names.join(" › "); };
+function aiPlayerField(info) {
+  if (!info.fields.length) return "player_id"; if (info.fields.length === 1) return info.fields[0].key;
+  throw new ApiError("multi_fields", `القسم "${info.name}" بيطلب أكتر من حقل (${info.fields.map(f => f.key).join(", ")}) والمتجر بيدعم حقل واحد بس: ما بنضيفه.`);
+}
+function aiCheckParent(nodes, parentId) {
+  if (!parentId) return; const par = nodes.find(n => n.id === parentId);
+  if (!par || par.type !== "folder") throw new ApiError("bad_parent", "المجلد الأب مو موجود أو مو مجلد.");
+  if (storeDepth(nodes, parentId) + 1 > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات.`);
+}
+function aiQuota(doc, n) { const left = AI_MAX_CREATES - (Number(doc.creates) || 0); if (n > left) throw new ApiError("quota", `وصلت حد ${AI_MAX_CREATES} عنصر لهالرابط (باقي ${Math.max(0, left)}). المالك بيجدّد الرابط من الأدمن.`); }
+const aiEditable = (nodes, id) => { const n = nodes.find(x => x.id === id); if (!n) throw new ApiError("not_found", "هالعنصر مو موجود.", 404); if (n.ai !== true) throw new ApiError("not_ai", "هالعنصر مو من إضافتي (أو المالك وافق عليه وصار مقفول): ما بقدر أعدّله."); return n; };
+const AI_TOOLS = [
+  { name: "list_catalog", description: "List the children of one folder of the store catalog (default: the top level). Returns id, type, name, visible/hidden, ai (true = created by this link and still editable) and, for products, the FazerCards cost and the VIP1/VIP10 prices. Use it first to see what already exists and avoid duplicates.", inputSchema: { type: "object", properties: { parentId: { type: "string", description: "Folder id; empty or omitted = top level" } } } },
+  { name: "fazercards_search", description: "Search the FazerCards catalog by game or app name (e.g. 'Free Fire', 'PUBG'). Only results in section 'topups' can be linked for automatic delivery; the others are manual.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
+  { name: "fazercards_offers", description: "List the packages (offers) of one FazerCards top-up category: offerId, name, cost in USD and the player fields it needs. Categories that need more than one player field cannot be added.", inputSchema: { type: "object", properties: { categoryId: { type: "string" } }, required: ["categoryId"] } },
+  { name: "fazercards_validators", description: "Find the FazerCards player-ID-check category id for a game (so customers see the player's nickname before paying). Pass the result as validateCategoryId when creating products.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
+  { name: "create_folder", description: "Create a folder (hidden from customers until the owner approves it). If a folder with the same name already exists under the same parent, it is returned instead of creating a duplicate.", inputSchema: { type: "object", properties: { parentId: { type: "string", description: "Parent folder id; empty = top level" }, name: { type: "string", description: "Customer-facing name (Arabic), max 60 characters" }, note: { type: "string", description: "Optional note shown to customers on that folder (max 400)" } }, required: ["name"] } },
+  { name: "create_items", description: "Create up to 25 products at once under one folder, each linked to a FazerCards offer; the 10 VIP prices are computed from the current cost with the margins you pass. Products are created HIDDEN. A product with the same name and offer under the same folder is skipped. ALWAYS ask the owner for the margins (m1 for VIP1 and m10 for VIP10, in percent of the selling price) before calling.", inputSchema: { type: "object", properties: { parentId: { type: "string" }, items: { type: "array", maxItems: 25, items: { type: "object", properties: { name: { type: "string" }, categoryId: { type: "string" }, offerId: { type: "string" }, note: { type: "string" }, validateCategoryId: { type: "string" } }, required: ["name", "categoryId", "offerId"] } }, m1: { type: "number", description: "Margin % at VIP1" }, m10: { type: "number", description: "Margin % at VIP10 (not below the owner's minimum)" }, step: { type: "number", enum: [0.01, 0.05, 0.1], description: "Round prices up to this step (default 0.01)" } }, required: ["items", "m1", "m10"] } },
+  { name: "update_node", description: "Change the name or the note of a folder/product that this link created and that is still hidden.", inputSchema: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, note: { type: "string" } }, required: ["id"] } },
+  { name: "set_prices", description: "Recompute the VIP prices of products this link created (still hidden) from the current FazerCards cost.", inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "string" }, maxItems: 100 }, m1: { type: "number" }, m10: { type: "number" }, step: { type: "number", enum: [0.01, 0.05, 0.1] } }, required: ["ids", "m1", "m10"] } },
+  { name: "move_node", description: "Move a folder/product that this link created (still hidden) to another folder.", inputSchema: { type: "object", properties: { id: { type: "string" }, parentId: { type: "string", description: "Destination folder id; empty = top level" } }, required: ["id"] } },
+];
+const AI_INSTRUCTIONS = "You are helping the owner of the Yardova Card store add products fast. Rules: (1) list_catalog first to avoid duplicates. (2) Everything you create is HIDDEN until the owner approves it in the admin; tell the owner when you finish and how many items are waiting. (3) Ask the owner for the margins (VIP1 and VIP10) and for the Arabic naming style before creating; never invent prices. (4) You cannot delete, and you cannot touch orders, balances, customers, payment methods, settings or keys. (5) Never ask the owner to paste secrets or links in the chat. (6) Work in small batches and report what was created.";
+async function aiTool(env, doc, name, a) {
+  a = a && typeof a === "object" ? a : {}; const str = (v, max) => cleanText(v, max || 80), now = Date.now();
+  if (name === "list_catalog") {
+    const nodes = await storeAllNodes(env), by = new Map(nodes.map(n => [n.id, n])), pid = a.parentId ? String(a.parentId) : "";
+    if (pid && !by.has(pid)) throw new ApiError("not_found", "المجلد مو موجود.", 404);
+    const kids = storeSorted(nodes.filter(n => String(n.parentId || "") === pid)), cnt = new Map(); for (const n of nodes) { const k = String(n.parentId || ""); cnt.set(k, (cnt.get(k) || 0) + 1); }
+    return { path: pid ? aiPathOf(by, by.get(pid)) + " › " + by.get(pid).name : "(top level)", total: nodes.length, limit: storeNodeLimit(nodes), children: kids.slice(0, 200).map(n => ({ id: n.id, type: n.type, name: n.name, visible: n.enabled !== false, ai: n.ai === true, ...(n.note ? { note: n.note } : {}), ...(n.type === "folder" ? { children: cnt.get(n.id) || 0 } : { costUsd: Number(n.supplier && n.supplier.costUsd) || 0, vip1: storePricesOf(n)[0], vip10: storePricesOf(n)[9], offerId: n.supplier && n.supplier.offerId || "", categoryId: n.supplier && n.supplier.categoryId || "" }) })), more: Math.max(0, kids.length - 200) };
+  }
+  if (name === "fazercards_search") { const r = await storeSupplierSearch(env, str(a.query, 60)); return { results: r.results.map(x => ({ section: x.section, categoryId: x.id, name: x.name, canAutomate: x.section === "topups" })), errors: r.errors }; }
+  if (name === "fazercards_offers") { const id = str(a.categoryId, 80); if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) throw new ApiError("bad_request", "categoryId غلط."); const o = await storeSupplierOffers(env, id); return { categoryId: id, name: o.name, fields: o.fields, offers: o.offers }; }
+  if (name === "fazercards_validators") { const q = fzrNorm(str(a.query, 60)); const items = await storeSupplierValidators(env); return { results: items.filter(x => !q || q.split(" ").every(w => fzrNorm(x.name).includes(w))).slice(0, 30).map(x => ({ categoryId: x.categoryId, name: x.name, fields: x.fields })) }; }
+  if (name === "create_folder") {
+    const nm = str(a.name, 60); if (!nm) throw new ApiError("bad_request", "الاسم فاضي."); const pid = a.parentId ? String(a.parentId) : "", nodes = await storeAllNodes(env); aiCheckParent(nodes, pid);
+    const same = nodes.find(n => n.type === "folder" && String(n.parentId || "") === pid && n.name === nm); if (same) return { id: same.id, name: nm, existing: true, visible: same.enabled !== false };
+    aiQuota(doc, 1); if (nodes.length + 1 > storeNodeLimit(nodes)) throw new ApiError("too_many", `وصل الكتالوج للحد (${storeNodeLimit(nodes)}).`);
+    const sibs = nodes.filter(n => String(n.parentId || "") === pid), id = "n" + randomId().slice(0, 12), note = a.note === undefined ? "" : str(a.note, STORE_NOTE_MAX);
+    await fsCommitNodes(env, [{ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId: pid, type: "folder", name: nm, enabled: false, note, sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now, ai: true, aiAt: now }) }, currentDocument: { exists: false } }]);
+    await aiBumpCreates(env, 1); return { id, name: nm, existing: false, visible: false };
+  }
+  if (name === "create_items") {
+    const list = Array.isArray(a.items) ? a.items : []; if (!list.length || list.length > 25) throw new ApiError("bad_request", "ابعت من 1 لـ25 منتج بالمرة.");
+    const { cfg: sc } = await storeLoadSupplier(env), params = storePriceParams({ m1: a.m1, m10: a.m10, step: a.step === undefined ? 0.01 : a.step }, sc.minMarginPct);
+    const pid = a.parentId ? String(a.parentId) : "", nodes = await storeAllNodes(env); aiCheckParent(nodes, pid);
+    const sibs = nodes.filter(n => String(n.parentId || "") === pid); let sortN = sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) : 0;
+    const cache = new Map(), writes = [], created = [], skipped = [];
+    const todo = []; for (const it of list) {
+      const nm = str(it && it.name, 60), cid = str(it && it.categoryId, 80), oid = str(it && it.offerId, 80); if (!nm || !cid || !oid) throw new ApiError("bad_request", "كل منتج لازم يكون إله name وcategoryId وofferId.");
+      if (sibs.some(n => n.type === "item" && n.name === nm && n.supplier && n.supplier.offerId === oid) || todo.some(t => t.nm === nm && t.oid === oid)) { skipped.push({ name: nm, reason: "exists" }); continue; }
+      todo.push({ nm, cid, oid, note: it.note === undefined ? "" : str(it.note, STORE_NOTE_MAX), vcid: it.validateCategoryId ? str(it.validateCategoryId, 80) : "" });
+    }
+    if (!todo.length) return { created: [], skipped };
+    aiQuota(doc, todo.length); if (nodes.length + todo.length > storeNodeLimit(nodes)) throw new ApiError("too_many", `بيتجاوز حد الكتالوج (${storeNodeLimit(nodes)}).`);
+    for (const t of todo) {
+      if (!cache.has(t.cid)) cache.set(t.cid, await storeSupplierOffers(env, t.cid)); const info = cache.get(t.cid);
+      const offer = info.offers.find(o => o.offerId === t.oid); if (!offer) throw new ApiError("no_offer", `العرض ${t.oid} مو موجود بالقسم "${info.name}". استعمل fazercards_offers.`);
+      const link = storeParseSupplierLink({ categoryId: t.cid, offerId: t.oid, playerField: aiPlayerField(info), categoryName: info.name, validateCategoryId: t.vcid, offerName: offer.name, costUsd: offer.priceUsd });
+      const prices = storeParsePrices(storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, sc.minMarginPct)), id = "n" + randomId().slice(0, 12);
+      writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId: pid, type: "item", name: t.nm, enabled: false, note: t.note, prices, supplier: link, sort: ++sortN, imageVer: 0, createdAt: now, updatedAt: now, ai: true, aiAt: now }) }, currentDocument: { exists: false } });
+      created.push({ id, name: t.nm, costUsd: offer.priceUsd, vip1: prices[0], vip10: prices[9], marginVip10: Math.round((prices[9] - offer.priceUsd) / prices[9] * 1000) / 10 });
+    }
+    await fsCommitNodes(env, writes); await aiBumpCreates(env, created.length); return { created, skipped, hidden: true };
+  }
+  if (name === "update_node") {
+    const id = str(a.id, 128), nodes = await storeAllNodes(env); aiEditable(nodes, id); const upd = { updatedAt: now };
+    if (a.name !== undefined) { const nm = str(a.name, 60); if (!nm) throw new ApiError("bad_request", "الاسم فاضي."); upd.name = nm; } if (a.note !== undefined) upd.note = str(a.note, STORE_NOTE_MAX);
+    await fsCommitNodes(env, [{ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(upd) }, updateMask: { fieldPaths: Object.keys(upd) }, currentDocument: { exists: true } }]); return { id, updated: Object.keys(upd).filter(k => k !== "updatedAt") };
+  }
+  if (name === "set_prices") {
+    const ids = Array.isArray(a.ids) ? a.ids.map(x => String(x)).slice(0, 100) : []; if (!ids.length) throw new ApiError("bad_request", "ابعت ids.");
+    const { cfg: sc } = await storeLoadSupplier(env), params = storePriceParams({ m1: a.m1, m10: a.m10, step: a.step === undefined ? 0.01 : a.step }, sc.minMarginPct), nodes = await storeAllNodes(env); for (const id of ids) aiEditable(nodes, id);
+    const plan = await storePricePlan(env, nodes, params, sc.minMarginPct, new Set(ids)), writes = [], skipped = [];
+    for (const it of plan) { if (it.status !== "ok") { skipped.push({ id: it.id, reason: it.status }); continue; } const node = nodes.find(n => n.id === it.id); writes.push({ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ prices: storeParsePrices(it.proposed), supplier: { ...node.supplier, costUsd: it.costUsd }, updatedAt: now }) }, updateMask: { fieldPaths: ["prices", "supplier", "updatedAt"] }, currentDocument: { exists: true } }); }
+    if (writes.length) await fsCommitNodes(env, writes); return { applied: writes.length, skipped };
+  }
+  if (name === "move_node") {
+    const id = str(a.id, 128), nodes = await storeAllNodes(env), n = aiEditable(nodes, id), pid = a.parentId ? String(a.parentId) : ""; aiCheckParent(nodes, pid);
+    if (String(n.parentId || "") === pid) return { id, moved: false };
+    const by = new Map(nodes.map(x => [x.id, x])); for (let cur = pid, d = 0; cur && d < 20; d++) { if (cur === id) throw new ApiError("bad_move", "ما بقدر أنقل مجلد لجواته."); cur = String((by.get(cur) || {}).parentId || ""); }
+    const kids = new Map(); for (const x of nodes) { const k = String(x.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(x.id); }
+    const height = (nid, g) => g > 12 ? 1 : 1 + Math.max(0, ...(kids.get(nid) || []).map(c => height(c, g + 1)));
+    if ((pid ? storeDepth(nodes, pid) : 0) + height(id, 0) > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات.`);
+    const sibs = nodes.filter(x => String(x.parentId || "") === pid);
+    await fsCommitNodes(env, [{ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId: pid, sort: sibs.length ? Math.max(...sibs.map(x => Number(x.sort) || 0)) + 1 : 1, updatedAt: now }) }, updateMask: { fieldPaths: ["parentId", "sort", "updatedAt"] }, currentDocument: { exists: true } }]); return { id, moved: true };
+  }
+  throw new ApiError("no_tool", "أداة غير معروفة.");
+}
+async function aiHandleMessage(env, doc, m) {
+  if (!m || typeof m !== "object" || m.jsonrpc !== "2.0") return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid request" } };
+  if (typeof m.method !== "string") return null;                         // ردّ من الزبون: ما بنعمل شي
+  const id = m.id, isReq = id !== undefined && id !== null, reply = (result) => isReq ? { jsonrpc: "2.0", id, result } : null, fail = (code, message) => isReq ? { jsonrpc: "2.0", id, error: { code, message } } : null;
+  if (m.method === "initialize") { const want = m.params && m.params.protocolVersion; return reply({ protocolVersion: AI_PROTOCOLS.includes(want) ? want : AI_PROTOCOLS[1], capabilities: { tools: { listChanged: false } }, serverInfo: { name: "yardova-store", version: "1.0.0" }, instructions: AI_INSTRUCTIONS }); }
+  if (m.method.startsWith("notifications/")) return null;
+  if (m.method === "ping") return reply({});
+  if (m.method === "tools/list") return reply({ tools: AI_TOOLS });
+  if (m.method === "tools/call") {
+    const p = m.params || {}, name = String(p.name || ""); if (!AI_TOOLS.some(t => t.name === name)) return fail(-32602, "unknown tool");
+    let ok = true, text;
+    try { text = JSON.stringify(await aiTool(env, doc, name, p.arguments)); }
+    catch (e) { ok = false; if (e instanceof ApiError) text = e.message; else { console.error({ message: "ai tool failed", tool: name, error: String(e && e.message || e) }); text = "صار خطأ داخلي. جرّب كمان مرة."; } }
+    try { await fsCommit(env, [{ update: { name: docName(env, AI_DOC), fields: objToFields({ calls: (Number(doc.calls) || 0) + 1, lastUsedAt: Date.now() }) }, updateMask: { fieldPaths: ["calls", "lastUsedAt"] }, currentDocument: { exists: true } }]); } catch (e) { /* مو أساسي */ }
+    await aiLog(env, name, JSON.stringify(p.arguments || {}).replace(/\s+/g, " ") + (ok ? "" : " → " + text), ok);
+    return reply({ content: [{ type: "text", text }], isError: !ok });
+  }
+  return fail(-32601, "method not found");
+}
+async function handleAiMcp(request, env, token) {
+  const H = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Authorization", "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS", "Cache-Control": "no-store" };
+  const j = (o, st, extra) => new Response(JSON.stringify(o), { status: st || 200, headers: { ...H, ...(extra || {}), "Content-Type": "application/json" } });
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: H });
+  const auth = await aiAuth(env, token);
+  if (auth.err === "bad") return j({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "not found" } }, 404);
+  if (auth.err) return j({ jsonrpc: "2.0", id: null, error: { code: -32001, message: auth.err === "expired" ? "انتهت مدة الرابط. المالك بيجدّده من الأدمن." : "الرابط انلغى." } }, 403);
+  if (request.method === "GET") return j({ error: "POST only" }, 405, { Allow: "POST, DELETE, OPTIONS" });
+  if (request.method === "DELETE") return new Response(null, { status: 200, headers: H });
+  if (request.method !== "POST") return j({ error: "method not allowed" }, 405);
+  const rk = String(auth.doc.tokenHash).slice(0, 12), now = Date.now(), recent = (AI_RATE.get(rk) || []).filter(t => now - t < 60000);
+  if (recent.length >= 120) return j({ jsonrpc: "2.0", id: null, error: { code: -32002, message: "طلبات كتير. استنى دقيقة." } }, 429); recent.push(now); AI_RATE.set(rk, recent);
+  const raw = await request.text(); if (raw.length > 200000) return j({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "too large" } }, 413);
+  let body; try { body = JSON.parse(raw); } catch (e) { return j({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
+  const msgs = Array.isArray(body) ? body : [body]; if (!msgs.length || msgs.length > 20) return j({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid batch" } }, 400);
+  const replies = []; for (const m of msgs) { const r = await aiHandleMessage(env, auth.doc, m); if (r) replies.push(r); }
+  if (!replies.length) return new Response(null, { status: 202, headers: H });
+  return j(Array.isArray(body) ? replies : replies[0]);
 }
 async function handleStoreMe(request, env) {
   try {
@@ -3664,6 +3833,7 @@ export default {
     if (url.pathname === "/admin/store" && request.method === "POST") return handleAdminStore(request, env);
     if (url.pathname === "/store/me" && request.method === "POST") return handleStoreMe(request, env);
     if (request.method === "POST" && ["/store/quote", "/store/order", "/store/orders", "/store/prices", "/store/validate-id", "/store/topup/quote", "/store/topup", "/store/deleteMe", "/store/order/proof", "/store/order/cancel"].includes(url.pathname)) return handleStoreOrderApi(request, env, url.pathname === "/store/order/proof" ? "proof" : url.pathname === "/store/order/cancel" ? "cancel" : url.pathname === "/store/topup/quote" ? "topup_quote" : url.pathname === "/store/validate-id" ? "validate" : url.pathname === "/store/deleteMe" ? "delete" : url.pathname.slice(7), ctx);
+    if (url.pathname.startsWith("/ai/mcp/")) return handleAiMcp(request, env, url.pathname.slice(8));
     if (url.pathname === "/supplier/fazer/webhook" && request.method === "POST") return handleFazerWebhook(request, env);
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return storeCatalogCached(request, env, ctx);
     if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));

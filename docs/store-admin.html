@@ -168,6 +168,25 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         <div class="bar"><button id="btnSnapOn" type="button">⚡ تفعيل / إعادة بناء</button><button id="btnSnapOff" type="button">إيقاف</button></div>
         <div id="snapMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
       </div>
+      <div class="spbox" id="aiBox" style="margin-top:14px;">
+        <div style="font-weight:700;">🤖 رابط الذكاء الاصطناعي</div>
+        <div class="sm" id="aiState">...</div>
+        <div class="hint">رابط سرّي بمدة محدودة بيخلّي Claude يضيف منتجات ويربطها بـFazerCards ويحسب أسعارها. كل شي بيضيفه بيطلع <b>مخفي</b> لحد ما توافق عليه. ما بيقدر يحذف ولا يلمس الأرصدة أو الطلبات أو الزبائن أو طرق الدفع. حطه بإعدادات Claude (الموصّلات)، <b>ما تلصقه بالمحادثة</b>.</div>
+        <div class="bar"><select id="aiHours" aria-label="مدة الرابط"><option value="1">ساعة</option><option value="6" selected>6 ساعات</option><option value="24">24 ساعة</option></select><button id="btnAiCreate" type="button">🔗 إنشاء / تجديد الرابط</button><button id="btnAiRevoke" type="button" hidden>⛔ إلغاء الرابط</button></div>
+        <div id="aiUrlBox" hidden>
+          <div class="sm" style="color:#ffd48a;">⚠️ الرابط بيظهر مرة وحدة بس. انسخه هلق وحطه بإعدادات Claude ← الموصّلات ← إضافة موصّل مخصص.</div>
+          <input type="text" id="aiUrl" readonly dir="ltr" style="width:100%;" aria-label="رابط الذكاء الاصطناعي">
+          <div class="bar"><button id="btnAiCopy" type="button">📋 نسخ</button></div>
+        </div>
+        <div id="aiMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+        <div id="aiPendingBox" hidden>
+          <div style="font-weight:700;margin-top:8px;" id="aiPendingTitle">⏳ بانتظار موافقتك</div>
+          <div class="sm">اللي أضافه الذكاء الاصطناعي وهو مخفي عن الزبائن. راجعه وفعّل اللي تريده.</div>
+          <div id="aiPending" style="max-height:340px;overflow:auto;"></div>
+          <div class="bar"><button id="btnAiEnableSel" type="button">✅ فعّل المحدّد</button><button id="btnAiEnableAll" type="button">✅ فعّل الكل</button></div>
+        </div>
+        <details id="aiLogBox" style="margin-top:8px;"><summary>📜 السجل (آخر العمليات)</summary><div id="aiLog" class="sm"></div></details>
+      </div>
     </div>
     <div class="card" id="viewSupplier" hidden>
       <div class="h">الاتصال مع FazerCards</div>
@@ -326,7 +345,7 @@ fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
-    loadCatalog().then(() => { if(parseRoute().tab !== 'catalog') applyRoute(); loadSnap(); }); refreshOrderBadge();
+    loadCatalog().then(() => { if(parseRoute().tab !== 'catalog') applyRoute(); loadSnap(); loadAi(); }); refreshOrderBadge();
     if(!window.__ordTick) window.__ordTick = setInterval(refreshOrderBadge, 120000);        // الرقم الأحمر بيتحدّث كل دقيقة
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
@@ -407,6 +426,59 @@ $('btnSnapOff').onclick = async () => {
   catch(e){ $('snapMsg').style.color = 'var(--err)'; $('snapMsg').textContent = e.message; }
   $('btnSnapOff').disabled = false;
 };
+// ===== رابط الذكاء الاصطناعي =====
+let AIST = null;
+const aiLeft = (ms) => { const m = Math.max(0, Math.floor((ms - Date.now()) / 60000)); return Math.floor(m / 60) + ' س ' + (m % 60) + ' د'; };
+function renderAi(){
+  const st = AIST, n = $('aiState'); if(!st){ n.textContent = '...'; return; }
+  if(!st.exists) n.textContent = '⚪ ما في رابط';
+  else if(st.active) n.textContent = '🟢 فعّال · ينتهي بعد ' + aiLeft(st.expiresAt) + ' · ' + st.calls + ' عملية · أضاف ' + st.creates + ' من ' + st.maxCreates;
+  else n.textContent = st.revoked ? '⛔ ملغى' : '🟠 انتهت مدته';
+  $('btnAiRevoke').hidden = !(st.exists && st.active);
+}
+async function loadAi(){ try{ const j = await storeApi({ action: 'ai_link_status' }); AIST = j && typeof j.exists === 'boolean' ? j : null; }catch(e){ AIST = null; } renderAi(); await loadAiPending(); }
+$('btnAiCreate').onclick = async () => {
+  if(AIST && AIST.active && !window.confirm('الرابط الحالي رح يتوقف وبيتعمل رابط جديد. كمّل؟')) return;
+  $('btnAiCreate').disabled = true; $('aiMsg').style.color = 'var(--dim)'; $('aiMsg').textContent = '...';
+  try{ const j = await storeApi({ action: 'ai_link_create', hours: Number($('aiHours').value) }); $('aiUrl').value = j.url; $('aiUrlBox').hidden = false; $('aiMsg').textContent = ''; await loadAi(); }
+  catch(e){ $('aiMsg').style.color = 'var(--err)'; $('aiMsg').textContent = e.message; }
+  $('btnAiCreate').disabled = false;
+};
+$('btnAiRevoke').onclick = async () => {
+  if(!window.confirm('إلغاء الرابط؟ بيتوقف فوراً.')) return;
+  try{ await storeApi({ action: 'ai_link_revoke' }); $('aiUrl').value = ''; $('aiUrlBox').hidden = true; $('aiMsg').style.color = 'var(--ok, #4caf50)'; $('aiMsg').textContent = 'انلغى ✓'; await loadAi(); }
+  catch(e){ $('aiMsg').style.color = 'var(--err)'; $('aiMsg').textContent = e.message; }
+};
+$('btnAiCopy').onclick = async () => {
+  const u = $('aiUrl'); u.select();
+  try{ await navigator.clipboard.writeText(u.value); $('aiMsg').style.color = 'var(--ok, #4caf50)'; $('aiMsg').textContent = 'اننسخ ✓'; }
+  catch(e){ $('aiMsg').style.color = 'var(--dim)'; $('aiMsg').textContent = 'اضغط مطوّلاً على الرابط وانسخه.'; }
+};
+$('aiLogBox').addEventListener('toggle', async () => {
+  if(!$('aiLogBox').open) return; const box = $('aiLog'); box.textContent = '...';
+  try{
+    const j = await storeApi({ action: 'ai_link_log' }); box.textContent = ''; if(!j.log.length){ box.textContent = 'ما في عمليات بعد.'; return; }
+    for(const e of j.log){ const t = new Date(e.at), hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); box.append(el('div', { text: (e.ok ? '✅ ' : '❌ ') + hh + ' · ' + e.tool + ' · ' + e.summary.slice(0, 140), style: 'margin:3px 0;word-break:break-word;' })); }
+  }catch(e){ box.textContent = e.message; }
+});
+let AIPEND = [];
+async function loadAiPending(){
+  try{ const j = await storeApi({ action: 'ai_pending' }); AIPEND = Array.isArray(j.pending) ? j.pending : []; }catch(e){ AIPEND = []; }
+  const box = $('aiPending'); box.textContent = ''; $('aiPendingBox').hidden = !AIPEND.length; if(!AIPEND.length) return;
+  $('aiPendingTitle').textContent = '⏳ بانتظار موافقتك (' + AIPEND.length + ')';
+  for(const p of AIPEND){
+    const row = el('label', { class: 'mvrow', style: 'display:flex;gap:8px;align-items:flex-start;' }), cb = el('input', { type: 'checkbox', 'data-pid': p.id });
+    const info = (p.type === 'item' ? '💎 ' : '📁 ') + (p.path ? p.path + ' › ' : '') + p.name + (p.type === 'item' ? ' · تكلفة ' + p.costUsd + '$ · VIP1 ' + p.vip1 + '$ · VIP10 ' + p.vip10 + '$' : '');
+    row.append(cb, el('span', { text: info })); box.append(row);
+  }
+}
+async function aiEnable(body){
+  $('aiMsg').style.color = 'var(--dim)'; $('aiMsg').textContent = '...';
+  try{ const j = await storeApi({ action: 'ai_enable', ...body }); await loadCatalog(); await loadAi(); $('aiMsg').style.color = 'var(--ok, #4caf50)'; $('aiMsg').textContent = 'تم تفعيل ' + j.enabled + ' ✓ (بيظهروا للزبائن)'; }
+  catch(e){ $('aiMsg').style.color = 'var(--err)'; $('aiMsg').textContent = e.message; }
+}
+$('btnAiEnableSel').onclick = () => { const ids = [...$('aiPending').querySelectorAll('input[data-pid]:checked')].map(c => c.dataset.pid); if(!ids.length){ $('aiMsg').style.color = 'var(--err)'; $('aiMsg').textContent = 'اختار شي أول.'; return; } aiEnable({ ids }); };
+$('btnAiEnableAll').onclick = () => { if(!window.confirm('تفعيل كل اللي بانتظار الموافقة (' + AIPEND.length + ')؟ بيظهروا للزبائن فوراً.')) return; aiEnable({ all: true }); };
 // ===== نقل مجلد أو منتج لمجلد تاني =====
 let MV = null;
 function mvFolderPath(id){ const parts = []; let cur = id, g = 0; while(cur && g++ < 12){ const n = byId(cur); if(!n) break; parts.unshift(n.name); cur = n.parentId || ''; } return parts.join(' › ') || 'الرئيسية'; }
