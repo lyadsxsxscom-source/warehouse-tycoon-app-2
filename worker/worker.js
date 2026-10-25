@@ -536,9 +536,9 @@ PUSH_TEXT.store_proof = {       // للأدمن: زبون أرسل دفع
   en: (p) => ["📦 New payment waiting for you", `${p.code} · ${p.item} · ${p.amount}${p.late ? " · ⚠️ late" : ""}`],
 };
 PUSH_TEXT.store_done = {
-  ar: (p) => ["تم تنفيذ طلبك ✅", `طلبك ${p.code} (${p.item}) تنفّذ. تأكد من حسابك باللعبة.`],
-  tr: (p) => ["Siparişin tamamlandı ✅", `${p.code} (${p.item}) siparişin tamamlandı. Oyun hesabını kontrol et.`],
-  en: (p) => ["Your order is done ✅", `Your order ${p.code} (${p.item}) is complete. Check your game account.`],
+  ar: (p) => ["تم تنفيذ طلبك ✅", p.card ? `طلبك ${p.code} (${p.item}) تنفّذ. الكود جاهز بـ"طلباتي" بالمتجر.` : `طلبك ${p.code} (${p.item}) تنفّذ. تأكد من حسابك باللعبة.`],
+  tr: (p) => ["Siparişin tamamlandı ✅", p.card ? `${p.code} (${p.item}) siparişin tamamlandı. Kod mağazada "Siparişlerim" bölümünde.` : `${p.code} (${p.item}) siparişin tamamlandı. Oyun hesabını kontrol et.`],
+  en: (p) => ["Your order is done ✅", p.card ? `Your order ${p.code} (${p.item}) is complete. The code is in "My orders" in the store.` : `Your order ${p.code} (${p.item}) is complete. Check your game account.`],
 };
 PUSH_TEXT.store_topup_done = {
   ar: (p) => ["تم شحن رصيدك ✅", `${p.code}: انضاف $${p.amount} لرصيدك.`],
@@ -1263,7 +1263,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || "") };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), noPlayer: n.type === "item" && n.noPlayer === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0 } : null };
 }
 // ===== الكتالوج السريع: كل العناصر بمستند واحد (قراءة وحدة بدل مئات) =====
 // مستندات storeNodes/* تبقى هي الأصل (كل تعديل بيكتب فيها وبيحدّث النسخة السريعة بنفس العملية). فيك ترجع للوضع القديم بأي وقت.
@@ -1305,7 +1305,7 @@ function storeTree(nodes) {
   const kids = new Map();
   for (const n of nodes) { if (n.enabled === false) continue; const k = String(n.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(n); }
   const build = (pid) => storeSorted(kids.get(pid) || []).map(n => {
-    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier;
+    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier; delete o.card;
     if (n.type === "item") { const pr = storePricesOf(n); if (!pr.length) return null; o.priceUsd = pr[0]; return o; }      // السعر العام = VIP 1، وأسعار VIP الباقية ما بتنعرض للعامة
     const children = build(n.id); return children.length ? { ...o, children } : null;      // مجلد فاضي ما بينعرض بالصفحة العامة
   }).filter(Boolean);
@@ -1413,7 +1413,7 @@ async function storeOrderAction(env, action, id, note, by, extra) {
             try { await storeAnonymizeCustomer(env, o.uid, id); upd.finalizePending = false; upd.uid = ""; upd.name = "حساب محذوف"; upd.email = ""; upd.payout = { method: "", account: "" }; }
             catch (e) { console.error({ message: "store deletion incomplete", code: np.code, error: String(e && e.message || e) }); warning = "انبعت الرصيد لكن تعذّر إكمال حذف الحساب. اضغط 🧹 إكمال الحذف."; }
           }
-          else if (action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : np);
+          else if (action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : upd.delivery ? { ...np, card: true } : np);
           else if (action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
           else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
           return { warning, order: storeOrderOut(id, { ...o, ...upd }, now2, true) };
@@ -1538,7 +1538,14 @@ async function handleAdminStoreInner(request, env) {
       const note = cleanText(b.action === "order_reject" ? b.reason : b.note, 200);
       if (b.action === "order_reject" && !note) throw new ApiError("reason_required", "اكتب سبب الرفض (بيوصل للزبون).");
       if (b.action === "order_done") await storeChainLockForManual(env, id, b.force === true);
-      const r = await storeOrderAction(env, b.action, id, note, "admin");
+      let extra;
+      if (b.action === "order_done" && b.delivery !== undefined && b.delivery !== "") {              // كود البطاقة: بيوصل للزبون صاحب الطلب بس (بطلباتي)
+        const delivery = String(b.delivery).replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0, 500);
+        if (!delivery) throw new ApiError("bad_delivery", "الكود فاضي أو فيه رموز غير مقبولة.");
+        const od0 = await fsGetDoc(env, "storeOrders/" + id); if (!od0.exists || od0.data.kind !== "order") throw new ApiError("bad_delivery", "الكود بس لطلبات الشراء.");
+        extra = { delivery };
+      }
+      const r = await storeOrderAction(env, b.action, id, note, "admin", extra);
       return jsonResponse({ ok: true, ...(r.warning ? { warning: r.warning } : {}), order: r.order }, 200);
     }
 
@@ -1713,7 +1720,7 @@ async function handleAdminStoreInner(request, env) {
       const prices = kind === "item" ? storeParsePrices(b.prices) : null;
       let id, writes = [], node;
       if (existing) {
-        id = existing.id; node = { name, enabled, updatedAt: now, ...(prices ? { prices } : {}), ...(note !== undefined ? { note } : {}) };
+        id = existing.id; node = { name, enabled, updatedAt: now, ...(prices ? { prices } : {}), ...(note !== undefined ? { note } : {}), ...(kind === "item" && typeof b.noPlayer === "boolean" ? { noPlayer: b.noPlayer } : {}) };
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, updateMask: { fieldPaths: Object.keys(node) }, currentDocument: { exists: true } });
       } else {
         const type = kind;
@@ -1723,7 +1730,7 @@ async function handleAdminStoreInner(request, env) {
         if (nodes.length >= storeNodeLimit(nodes)) throw new ApiError("too_many", `وصلت للحد الأقصى (${storeNodeLimit(nodes)} عنصر).`);
         const sibs = nodes.filter(n => String(n.parentId || "") === parentId);
         id = "n" + randomId().slice(0, 12);
-        node = { parentId, type, name, enabled, note: note || "", ...(prices ? { prices } : {}), sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
+        node = { parentId, type, name, enabled, note: note || "", ...(prices ? { prices } : {}), ...(type === "item" && b.noPlayer === true ? { noPlayer: true } : {}), sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields(node) }, currentDocument: { exists: false } });
       }
       if (image !== undefined) {
@@ -2377,10 +2384,10 @@ const aiEditable = (nodes, id) => { const n = nodes.find(x => x.id === id); if (
 const AI_TOOLS = [
   { name: "list_catalog", description: "List the children of one folder of the store catalog (default: the top level). Returns id, type, name, visible/hidden, ai (true = created by this link and still editable) and, for products, the FazerCards cost and the VIP1/VIP10 prices. Use it first to see what already exists and avoid duplicates.", inputSchema: { type: "object", properties: { parentId: { type: "string", description: "Folder id; empty or omitted = top level" } } } },
   { name: "fazercards_search", description: "Search the FazerCards catalog by game or app name (e.g. 'Free Fire', 'PUBG'). Only results in section 'topups' can be linked for automatic delivery; the others are manual.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
-  { name: "fazercards_offers", description: "List the packages (offers) of one FazerCards top-up category: offerId, name, cost in USD and the player fields it needs. Categories that need more than one player field cannot be added.", inputSchema: { type: "object", properties: { categoryId: { type: "string" } }, required: ["categoryId"] } },
+  { name: "fazercards_offers", description: "List the packages (offers) of one FazerCards category: offerId, name, cost in USD (and for top-ups the player fields it needs). section: 'topups' (default) or 'giftcards' (gift cards such as Google Play, sold as MANUAL products: no Player ID, the owner sends the code).", inputSchema: { type: "object", properties: { categoryId: { type: "string" }, section: { type: "string", enum: ["topups", "giftcards"] } }, required: ["categoryId"] } },
   { name: "fazercards_validators", description: "Find the FazerCards player-ID-check category id for a game (so customers see the player's nickname before paying). Pass the result as validateCategoryId when creating products.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
   { name: "create_folder", description: "Create a folder (hidden from customers until the owner approves it). If a folder with the same name already exists under the same parent, it is returned instead of creating a duplicate.", inputSchema: { type: "object", properties: { parentId: { type: "string", description: "Parent folder id; empty = top level" }, name: { type: "string", description: "Customer-facing name (Arabic), max 60 characters" }, note: { type: "string", description: "Optional note shown to customers on that folder (max 400)" } }, required: ["name"] } },
-  { name: "create_items", description: "Create up to 25 products at once under one folder, each linked to a FazerCards offer; the 10 VIP prices are computed from the current cost with the margins you pass. Products are created HIDDEN. A product with the same name and offer under the same folder is skipped. ALWAYS ask the owner for the margins (m1 for VIP1 and m10 for VIP10, in percent of the selling price) before calling.", inputSchema: { type: "object", properties: { parentId: { type: "string" }, items: { type: "array", maxItems: 25, items: { type: "object", properties: { name: { type: "string" }, categoryId: { type: "string" }, offerId: { type: "string" }, note: { type: "string" }, validateCategoryId: { type: "string" } }, required: ["name", "categoryId", "offerId"] } }, m1: { type: "number", description: "Margin % at VIP1" }, m10: { type: "number", description: "Margin % at VIP10 (not below the owner's minimum)" }, step: { type: "number", enum: [0.01, 0.05, 0.1], description: "Round prices up to this step (default 0.01)" } }, required: ["items", "m1", "m10"] } },
+  { name: "create_items", description: "Create up to 25 products at once under one folder, each linked to a FazerCards offer; the 10 VIP prices are computed from the current cost with the margins you pass. Products are created HIDDEN. A product with the same name and offer under the same folder is skipped. ALWAYS ask the owner for the margins (m1 for VIP1 and m10 for VIP10, in percent of the selling price) before calling.", inputSchema: { type: "object", properties: { parentId: { type: "string" }, items: { type: "array", maxItems: 25, items: { type: "object", properties: { name: { type: "string" }, categoryId: { type: "string" }, offerId: { type: "string" }, note: { type: "string" }, validateCategoryId: { type: "string" } }, required: ["name", "categoryId", "offerId"] } }, section: { type: "string", enum: ["topups", "giftcards"], description: "topups (default): linked for automatic delivery. giftcards: MANUAL gift-card products (no Player ID asked; the owner buys the card and sends the code)." }, m1: { type: "number", description: "Margin % at VIP1" }, m10: { type: "number", description: "Margin % at VIP10 (not below the owner's minimum)" }, step: { type: "number", enum: [0.01, 0.05, 0.1], description: "Round prices up to this step (default 0.01)" } }, required: ["items", "m1", "m10"] } },
   { name: "update_node", description: "Change the name or the note of a folder/product that this link created and that is still hidden.", inputSchema: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, note: { type: "string" } }, required: ["id"] } },
   { name: "set_prices", description: "Recompute the VIP prices of products this link created (still hidden) from the current FazerCards cost.", inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "string" }, maxItems: 100 }, m1: { type: "number" }, m10: { type: "number" }, step: { type: "number", enum: [0.01, 0.05, 0.1] } }, required: ["ids", "m1", "m10"] } },
   { name: "move_node", description: "Move a folder/product that this link created (still hidden) to another folder.", inputSchema: { type: "object", properties: { id: { type: "string" }, parentId: { type: "string", description: "Destination folder id; empty = top level" } }, required: ["id"] } },
@@ -2392,10 +2399,10 @@ async function aiTool(env, doc, name, a) {
     const nodes = await storeAllNodes(env), by = new Map(nodes.map(n => [n.id, n])), pid = a.parentId ? String(a.parentId) : "";
     if (pid && !by.has(pid)) throw new ApiError("not_found", "المجلد مو موجود.", 404);
     const kids = storeSorted(nodes.filter(n => String(n.parentId || "") === pid)), cnt = new Map(); for (const n of nodes) { const k = String(n.parentId || ""); cnt.set(k, (cnt.get(k) || 0) + 1); }
-    return { path: pid ? aiPathOf(by, by.get(pid)) + " › " + by.get(pid).name : "(top level)", total: nodes.length, limit: storeNodeLimit(nodes), children: kids.slice(0, 200).map(n => ({ id: n.id, type: n.type, name: n.name, visible: n.enabled !== false, ai: n.ai === true, ...(n.note ? { note: n.note } : {}), ...(n.type === "folder" ? { children: cnt.get(n.id) || 0 } : { costUsd: Number(n.supplier && n.supplier.costUsd) || 0, vip1: storePricesOf(n)[0], vip10: storePricesOf(n)[9], offerId: n.supplier && n.supplier.offerId || "", categoryId: n.supplier && n.supplier.categoryId || "" }) })), more: Math.max(0, kids.length - 200) };
+    return { path: pid ? aiPathOf(by, by.get(pid)) + " › " + by.get(pid).name : "(top level)", total: nodes.length, limit: storeNodeLimit(nodes), children: kids.slice(0, 200).map(n => ({ id: n.id, type: n.type, name: n.name, visible: n.enabled !== false, ai: n.ai === true, ...(n.note ? { note: n.note } : {}), ...(n.type === "folder" ? { children: cnt.get(n.id) || 0 } : { costUsd: Number(n.supplier && n.supplier.costUsd) || Number(n.card && n.card.costUsd) || 0, ...(n.card && n.card.cardId ? { manualCard: true } : {}), vip1: storePricesOf(n)[0], vip10: storePricesOf(n)[9], offerId: n.supplier && n.supplier.offerId || "", categoryId: n.supplier && n.supplier.categoryId || "" }) })), more: Math.max(0, kids.length - 200) };
   }
   if (name === "fazercards_search") { const r = await storeSupplierSearch(env, str(a.query, 60)); return { results: r.results.map(x => ({ section: x.section, categoryId: x.id, name: x.name, canAutomate: x.section === "topups" })), errors: r.errors }; }
-  if (name === "fazercards_offers") { const id = str(a.categoryId, 80); if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) throw new ApiError("bad_request", "categoryId غلط."); const o = await storeSupplierOffers(env, id); return { categoryId: id, name: o.name, fields: o.fields, offers: o.offers }; }
+  if (name === "fazercards_offers") { const id = str(a.categoryId, 80); if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) throw new ApiError("bad_request", "categoryId غلط."); if (a.section === "giftcards") { const offers = await storeSupplierSectionOffers(env, "giftcards", id); return { categoryId: id, section: "giftcards", manual: true, offers: offers.map(x => ({ offerId: x.id, name: x.name, priceUsd: x.priceUsd, note: x.note })) }; } const o = await storeSupplierOffers(env, id); return { categoryId: id, name: o.name, fields: o.fields, offers: o.offers }; }
   if (name === "fazercards_validators") { const q = fzrNorm(str(a.query, 60)); const items = await storeSupplierValidators(env); return { results: items.filter(x => !q || q.split(" ").every(w => fzrNorm(x.name).includes(w))).slice(0, 30).map(x => ({ categoryId: x.categoryId, name: x.name, fields: x.fields })) }; }
   if (name === "create_folder") {
     const nm = str(a.name, 60); if (!nm) throw new ApiError("bad_request", "الاسم فاضي."); const pid = a.parentId ? String(a.parentId) : "", nodes = await storeAllNodes(env); aiCheckParent(nodes, pid);
@@ -2413,11 +2420,22 @@ async function aiTool(env, doc, name, a) {
     const cache = new Map(), writes = [], created = [], skipped = [];
     const todo = []; for (const it of list) {
       const nm = str(it && it.name, 60), cid = str(it && it.categoryId, 80), oid = str(it && it.offerId, 80); if (!nm || !cid || !oid) throw new ApiError("bad_request", "كل منتج لازم يكون إله name وcategoryId وofferId.");
-      if (sibs.some(n => n.type === "item" && n.name === nm && n.supplier && n.supplier.offerId === oid) || todo.some(t => t.nm === nm && t.oid === oid)) { skipped.push({ name: nm, reason: "exists" }); continue; }
+      if (sibs.some(n => n.type === "item" && n.name === nm && ((n.supplier && n.supplier.offerId === oid) || (n.card && n.card.cardId === oid))) || todo.some(t => t.nm === nm && t.oid === oid)) { skipped.push({ name: nm, reason: "exists" }); continue; }
       todo.push({ nm, cid, oid, note: it.note === undefined ? "" : str(it.note, STORE_NOTE_MAX), vcid: it.validateCategoryId ? str(it.validateCategoryId, 80) : "" });
     }
     if (!todo.length) return { created: [], skipped };
     aiQuota(doc, todo.length); if (nodes.length + todo.length > storeNodeLimit(nodes)) throw new ApiError("too_many", `بيتجاوز حد الكتالوج (${storeNodeLimit(nodes)}).`);
+    if (a.section === "giftcards") {                     // بطاقات إلكترونية: منتجات يدوية (بدون Player ID وبدون تنفيذ تلقائي)، السعر من تكلفة البطاقة
+      for (const t of todo) {
+        if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(t.cid)) throw new ApiError("bad_request", "categoryId غلط.");
+        if (!cache.has(t.cid)) cache.set(t.cid, await storeSupplierSectionOffers(env, "giftcards", t.cid)); const offer = cache.get(t.cid).find(o => o.id === t.oid);
+        if (!offer) throw new ApiError("no_offer", `البطاقة ${t.oid} مو موجودة بالقسم ${t.cid}. استعمل fazercards_offers مع section giftcards.`);
+        const prices = storeParsePrices(storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, sc.minMarginPct)), id = "n" + randomId().slice(0, 12);
+        writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId: pid, type: "item", name: t.nm, enabled: false, note: t.note, prices, noPlayer: true, card: { provider: "fazercards", categoryId: t.cid, cardId: t.oid, name: offer.name, costUsd: offer.priceUsd }, sort: ++sortN, imageVer: 0, createdAt: now, updatedAt: now, ai: true, aiAt: now }) }, currentDocument: { exists: false } });
+        created.push({ id, name: t.nm, costUsd: offer.priceUsd, vip1: prices[0], vip10: prices[9], marginVip10: Math.round((prices[9] - offer.priceUsd) / prices[9] * 1000) / 10, manual: true });
+      }
+      await fsCommitNodes(env, writes); await aiBumpCreates(env, created.length); return { created, skipped, hidden: true, manual: true };
+    }
     for (const t of todo) {
       if (!cache.has(t.cid)) cache.set(t.cid, await storeSupplierOffers(env, t.cid)); const info = cache.get(t.cid);
       const offer = info.offers.find(o => o.offerId === t.oid); if (!offer) throw new ApiError("no_offer", `العرض ${t.oid} مو موجود بالقسم "${info.name}". استعمل fazercards_offers.`);
@@ -2546,7 +2564,7 @@ async function storeCustomerCtx(env, uid, forWrite) {
 function storeOrderOut(id, o, now, admin) {
   const kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy";
   const expired = o.status === "awaiting_payment" && now > Number(o.createdAt) + STORE_ORDER_TTL_MS, status = expired ? "expired" : o.status, pr = o.proof;
-  const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), zoneId: String(o.zoneId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
+  const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), zoneId: String(o.zoneId || ""), noPlayer: o.noPlayer === true, delivery: o.status === "done" ? String(o.delivery || "") : "", vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
     method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || ""), autoVerify: String(o.autoVerify || "") },
     chain: o.chain && o.chain.state ? { state: String(o.chain.state), confirmations: Number(o.chain.confirmations) || 0, need: Number(o.chain.need) || 0 } : null,
     amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
@@ -2597,14 +2615,14 @@ async function handleStoreOrderApi(request, env, action, ctx) {
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
       const { cur, vip } = await storeCustomerCtx(env, uid), pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cur.data.balanceUsd) || 0);
-      return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), zone: !!(item.supplier && item.supplier.offerId && item.supplier.zoneField), vip, priceUsd, balanceUsd: bal, enough: bal + 1e-9 >= priceUsd, shortUsd: r4(Math.max(0, priceUsd - bal)) } }, 200);
+      return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), zone: !!(item.supplier && item.supplier.offerId && item.supplier.zoneField) && item.noPlayer !== true, noPlayer: item.noPlayer === true, vip, priceUsd, balanceUsd: bal, enough: bal + 1e-9 >= priceUsd, shortUsd: r4(Math.max(0, priceUsd - bal)) } }, 200);
     }
     if (action === "order") {                      // شراء من الرصيد: بيخصم فوراً، والأدمن بينفّذ
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
-      const playerId = String(b.playerId == null ? "" : b.playerId).trim();
-      if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
-      const zoneId = storeZoneOf(item, b.zoneId);
+      const noPlayer = item.noPlayer === true, playerId = noPlayer ? "" : String(b.playerId == null ? "" : b.playerId).trim();       // بطاقة إلكترونية: ما في Player ID، الكود بيوصل بعد التنفيذ
+      if (!noPlayer && (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId))) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
+      const zoneId = noPlayer ? "" : storeZoneOf(item, b.zoneId);
       const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
       const id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
       if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, dup.data, now, false) }, 200); }
@@ -2618,7 +2636,7 @@ async function handleStoreOrderApi(request, env, action, ctx) {
         const vip = storeCustomerOut(uid, cd.data, sizes).vip, pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cd.data.balanceUsd) || 0);
         if (bal + 1e-9 < priceUsd) return jsonResponse({ ok: false, error: "insufficient_balance", message: `رصيدك ${bal}$ وسعر الطلب ${priceUsd}$. اشحن رصيدك أول.`, balanceUsd: bal, priceUsd, shortUsd: r4(priceUsd - bal) }, 400);
         const ctr = await nextRequestNo(env, "store"), code = "T-" + ctr.no, newBal = r4(bal - priceUsd);
-        const order = { kind: "order", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, ...(zoneId ? { zoneId } : {}), vip, priceUsd, status: "processing", createdAt: now, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+        const order = { kind: "order", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, ...(zoneId ? { zoneId } : {}), ...(noPlayer ? { noPlayer: true } : {}), vip, priceUsd, status: "processing", createdAt: now, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
         try {
           await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } },
             { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: newBal }) }, updateMask: { fieldPaths: ["balanceUsd"] }, currentDocument: { updateTime: cd.updateTime } },
@@ -2660,7 +2678,7 @@ async function handleStoreOrderApi(request, env, action, ctx) {
     if (action === "validate") {
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
-      const link = item.supplier && item.supplier.offerId ? item.supplier : null;
+      const link = item.supplier && item.supplier.offerId && item.noPlayer !== true ? item.supplier : null;
       if (!link || !env.FAZER_API_KEY) return jsonResponse({ ok: true, supported: false }, 200);          // المنتج مو مربوط: ما في تحقق (الشراء عادي)
       const playerId = String(b.playerId == null ? "" : b.playerId).trim();
       if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
