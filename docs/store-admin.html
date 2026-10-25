@@ -153,6 +153,13 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         <button id="btnAddItem">＋ منتج</button>
       </div>
       <div id="listMsg" role="alert"></div>
+      <div class="spbox" id="snapBox" style="margin-top:14px;">
+        <div style="font-weight:700;">⚡ الكتالوج السريع</div>
+        <div class="sm" id="snapState">...</div>
+        <div class="hint">بيخلّي المتجر يقرا الكتالوج بقراءة وحدة بدل مئات (بيوفّر حصة Firestore)، وبيرفع حد العناصر من 300 لـ700. بيتحدّث تلقائياً مع كل تعديل. بتقدر توقفه بأي وقت (إذا العناصر 300 أو أقل).</div>
+        <div class="bar"><button id="btnSnapOn" type="button">⚡ تفعيل / إعادة بناء</button><button id="btnSnapOff" type="button">إيقاف</button></div>
+        <div id="snapMsg" role="alert" style="min-height:1.4em;font-size:.92rem;"></div>
+      </div>
       <div class="spbox" id="mover" hidden>
         <div class="h" id="mvTitle">نقل</div>
         <div class="sm" id="mvHint">اختار المكان الجديد (المجلد اللي بدك تحط فيه):</div>
@@ -319,7 +326,7 @@ fbAuth.onAuthStateChanged(user => {
   if(user && user.uid === ADMIN_UID){
     gate.style.display = 'none'; panel.style.display = 'block';
     document.getElementById('who').textContent = user.email || '';
-    loadCatalog().then(() => { if(parseRoute().tab !== 'catalog') applyRoute(); }); refreshOrderBadge();
+    loadCatalog().then(() => { if(parseRoute().tab !== 'catalog') applyRoute(); loadSnap(); }); refreshOrderBadge();
     if(!window.__ordTick) window.__ordTick = setInterval(refreshOrderBadge, 120000);        // الرقم الأحمر بيتحدّث كل دقيقة
   } else if(user){
     gate.style.display = 'block'; panel.style.display = 'none';
@@ -378,6 +385,28 @@ async function loadCatalog(){
   try{ NODES = (await storeApi({ action: 'list' })).nodes; const rt = parseRoute(); if(rt.tab === 'catalog') CUR = rt.folder && byId(rt.folder) ? rt.folder : ''; else if(CUR && !byId(CUR)) CUR = ''; renderCatalog(); }
   catch(e){ $('listMsg').textContent = 'تعذّر تحميل الكتالوج: ' + e.message; }
 }
+// ===== الكتالوج السريع =====
+let SNAP = null;
+function renderSnap(){
+  const st = SNAP, n = $('snapState'); if(!st){ n.textContent = '...'; return; }
+  n.textContent = st.enabled ? '✅ مفعّل · ' + st.count + ' عنصر · ' + Math.round(st.bytes / 1024) + ' KB من حوالي 900 KB · الحد ' + st.limit : '⚪ مطفّأ · الحد ' + st.limit + (NODES.length >= 250 ? ' · ⚠️ قربت من الحد (' + NODES.length + '): فعّله' : '');
+  n.style.color = !st.enabled && NODES.length >= 250 ? '#ffd48a' : '';
+  $('btnSnapOn').textContent = st.enabled ? '🔄 إعادة بناء' : '⚡ تفعيل'; $('btnSnapOff').hidden = !st.enabled;
+}
+async function loadSnap(){ try{ SNAP = await storeApi({ action: 'catalog_snap_status' }); }catch(e){ SNAP = null; } renderSnap(); }
+$('btnSnapOn').onclick = async () => {
+  $('btnSnapOn').disabled = true; $('snapMsg').textContent = ''; $('snapMsg').style.color = 'var(--dim)'; $('snapMsg').textContent = 'عم نبني الكتالوج السريع...';
+  try{ SNAP = await storeApi({ action: 'catalog_snap_rebuild' }); renderSnap(); await loadCatalog(); $('snapMsg').style.color = 'var(--ok, #4caf50)'; $('snapMsg').textContent = 'تم ✓ (' + SNAP.count + ' عنصر)'; }
+  catch(e){ $('snapMsg').style.color = 'var(--err)'; $('snapMsg').textContent = e.message; }
+  $('btnSnapOn').disabled = false;
+};
+$('btnSnapOff').onclick = async () => {
+  if(!window.confirm('إيقاف الكتالوج السريع؟ المتجر بيرجع يقرا العناصر وحدة وحدة (بيستهلك قراءات أكتر).')) return;
+  $('btnSnapOff').disabled = true; $('snapMsg').textContent = '';
+  try{ SNAP = await storeApi({ action: 'catalog_snap_disable' }); renderSnap(); await loadCatalog(); $('snapMsg').style.color = 'var(--ok, #4caf50)'; $('snapMsg').textContent = 'انوقف ✓'; }
+  catch(e){ $('snapMsg').style.color = 'var(--err)'; $('snapMsg').textContent = e.message; }
+  $('btnSnapOff').disabled = false;
+};
 // ===== نقل مجلد أو منتج لمجلد تاني =====
 let MV = null;
 function mvFolderPath(id){ const parts = []; let cur = id, g = 0; while(cur && g++ < 12){ const n = byId(cur); if(!n) break; parts.unshift(n.name); cur = n.parentId || ''; } return parts.join(' › ') || 'الرئيسية'; }

@@ -1265,7 +1265,40 @@ function storeParsePrices(raw) {
 function storeNodeOut(n) {
   return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || "") };
 }
-async function storeAllNodes(env) { return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data })); }
+// ===== الكتالوج السريع: كل العناصر بمستند واحد (قراءة وحدة بدل مئات) =====
+// مستندات storeNodes/* تبقى هي الأصل (كل تعديل بيكتب فيها وبيحدّث النسخة السريعة بنفس العملية). فيك ترجع للوضع القديم بأي وقت.
+const STORE_SNAP = "config/storeCatalogSnap", STORE_MAX_NODES_SNAP = 700, STORE_SNAP_MAX_CHARS = 900000;
+async function storeSnapRead(env) {
+  const d = await fsGetDoc(env, STORE_SNAP); if (!d.exists || d.data.enabled !== true) return null;
+  try { const list = JSON.parse(String(d.data.json || "[]")); return Array.isArray(list) ? { list, updateTime: d.updateTime, ver: Number(d.data.ver) || 0 } : null; } catch (e) { return null; }
+}
+async function storeAllNodes(env) {
+  const sn = await storeSnapRead(env); if (sn) { Object.defineProperty(sn.list, "snap", { value: true }); return sn.list; }
+  return (await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES + 50, 0)).map(r => ({ id: r.id, ...r.data }));
+}
+const storeNodeLimit = (nodes) => nodes && nodes.snap ? STORE_MAX_NODES_SNAP : STORE_MAX_NODES;
+// بيكتب تعديلات العناصر ويحدّث النسخة السريعة بنفس العملية (وإعادة محاولة إذا تعدّلت بنفس اللحظة)
+async function fsCommitNodes(env, writes) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const sn = await storeSnapRead(env); if (!sn) return fsCommit(env, writes);
+    const by = new Map(sn.list.map(n => [n.id, n]));
+    for (const w of writes) {
+      if (w.delete) { const m = /storeNodes\/([^/]+)$/.exec(w.delete); if (m) by.delete(m[1]); continue; }
+      const m = w.update && /storeNodes\/([^/]+)$/.exec(w.update.name); if (!m) continue;
+      const data = fieldsToObj(w.update.fields), id = m[1];
+      if (w.updateMask) { const cur = { ...(by.get(id) || { id }) }; for (const f of w.updateMask.fieldPaths) cur[f] = data[f]; by.set(id, cur); }
+      else by.set(id, { id, ...data });
+    }
+    const list = [...by.values()], json = JSON.stringify(list);
+    if (json.length > STORE_SNAP_MAX_CHARS) throw new ApiError("catalog_too_big", "الكتالوج كبير كتير عن الحد. قلّل الملاحظات أو العناصر.");
+    try { return await fsCommit(env, [...writes, { update: { name: docName(env, STORE_SNAP), fields: objToFields({ enabled: true, ver: sn.ver + 1, count: list.length, json, updatedAt: Date.now() }) }, currentDocument: { updateTime: sn.updateTime } }]); }
+    catch (e) { if (!e.conflict || attempt === 4) throw e; }
+  }
+}
+async function storeSnapStatus(env) {
+  const d = await fsGetDoc(env, STORE_SNAP);
+  return d.exists ? { enabled: d.data.enabled === true, count: Number(d.data.count) || 0, bytes: String(d.data.json || "").length, updatedAt: Number(d.data.updatedAt) || 0, limit: d.data.enabled === true ? STORE_MAX_NODES_SNAP : STORE_MAX_NODES } : { enabled: false, count: 0, bytes: 0, updatedAt: 0, limit: STORE_MAX_NODES };
+}
 function storeSorted(list) { return [...list].sort((a, b) => ((Number(a.sort) || 0) - (Number(b.sort) || 0)) || a.id.localeCompare(b.id)); }
 function storeDepth(nodes, id) { const by = new Map(nodes.map(n => [n.id, n])); let d = 0, cur = id; while (cur && d < 12) { d++; const n = by.get(cur); cur = n ? String(n.parentId || "") : ""; } return d; }
 function storeTree(nodes) {
@@ -1404,7 +1437,7 @@ async function handleAdminStoreInner(request, env) {
   try {
     // الكتالوج (حتى 350 مستند) بيتحمّل بس للإجراءات اللي بتحتاجه. قبل هيك كل إجراء (حتى عدّاد الطلبات كل دقيقة) كان يقراه كله.
     const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "save", "delete", "move", "reorder"].includes(b.action) ? await storeAllNodes(env) : [];
-    const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: STORE_MAX_NODES } }, 200);
+    const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(storeNodeOut), max: { depth: STORE_MAX_DEPTH, nodes: storeNodeLimit(nodes) } }, 200);
     if (b.action === "list") return out(nodes);
     if (b.action === "vip_get") { const v = await storeLoadVipSizes(env); return jsonResponse({ ok: true, ...v }, 200); }
     if (b.action === "vip_save") {
@@ -1434,6 +1467,24 @@ async function handleAdminStoreInner(request, env) {
           return jsonResponse({ ok: true, customer: storeCustomerOut(uid, { ...cur.data, ...plan.upd }, sizes, { admin: true }) }, 200);
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
+    }
+    if (b.action === "catalog_snap_status") return jsonResponse({ ok: true, ...(await storeSnapStatus(env)) }, 200);
+    if (b.action === "catalog_snap_rebuild") {                    // تفعيل الكتالوج السريع (أو إعادة بنائه من مستندات العناصر)
+      const rows = await fsRunQuery(env, "storeNodes", null, STORE_MAX_NODES_SNAP + 100, 0);
+      if (rows.length > STORE_MAX_NODES_SNAP) throw new ApiError("too_many", `عندك ${rows.length} عنصر، والحد ${STORE_MAX_NODES_SNAP}.`);
+      const list = rows.map(r => ({ id: r.id, ...r.data })), json = JSON.stringify(list);
+      if (json.length > STORE_SNAP_MAX_CHARS) throw new ApiError("catalog_too_big", "الكتالوج كبير كتير عن الحد (حجم النص). قلّل الملاحظات أو العناصر.");
+      const prev = await fsGetDoc(env, STORE_SNAP);
+      await fsCommit(env, [{ update: { name: docName(env, STORE_SNAP), fields: objToFields({ enabled: true, ver: (prev.exists ? Number(prev.data.ver) || 0 : 0) + 1, count: list.length, json, updatedAt: Date.now() }) } }]);
+      await storeCatalogPurge(request);
+      return jsonResponse({ ok: true, ...(await storeSnapStatus(env)) }, 200);
+    }
+    if (b.action === "catalog_snap_disable") {                    // رجوع للوضع القديم (بس لو العناصر ضمن الحد القديم)
+      const st = await storeSnapStatus(env);
+      if (st.count > STORE_MAX_NODES) throw new ApiError("too_many", `عندك ${st.count} عنصر. الوضع القديم بيتحمّل ${STORE_MAX_NODES} بس: قلّل العناصر أول.`, 409);
+      await fsCommit(env, [{ update: { name: docName(env, STORE_SNAP), fields: objToFields({ enabled: false }) }, updateMask: { fieldPaths: ["enabled"] } }]);
+      await storeCatalogPurge(request);
+      return jsonResponse({ ok: true, ...(await storeSnapStatus(env)) }, 200);
     }
     if (b.action === "orders_badge") {            // عدّاد الطلبات بالأدمن (بيتحدّث كل دقيقتين): عدّ بدون قراءة المستندات
       const [a, p] = await Promise.all([fsCount(env, "storeOrders", { field: "status", value: "payment_submitted" }), fsCount(env, "storeOrders", { field: "status", value: "processing" })]);
@@ -1514,7 +1565,7 @@ async function handleAdminStoreInner(request, env) {
         const node = nodes.find(n => n.id === it.id), prices = storeParsePrices(it.proposed);
         writes.push({ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ prices, supplier: { ...node.supplier, costUsd: it.costUsd }, updatedAt: at }) }, updateMask: { fieldPaths: ["prices", "supplier", "updatedAt"] }, currentDocument: { exists: true } });
       }
-      if (writes.length) await fsCommit(env, writes);
+      if (writes.length) await fsCommitNodes(env, writes);
       return jsonResponse({ ok: true, applied: writes.length, skipped }, 200);
     }
     if (b.action === "supplier_link") {            // ربط منتج بخيار عند FazerCards (أو فك الربط)؛ بره محرّر المنتج حتى ما ينمسح بالغلط
@@ -1522,7 +1573,7 @@ async function handleAdminStoreInner(request, env) {
       if (!it) throw new ApiError("not_found", "هالمنتج مو موجود.", 404);
       if (it.type !== "item") throw new ApiError("bad_request", "الربط للمنتجات بس (مو للمجلدات).");
       const link = storeParseSupplierLink(b.link === undefined ? null : b.link);
-      await fsCommit(env, [{ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ supplier: link, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["supplier", "updatedAt"] }, currentDocument: { exists: true } }]);
+      await fsCommitNodes(env, [{ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ supplier: link, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["supplier", "updatedAt"] }, currentDocument: { exists: true } }]);
       return out(await storeAllNodes(env));
     }
     if (b.action === "wallet_get") { const w = await storeLoadWallet(env); return jsonResponse({ ok: true, ...w }, 200); }
@@ -1641,7 +1692,7 @@ async function handleAdminStoreInner(request, env) {
         const parentId = b.parentId ? validId(String(b.parentId)) : "";
         if (b.parentId && !parentId) throw new ApiError("bad_parent", "المجلد الأب غلط.");
         if (parentId) { const par = nodes.find(n => n.id === parentId); if (!par || par.type !== "folder") throw new ApiError("bad_parent", "لازم تضيف داخل مجلد."); if (storeDepth(nodes, parentId) + 1 > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات.`); }
-        if (nodes.length >= STORE_MAX_NODES) throw new ApiError("too_many", `وصلت للحد الأقصى (${STORE_MAX_NODES} عنصر).`);
+        if (nodes.length >= storeNodeLimit(nodes)) throw new ApiError("too_many", `وصلت للحد الأقصى (${storeNodeLimit(nodes)} عنصر).`);
         const sibs = nodes.filter(n => String(n.parentId || "") === parentId);
         id = "n" + randomId().slice(0, 12);
         node = { parentId, type, name, enabled, note: note || "", ...(prices ? { prices } : {}), sort: sibs.length ? Math.max(...sibs.map(n => Number(n.sort) || 0)) + 1 : 1, imageVer: 0, createdAt: now, updatedAt: now };
@@ -1652,14 +1703,14 @@ async function handleAdminStoreInner(request, env) {
         writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ imageVer: ver }) }, updateMask: { fieldPaths: ["imageVer"] } });
         writes.push(image ? { update: { name: docName(env, "storeImages/" + id), fields: objToFields({ data: image, ver }) } } : { delete: docName(env, "storeImages/" + id) });
       }
-      await fsCommit(env, writes);
+      await fsCommitNodes(env, writes);
       return out(await storeAllNodes(env));
     }
     if (b.action === "delete") {
       const id = validId(String(b.id || "")); const n = nodes.find(x => x.id === id);
       if (!n) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
       if (nodes.some(x => String(x.parentId || "") === id)) throw new ApiError("has_children", "المجلد مش فاضي. احذف اللي جواته أول.");
-      await fsCommit(env, [{ delete: docName(env, "storeNodes/" + id) }, { delete: docName(env, "storeImages/" + id) }]);
+      await fsCommitNodes(env, [{ delete: docName(env, "storeNodes/" + id) }, { delete: docName(env, "storeImages/" + id) }]);
       return out(nodes.filter(x => x.id !== id));
     }
     if (b.action === "move") {                    // نقل مجلد أو منتج لمجلد تاني (أو للرئيسية)
@@ -1673,7 +1724,7 @@ async function handleAdminStoreInner(request, env) {
       const height = (nid, g) => g > 12 ? 1 : 1 + Math.max(0, ...(kids.get(nid) || []).map(c => height(c, g + 1)));
       if ((parentId ? storeDepth(nodes, parentId) : 0) + height(id, 0) > STORE_MAX_DEPTH) throw new ApiError("too_deep", `أقصى عمق ${STORE_MAX_DEPTH} مستويات. الوجهة عميقة كتير لهالعنصر.`);
       const sibs = nodes.filter(x => String(x.parentId || "") === parentId);
-      await fsCommit(env, [{ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId, sort: sibs.length ? Math.max(...sibs.map(x => Number(x.sort) || 0)) + 1 : 1, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["parentId", "sort", "updatedAt"] }, currentDocument: { exists: true } }]);
+      await fsCommitNodes(env, [{ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId, sort: sibs.length ? Math.max(...sibs.map(x => Number(x.sort) || 0)) + 1 : 1, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["parentId", "sort", "updatedAt"] }, currentDocument: { exists: true } }]);
       return out(await storeAllNodes(env));
     }
     if (b.action === "reorder") {
@@ -1684,7 +1735,7 @@ async function handleAdminStoreInner(request, env) {
       if (j < 0 || j >= sibs.length) return out(nodes);
       const order = sibs.map(x => x.id); [order[i], order[j]] = [order[j], order[i]];
       const writes = order.map((oid, k) => ({ update: { name: docName(env, "storeNodes/" + oid), fields: objToFields({ sort: k + 1 }) }, updateMask: { fieldPaths: ["sort"] }, currentDocument: { exists: true } }));
-      await fsCommit(env, writes);
+      await fsCommitNodes(env, writes);
       return out(await storeAllNodes(env));
     }
     throw new ApiError("bad_action", "طلب غلط.");
