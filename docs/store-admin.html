@@ -862,7 +862,7 @@ function renderOrders(){
     const card = el('div', { class: 'ord', 'data-ord': o.id },
       el('div', { class: 'top' }, el('span', { class: 'code', text: o.code }), el('span', { class: 'pill ' + o.status, text: o.kind === 'refund' && o.status === 'processing' ? 'بانتظار إرسال الرصيد' : (ST_LABEL[o.status] || o.status) })),
       el('div', { class: 'nm', style: 'margin-top:4px;font-weight:700;word-break:break-word;', text: (o.kind === 'topup' ? '📥 ' : o.kind === 'refund' ? '💸 ' : '') + (o.itemPath || o.itemName) }),
-      o.kind === 'topup' || o.kind === 'refund' ? '' : sub('Player ID: ' + o.playerId), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
+      o.kind === 'topup' || o.kind === 'refund' ? '' : sub('Player ID: ' + o.playerId + (o.zoneId ? ' (Zone ' + o.zoneId + ')' : '')), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
       o.kind === 'refund' ? sub('المبلغ المطلوب إرساله: ' + usd(o.priceUsd) + ' (محجوز من رصيده)') : o.kind === 'topup' ? sub('الإيداع: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name) : o.kind === 'order' ? sub('السعر: ' + usd(o.priceUsd) + ' · انخصم من رصيده') : sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
       sub('أُنشئ: ' + new Date(o.createdAt).toLocaleString('en-GB') + (o.doneAt ? ' · نُفّذ: ' + new Date(o.doneAt).toLocaleString('en-GB') : '')));
     if(o.kind === 'refund' && o.payout && (o.payout.method || o.payout.account)) card.append(el('div', { class: 'sm', 'data-payout': o.id }, 'الاستلام: ' + o.payout.method + ' · ', el('bdi', { text: o.payout.account })));
@@ -1153,8 +1153,9 @@ $('spItems').addEventListener('click', async e => {
     }
     if(act === 'back'){ SP.ch = { id, step: 'cat', cats: [], q: '', msg: '' }; renderSpItems(); return; }
     if(act === 'offer'){
-      const o = SP.ch.offers.find(x => x.offerId === b.dataset.offer), f = (SP.ch.fields || []).find(x => /id/i.test(x.key)) || (SP.ch.fields || [])[0];
-      NODES = (await storeApi({ action: 'supplier_link', id, link: { categoryId: SP.ch.catId, offerId: o.offerId, playerField: f ? f.key : 'player_id', categoryName: SP.ch.catName, validateCategoryId: SP.ch.vmatch || '', offerName: o.name, costUsd: o.priceUsd } })).nodes; SP.ch = null; renderSpItems(); return;
+      const o = SP.ch.offers.find(x => x.offerId === b.dataset.offer), fl = SP.ch.fields || [], z = fl.length === 2 ? fl.find(x => /zone|server/i.test(x.key)) : null, f = fl.find(x => x !== z && /id/i.test(x.key)) || fl.find(x => x !== z);
+      if(fl.length > 2 || (fl.length === 2 && !z)){ $('spMsg').textContent = 'هالقسم بيطلب حقول (' + fl.map(x => x.key).join(', ') + ') والمتجر بيدعم الـID وحده أو الـID مع Zone بس.'; return; }
+      NODES = (await storeApi({ action: 'supplier_link', id, link: { categoryId: SP.ch.catId, offerId: o.offerId, playerField: f ? f.key : 'player_id', zoneField: z ? z.key : '', categoryName: SP.ch.catName, validateCategoryId: SP.ch.vmatch || '', offerName: o.name, costUsd: o.priceUsd } })).nodes; SP.ch = null; renderSpItems(); return;
     }
     if(act === 'val'){ await ensureValidators(); SP.ch = { id, step: 'val', vmatch: n.supplier.validateCategoryId || ((fzrMatchValidator(SP.validators, n.supplier.categoryName) || {}).categoryId || '') }; renderSpItems(); return; }
     if(act === 'valsave'){ NODES = (await storeApi({ action: 'supplier_link', id, link: { ...n.supplier, validateCategoryId: SP.ch.vmatch || '' } })).nodes; SP.ch = null; renderSpItems(); $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = 'انحفظت لعبة التحقق ✓'; return; }

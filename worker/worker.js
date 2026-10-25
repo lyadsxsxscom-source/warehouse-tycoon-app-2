@@ -1263,7 +1263,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || "") };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || "") };
 }
 // ===== الكتالوج السريع: كل العناصر بمستند واحد (قراءة وحدة بدل مئات) =====
 // مستندات storeNodes/* تبقى هي الأصل (كل تعديل بيكتب فيها وبيحدّث النسخة السريعة بنفس العملية). فيك ترجع للوضع القديم بأي وقت.
@@ -1525,7 +1525,7 @@ async function handleAdminStoreInner(request, env) {
       const kinds = {}; for (const o of all) if (["payment_submitted", "awaiting_payment", "processing"].includes(o.status)) kinds[o.kind] = (kinds[o.kind] || 0) + 1;
       const waiting = all.filter(o => o.status === "payment_submitted").length + all.filter(o => o.status === "processing").length;
       let rows = all.filter(o => (kd === "all" || o.kind === kd) && (st === "all" || (st === "open" ? ["payment_submitted", "awaiting_payment", "processing"].includes(o.status) : st === "waiting" ? (o.status === "payment_submitted" || o.status === "processing") : o.status === st)));
-      if (q) rows = rows.filter(o => (o.code + " " + o.name + " " + o.email + " " + o.playerId + " " + o.itemName + " " + o.uid).toLowerCase().includes(q));
+      if (q) rows = rows.filter(o => (o.code + " " + o.name + " " + o.email + " " + o.playerId + " " + o.zoneId + " " + o.itemName + " " + o.uid).toLowerCase().includes(q));
       return jsonResponse({ ok: true, counts, kinds, waiting, total: all.length, orders: rows.slice(0, 200) }, 200);
     }
     if (b.action === "order_proof") {
@@ -1982,10 +1982,34 @@ function storeParseSupplierLink(raw) {
   const idRe = /^[A-Za-z0-9_.:-]{1,80}$/, categoryId = String(raw.categoryId || ""), offerId = String(raw.offerId || ""), playerField = raw.playerField === undefined || raw.playerField === "" ? "player_id" : String(raw.playerField);
   if (!idRe.test(categoryId) || !idRe.test(offerId)) throw new ApiError("bad_supplier_link", "اختار القسم والخيار من FazerCards.");
   if (!/^[a-z_]{1,30}$/.test(playerField)) throw new ApiError("bad_supplier_link", "اسم حقل الـID غلط.");
+  const zoneField = raw.zoneField === undefined || raw.zoneField === null ? "" : String(raw.zoneField);       // خانة تانية (Zone/Server) لألعاب متل موبايل ليجندز؛ فاضي = خانة وحدة
+  if (zoneField && (!/^[a-z_]{1,30}$/.test(zoneField) || zoneField === playerField)) throw new ApiError("bad_supplier_link", "اسم حقل الـZone غلط.");
   const costUsd = raw.costUsd === undefined || raw.costUsd === null ? 0 : Number(raw.costUsd);
   const vid = raw.validateCategoryId === undefined || raw.validateCategoryId === null || raw.validateCategoryId === "" ? "" : String(raw.validateCategoryId);
   if (vid && !idRe.test(vid)) throw new ApiError("bad_supplier_link", "معرّف التحقق غلط.");
-  return { provider: "fazercards", categoryId, offerId, playerField, categoryName: cleanText(raw.categoryName, 80), validateCategoryId: vid, offerName: cleanText(raw.offerName, 80), costUsd: Number.isFinite(costUsd) && costUsd >= 0 && costUsd < 100000 ? r4(costUsd) : 0 };
+  return { provider: "fazercards", categoryId, offerId, playerField, zoneField, categoryName: cleanText(raw.categoryName, 80), validateCategoryId: vid, offerName: cleanText(raw.offerName, 80), costUsd: Number.isFinite(costUsd) && costUsd >= 0 && costUsd < 100000 ? r4(costUsd) : 0 };
+}
+// ===== خانة الـZone (لألعاب بخانتين متل موبايل ليجندز وماجيك تشيس) =====
+const STORE_ZONE_RE = /^[0-9]{1,10}$/;
+// حقول قسم FazerCards ← { playerField, zoneField }: حقل واحد، أو حقلين التاني منهم Zone/Server. غير هيك ← null (ما منخمّن)
+function storeSplitFields(fields) {
+  const fs = Array.isArray(fields) ? fields : [];
+  if (!fs.length) return { playerField: "player_id", zoneField: "" };
+  if (fs.length === 1) return { playerField: fs[0].key, zoneField: "" };
+  if (fs.length !== 2) return null;
+  const z = fs.find(f => /zone|server/i.test(f.key)), p = fs.find(f => f !== z);
+  return z && p && !/zone|server/i.test(p.key) ? { playerField: p.key, zoneField: z.key } : null;
+}
+function storeZoneOf(item, raw) {
+  if (!(item.supplier && item.supplier.offerId && item.supplier.zoneField)) return "";
+  const z = String(raw == null ? "" : raw).trim();
+  if (!STORE_ZONE_RE.test(z)) throw new ApiError("bad_zone", "اكتب الـZone ID (أرقام بس، بين القوسين جنب الـID باللعبة).");
+  return z;
+}
+function storeSupplierFields(link, playerId, zoneId) {
+  const f = { [link.playerField || "player_id"]: String(playerId) };
+  if (link.zoneField) f[link.zoneField] = String(zoneId || "");
+  return f;
 }
 // ===== التنفيذ التلقائي عند FazerCards (الخطوة 7ج) =====
 // الطلب بيبقى "قيد التنفيذ"، والسيرفر بيمرّ على حمايات (اشتراك فعّال، هامش، سقف يومي، رصيد + حجز تجديد الاشتراك)، فإذا كلها تمام بيبعت لـFazerCards بمفتاح تكرار ثابت (ما بيتنفّذ مرتين).
@@ -2018,6 +2042,7 @@ async function storeAutoReleaseCap(env, now, cost) {
 async function storeAutoGates(env, cfg, o, link) {
   if (!env.FAZER_API_KEY) throw new AutoGate("مفتاح FazerCards مو مضاف.");
   if (!/^[\p{L}\p{N}_#@.\- ]{3,40}$/u.test(String(o.playerId || ""))) throw new AutoGate("معرّف اللاعب بصيغة غير مقبولة.");
+  if (link.zoneField && !STORE_ZONE_RE.test(String(o.zoneId || ""))) throw new AutoGate("الـZone ID ناقص أو بصيغة غير مقبولة.");
   const me = await fzrMeCached(env); if (!me.subscriptionActive) throw new AutoGate("اشتراك FazerCards غير فعّال.");
   const offer = (await fzrOffersCached(env, link.categoryId)).find(x => x.offerId === link.offerId); if (!offer) throw new AutoGate("الخيار ما عاد موجود عند FazerCards.");
   const cost = offer.priceUsd, price = Number(o.priceUsd) || 0; if (!(cost > 0) || !(price > 0)) throw new AutoGate("سعر غير معروف.");
@@ -2077,7 +2102,7 @@ async function storeAutoFulfill(env, id, opts) {
       { update: { name: docName(env, "storeSupplierDay/" + day), fields: objToFields({ spentUsd: r4(spent + g.cost), count: (dd.exists ? Number(dd.data.count) || 0 : 0) + 1 }) }, ...(dd.exists ? { updateMask: { fieldPaths: ["spentUsd", "count"] }, currentDocument: { updateTime: dd.updateTime } } : { currentDocument: { exists: false } }) }]);
   } catch (e) { if (e.conflict) return { outcome: "busy" }; throw e; }
   let j;
-  try { j = await fzrCall(env, "POST", "/topups/order", { category_id: link.categoryId, offer_id: link.offerId, fields: { [link.playerField || "player_id"]: String(o.playerId) } }, { "Idempotency-Key": "ys-" + id }); }
+  try { j = await fzrCall(env, "POST", "/topups/order", { category_id: link.categoryId, offer_id: link.offerId, fields: storeSupplierFields(link, o.playerId, o.zoneId) }, { "Idempotency-Key": "ys-" + id }); }
   catch (e) {
     if (!(e && e.supplierStatus !== undefined)) throw e;
     const st = e.supplierStatus, msg = String(e.supplierMsg || ""), ours = /balance|fund|insufficient|subscription|plan|limit|rate|api.?key|forbidden|unauthori|blocked|disabled/i.test(msg);
@@ -2339,8 +2364,8 @@ async function aiLog(env, tool, summary, ok) { try { await fsCommit(env, [{ upda
 async function aiBumpCreates(env, n) { try { const d = await aiLoad(env); if (d) await fsCommit(env, [{ update: { name: docName(env, AI_DOC), fields: objToFields({ creates: (Number(d.creates) || 0) + n }) }, updateMask: { fieldPaths: ["creates"] }, currentDocument: { exists: true } }]); } catch (e) { /* مو أساسي */ } }
 const aiPathOf = (by, n) => { const names = []; let cur = String(n.parentId || ""), d = 0; while (cur && d++ < 12) { const q = by.get(cur); if (!q) break; names.unshift(String(q.name || "")); cur = String(q.parentId || ""); } return names.join(" › "); };
 function aiPlayerField(info) {
-  if (!info.fields.length) return "player_id"; if (info.fields.length === 1) return info.fields[0].key;
-  throw new ApiError("multi_fields", `القسم "${info.name}" بيطلب أكتر من حقل (${info.fields.map(f => f.key).join(", ")}) والمتجر بيدعم حقل واحد بس: ما بنضيفه.`);
+  const s = storeSplitFields(info.fields); if (s) return s;
+  throw new ApiError("multi_fields", `القسم "${info.name}" بيطلب حقول (${info.fields.map(f => f.key).join(", ")}) والمتجر بيدعم الـID وحده أو الـID مع Zone/Server بس: ما بنضيفه.`);
 }
 function aiCheckParent(nodes, parentId) {
   if (!parentId) return; const par = nodes.find(n => n.id === parentId);
@@ -2396,7 +2421,7 @@ async function aiTool(env, doc, name, a) {
     for (const t of todo) {
       if (!cache.has(t.cid)) cache.set(t.cid, await storeSupplierOffers(env, t.cid)); const info = cache.get(t.cid);
       const offer = info.offers.find(o => o.offerId === t.oid); if (!offer) throw new ApiError("no_offer", `العرض ${t.oid} مو موجود بالقسم "${info.name}". استعمل fazercards_offers.`);
-      const link = storeParseSupplierLink({ categoryId: t.cid, offerId: t.oid, playerField: aiPlayerField(info), categoryName: info.name, validateCategoryId: t.vcid, offerName: offer.name, costUsd: offer.priceUsd });
+      const link = storeParseSupplierLink({ categoryId: t.cid, offerId: t.oid, ...aiPlayerField(info), categoryName: info.name, validateCategoryId: t.vcid, offerName: offer.name, costUsd: offer.priceUsd });
       const prices = storeParsePrices(storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, sc.minMarginPct)), id = "n" + randomId().slice(0, 12);
       writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ parentId: pid, type: "item", name: t.nm, enabled: false, note: t.note, prices, supplier: link, sort: ++sortN, imageVer: 0, createdAt: now, updatedAt: now, ai: true, aiAt: now }) }, currentDocument: { exists: false } });
       created.push({ id, name: t.nm, costUsd: offer.priceUsd, vip1: prices[0], vip10: prices[9], marginVip10: Math.round((prices[9] - offer.priceUsd) / prices[9] * 1000) / 10 });
@@ -2521,7 +2546,7 @@ async function storeCustomerCtx(env, uid, forWrite) {
 function storeOrderOut(id, o, now, admin) {
   const kind = o.kind === "order" || o.kind === "topup" || o.kind === "refund" ? o.kind : "legacy";
   const expired = o.status === "awaiting_payment" && now > Number(o.createdAt) + STORE_ORDER_TTL_MS, status = expired ? "expired" : o.status, pr = o.proof;
-  const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
+  const out = { id, kind, code: String(o.code || ""), itemId: String(o.itemId || ""), itemName: String(o.itemName || ""), itemPath: String(o.itemPath || ""), playerId: String(o.playerId || ""), zoneId: String(o.zoneId || ""), vip: Number(o.vip) || 1, priceUsd: Number(o.priceUsd) || 0,
     method: { id: String(o.methodId || ""), name: String(o.methodName || ""), currency: String(o.currency || ""), decimals: Number(o.decimals) || 0, account: String(o.methodAccount || ""), instructions: String(o.methodInstructions || ""), autoVerify: String(o.autoVerify || "") },
     chain: o.chain && o.chain.state ? { state: String(o.chain.state), confirmations: Number(o.chain.confirmations) || 0, need: Number(o.chain.need) || 0 } : null,
     amount: Number(o.amount) || 0, status, createdAt: Number(o.createdAt) || 0, quoteEndsAt: Number(o.expiresAt) || 0, quoteExpired: status === "awaiting_payment" && now > Number(o.expiresAt),
@@ -2572,13 +2597,14 @@ async function handleStoreOrderApi(request, env, action, ctx) {
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
       const { cur, vip } = await storeCustomerCtx(env, uid), pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cur.data.balanceUsd) || 0);
-      return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), vip, priceUsd, balanceUsd: bal, enough: bal + 1e-9 >= priceUsd, shortUsd: r4(Math.max(0, priceUsd - bal)) } }, 200);
+      return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), zone: !!(item.supplier && item.supplier.offerId && item.supplier.zoneField), vip, priceUsd, balanceUsd: bal, enough: bal + 1e-9 >= priceUsd, shortUsd: r4(Math.max(0, priceUsd - bal)) } }, 200);
     }
     if (action === "order") {                      // شراء من الرصيد: بيخصم فوراً، والأدمن بينفّذ
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
       const playerId = String(b.playerId == null ? "" : b.playerId).trim();
       if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
+      const zoneId = storeZoneOf(item, b.zoneId);
       const reqId = String(b.reqId || ""); if (!/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) throw new ApiError("bad_request", "طلب غلط.");
       const id = "o" + (await sha256Hex(uid + "|" + reqId)).slice(0, 20), dup = await fsGetDoc(env, "storeOrders/" + id);
       if (dup.exists) { if (dup.data.uid !== uid) throw new ApiError("bad_request", "طلب غلط."); return jsonResponse({ ok: true, duplicate: true, order: storeOrderOut(id, dup.data, now, false) }, 200); }
@@ -2592,7 +2618,7 @@ async function handleStoreOrderApi(request, env, action, ctx) {
         const vip = storeCustomerOut(uid, cd.data, sizes).vip, pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cd.data.balanceUsd) || 0);
         if (bal + 1e-9 < priceUsd) return jsonResponse({ ok: false, error: "insufficient_balance", message: `رصيدك ${bal}$ وسعر الطلب ${priceUsd}$. اشحن رصيدك أول.`, balanceUsd: bal, priceUsd, shortUsd: r4(priceUsd - bal) }, 400);
         const ctr = await nextRequestNo(env, "store"), code = "T-" + ctr.no, newBal = r4(bal - priceUsd);
-        const order = { kind: "order", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, vip, priceUsd, status: "processing", createdAt: now, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
+        const order = { kind: "order", code, no: ctr.no, uid, name: u.name, email: u.email, itemId: item.id, itemName: String(item.name), itemPath: storeItemPath(nodes, item.id), playerId, ...(zoneId ? { zoneId } : {}), vip, priceUsd, status: "processing", createdAt: now, updatedAt: now, events: [{ at: now, action: "created", by: "customer", note: "" }] };
         try {
           await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } },
             { update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ balanceUsd: newBal }) }, updateMask: { fieldPaths: ["balanceUsd"] }, currentDocument: { updateTime: cd.updateTime } },
@@ -2638,12 +2664,15 @@ async function handleStoreOrderApi(request, env, action, ctx) {
       if (!link || !env.FAZER_API_KEY) return jsonResponse({ ok: true, supported: false }, 200);          // المنتج مو مربوط: ما في تحقق (الشراء عادي)
       const playerId = String(b.playerId == null ? "" : b.playerId).trim();
       if (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId)) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");
+      const zoneId = storeZoneOf(item, b.zoneId);
       await storeRateHit(env, uid, "validate", 30, 3600);
       try {
         const v = storeFindValidator(await storeSupplierValidators(env), link);
         if (!v) return jsonResponse({ ok: true, supported: false }, 200);
-        const key = v.fields.includes(link.playerField) ? link.playerField : (v.fields[0] || "player_id");
-        const j = await fzrCall(env, "POST", "/topups/validate-id", { category_id: v.categoryId, fields: { [key]: playerId } });
+        const key = v.fields.includes(link.playerField) ? link.playerField : (v.fields[0] || "player_id"), fields = { [key]: playerId };
+        if (link.zoneField) { const zk = v.fields.includes(link.zoneField) ? link.zoneField : v.fields.find(f => f !== key); if (!zk) return jsonResponse({ ok: true, supported: false }, 200); fields[zk] = zoneId; }
+        else if (v.fields.length > 1) return jsonResponse({ ok: true, supported: false }, 200);       // لعبة التحقق بدها Zone والمنتج ما فيه: ما منخمّن
+        const j = await fzrCall(env, "POST", "/topups/validate-id", { category_id: v.categoryId, fields });
         return jsonResponse({ ok: true, supported: true, available: true, valid: j.valid === true, playerName: cleanText(j.player_name, 60), region: cleanText(j.region, 20) }, 200);
       } catch (e) {
         if (e instanceof ApiError && (e.code === "supplier_error" || e.code === "supplier_unreachable")) return jsonResponse({ ok: true, supported: true, available: false }, 200);     // المورّد مو متاح: ما منمنع الشراء

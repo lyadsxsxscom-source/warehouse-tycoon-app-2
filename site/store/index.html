@@ -408,7 +408,7 @@ const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', processing: '�
 let WALLET = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000 };
 let UNIT = (() => { try{ return localStorage.getItem('store_unit') === 'pts' ? 'pts' : 'usd'; }catch(e){ return 'usd'; } })();      // وحدة العرض: دولار أو نقاط (المخزّن دايماً دولار)
 let MY = [], MY_STATE = 'idle', QUOTE = null, TQ = null, ORD = null, ordTriggerSel = '', tqTimer = null;      // ordTriggerSel: الزر اللي فتح النافذة (بنرجّع له التركيز حتى لو انرسم من جديد)
-const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false });
+const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', zone: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false });
 let idTimer = null;
 let SH = freshSheet('closed');
 const rate = () => Number(WALLET.pointsPerUsd) || 1000;
@@ -622,24 +622,27 @@ function renderSheet(){
 function msgBox(){ return el('div', { class: 'msg' + (SH.msg ? ' err' : ''), id: 'osMsg', role: 'alert', text: SH.msg || SH.ok || '' }); }
 // ---- التحقق من الـPlayer ID (اسم اللاعب) قبل الشراء
 const idFormatOk = v => v.length >= 3 && v.length <= 40 && /^[\p{L}\p{N}_#@.\- ]+$/u.test(v);
+const needZone = () => !!(QUOTE && QUOTE.zone), zoneOk = v => /^[0-9]{1,10}$/.test(v);
+const idKey = () => SH.pid.trim() + (needZone() ? '|' + SH.zone.trim() : '');            // نتيجة التحقق مربوطة بالـID والـZone مع بعض
+const idReady = () => idFormatOk(SH.pid.trim()) && (!needZone() || zoneOk(SH.zone.trim()));
 function updateIdStatus(){
   const n = $('osIdCheck'); if(!n) return; const r = SH.idRes;
-  if(!r || r.pid !== SH.pid.trim()){ n.textContent = ''; return; }
+  if(!r || r.pid !== idKey()){ n.textContent = ''; return; }
   n.textContent = '';
   if(r.state === 'valid'){ const nm = document.createElement('bdi'); nm.textContent = r.name || '—'; n.append('✔ اللاعب: ', nm, (r.region ? ' · ' + r.region : '') + ' — تأكد إنه حسابك.'); }      // bdi: الاسم بيتعزل حتى لو عربي أو مختلط الاتجاه
   else n.textContent = r.state === 'checking' ? 'عم نتحقق من الـID...' : r.state === 'invalid' ? '❌ ما لقينا حساب بهالـID. تأكد منه.' : '⚠️ ما قدرنا نتحقق هلق. تأكد من الـID بنفسك (ما في استرجاع إذا كان غلط).';
 }
 async function checkPlayerId(){
-  const pid = SH.pid.trim(); if(!SH.item || SH.step !== 'form' || SH.idSupported === false || !idFormatOk(pid)) return;
-  SH.idRes = { pid, state: 'checking' }; updateIdStatus();
+  const key = idKey(), pid = SH.pid.trim(), zone = SH.zone.trim(); if(!SH.item || SH.step !== 'form' || SH.idSupported === false || !idReady()) return;
+  SH.idRes = { pid: key, state: 'checking' }; updateIdStatus();
   let res;
   try{
-    const j = await apiAuth('/store/validate-id', { itemId: SH.item.id, playerId: pid });
+    const j = await apiAuth('/store/validate-id', needZone() ? { itemId: SH.item.id, playerId: pid, zoneId: zone } : { itemId: SH.item.id, playerId: pid });
     if(!j.supported) res = null, SH.idSupported = false;
-    else if(!j.available) res = { pid, state: 'unavailable' };
-    else res = j.valid ? { pid, state: 'valid', name: j.playerName, region: j.region } : { pid, state: 'invalid' };
-  }catch(e){ res = { pid, state: 'unavailable' }; }
-  if(SH.step !== 'form' || SH.pid.trim() !== pid) return;                      // اتغيّر الـID أو سكّر النافذة: النتيجة القديمة ما بتنعرض
+    else if(!j.available) res = { pid: key, state: 'unavailable' };
+    else res = j.valid ? { pid: key, state: 'valid', name: j.playerName, region: j.region } : { pid: key, state: 'invalid' };
+  }catch(e){ res = { pid: key, state: 'unavailable' }; }
+  if(SH.step !== 'form' || idKey() !== key) return;                      // اتغيّر الـID أو سكّر النافذة: النتيجة القديمة ما بتنعرض
   SH.idRes = res; updateIdStatus();
 }
 // ---- الشراء من الرصيد
@@ -648,7 +651,7 @@ function renderForm(b){
   b.append(el('div', { class: 'sum' }, el('div', { id: 'osPrice', text: 'سعرك حسب مستواك VIP ' + q.vip + ': ' + money(q.priceUsd) }), el('div', { id: 'osBal', text: 'رصيدك: ' + money(q.balanceUsd) }), q.enough ? el('div', { id: 'osAfter', text: 'بعد الشراء: ' + money(q.balanceUsd - q.priceUsd) }) : document.createTextNode('')));
   const nt = noteFor(it.id); if(nt) b.append(el('div', { class: 'warn', id: 'osNote', role: 'note', text: 'ℹ️ ' + nt }));
   const pid = el('input', { class: 'tx', id: 'osPid', type: 'text', maxlength: '40', autocomplete: 'off', inputmode: 'text', 'aria-describedby': 'osPidHint' }); pid.value = SH.pid;
-  b.append(el('label', { class: 'f', for: 'osPid', text: 'معرّف اللاعب (Player ID)' }), pid, el('div', { class: 'idcheck', id: 'osIdCheck', role: 'status', 'aria-live': 'polite' }), el('div', { class: 'warn', id: 'osPidHint', text: '⚠️ تأكد من المعرّف: الشحن بيتم عليه، وما في استرجاع إذا كان غلط.' })); updateIdStatus();
+  b.append(el('label', { class: 'f', for: 'osPid', text: 'معرّف اللاعب (Player ID)' }), pid, ...(needZone() ? [el('label', { class: 'f', for: 'osZone', text: 'رقم السيرفر (Zone ID)' }), Object.assign(el('input', { class: 'tx', id: 'osZone', type: 'text', maxlength: '10', autocomplete: 'off', inputmode: 'numeric', 'aria-describedby': 'osZoneHint' }), { value: SH.zone }), el('div', { class: 'hint', id: 'osZoneHint', text: 'الرقم اللي بين القوسين جنب الـID بملفك باللعبة، مثلاً 12345678 (1234).' })] : []), el('div', { class: 'idcheck', id: 'osIdCheck', role: 'status', 'aria-live': 'polite' }), el('div', { class: 'warn', id: 'osPidHint', text: '⚠️ تأكد من المعرّف: الشحن بيتم عليه، وما في استرجاع إذا كان غلط.' })); updateIdStatus();
   if(!q.enough){ b.append(el('div', { class: 'warn', id: 'osShort', role: 'alert', text: 'رصيدك ما بيكفي: ناقصك ' + money(q.shortUsd) + '.' }), msgBox(), el('button', { class: 'btn-main', id: 'osTopup', type: 'button', text: '➕ شحن الرصيد' })); return; }
   b.append(el('div', { class: 'hint', text: 'بينخصم السعر من رصيدك فوراً، وبننفّذ طلبك وبنبلّغك.' }), msgBox(), el('button', { class: 'btn-main', id: 'osSubmit', type: 'button', text: 'اشتري الآن' }));
   if(SH.busy) b.querySelector('#osSubmit').disabled = true;
@@ -703,7 +706,7 @@ function renderPay(b){
   const pill = el('span', { class: 'stat', id: 'osStatus', text: ORDER_ST[st] || st });
   const sum = el('div', { class: 'sum' }, el('div', { style: 'font-weight:700;word-break:break-word;', text: o.itemPath || o.itemName }));
   if(isTop) sum.append(el('div', { text: 'بيزيد رصيدك: ' + money(o.priceUsd) }), el('div', { text: 'المبلغ المطلوب: ' + orderAmount(o) + ' (عبر ' + o.method.name + ')' }));
-  else if(isOrd) sum.append(el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'السعر: ' + money(o.priceUsd) + ' · انخصم من رصيدك' }));
+  else if(isOrd) sum.append(el('div', { text: 'Player ID: ' + o.playerId + (o.zoneId ? ' (Zone ' + o.zoneId + ')' : '') }), el('div', { text: 'السعر: ' + money(o.priceUsd) + ' · انخصم من رصيدك' }));
   else sum.append(el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'المبلغ: ' + orderAmount(o) + ' (عبر ' + o.method.name + ') · ' + fmtUsd(o.priceUsd) }));
   sum.append(el('div', {}, pill)); b.append(sum);
   if(isOrd){
@@ -759,7 +762,7 @@ async function reloadOrder(){
 $('osClose').addEventListener('click', closeSheet);
 $('scrim2').addEventListener('click', closeSheet);
 $('osBody').addEventListener('input', e => {
-  if(e.target.id === 'osPid'){ SH.pid = e.target.value; SH.idRes = null; updateIdStatus(); clearTimeout(idTimer); if(SH.idSupported !== false && idFormatOk(SH.pid.trim())) idTimer = setTimeout(checkPlayerId, 700); }
+  if(e.target.id === 'osPid' || e.target.id === 'osZone'){ if(e.target.id === 'osPid') SH.pid = e.target.value; else SH.zone = e.target.value; SH.idRes = null; updateIdStatus(); clearTimeout(idTimer); if(SH.idSupported !== false && idReady()) idTimer = setTimeout(checkPlayerId, 700); }
   if(e.target.id === 'osRef') SH.ref = e.target.value;
   if(e.target.id === 'osDelMethod') SH.dm = e.target.value;
   if(e.target.id === 'osDelAcct') SH.da = e.target.value;
@@ -800,12 +803,14 @@ $('osBody').addEventListener('click', async e => {
   if(b.id === 'osSubmit'){
     const pid = SH.pid.trim(); SH.msg = ''; SH.ok = '';
     if(pid.length < 3 || pid.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(pid)){ SH.msg = 'اكتب معرّف اللاعب (Player ID) بشكل صحيح: 3 لـ40 خانة، أرقام وأحرف.'; renderSheet(); $('osPid').focus(); return; }
+    const zone = SH.zone.trim();
+    if(needZone() && !zoneOk(zone)){ SH.msg = 'اكتب رقم السيرفر (Zone ID): أرقام بس.'; renderSheet(); $('osZone').focus(); return; }
     clearTimeout(idTimer);
-    if(SH.idSupported !== false && (!SH.idRes || SH.idRes.pid !== pid || SH.idRes.state === 'checking')){ b.disabled = true; await checkPlayerId(); b.disabled = false; }
-    if(SH.idRes && SH.idRes.pid === pid && SH.idRes.state === 'invalid'){ SH.msg = 'ما لقينا حساب بهالـID. تأكد منه وجرّب كمان مرة.'; renderSheet(); $('osPid').focus(); return; }
+    if(SH.idSupported !== false && (!SH.idRes || SH.idRes.pid !== idKey() || SH.idRes.state === 'checking')){ b.disabled = true; await checkPlayerId(); b.disabled = false; }
+    if(SH.idRes && SH.idRes.pid === idKey() && SH.idRes.state === 'invalid'){ SH.msg = 'ما لقينا حساب بهالـID. تأكد منه وجرّب كمان مرة.'; renderSheet(); $('osPid').focus(); return; }
     SH.busy = true; renderSheet();
     try{
-      const j = await apiAuth('/store/order', { itemId: SH.item.id, playerId: pid, reqId: SH.rid }); ORD = j.order;
+      const j = await apiAuth('/store/order', needZone() ? { itemId: SH.item.id, playerId: pid, zoneId: zone, reqId: SH.rid } : { itemId: SH.item.id, playerId: pid, reqId: SH.rid }); ORD = j.order;
       if(CUSTOMER && typeof j.balanceUsd === 'number') CUSTOMER.balanceUsd = j.balanceUsd;
       SH.step = 'pay'; SH.busy = false; renderSheet(); renderWallet(); renderDrawer(); loadMyOrders(); $('osClose').focus();
     }catch(err){
