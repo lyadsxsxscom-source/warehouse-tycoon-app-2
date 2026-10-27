@@ -1144,10 +1144,11 @@ function renderSpItems(){
       const m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd), low = (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM);
       row.append(el('div', { class: 'sm', 'data-link': n.id, text: '🔗 ' + (n.supplier.offerName || n.supplier.offerId) + ' · تكلفتهم ' + (n.supplier.costUsd ? usd4(n.supplier.costUsd) : 'غير معروفة') + ' · هامش VIP 1: ' + pctTxt(m1) + ' · VIP 10: ' + pctTxt(m10) }));
       row.append(el('div', { class: 'sm', 'data-val': n.id, text: valStatus(n) }));
+      if(n.supplier.priceHold) row.append(el('div', { class: 'sm spbad', 'data-hold': n.id, text: '⚠️ FazerCards غيّرت التكلفة من ' + usd4(n.supplier.costUsd) + ' لـ' + usd4(n.supplier.priceHold.costUsd) + ' (أكتر من 20%): ما تعدّل السعر تلقائياً. إذا السعر صح، اضغط 🔄 حدّث التكلفة والسعر.' }));
       if(low) row.append(el('div', { class: 'sm spbad', 'data-low': n.id, text: '⚠️ الهامش تحت الحد (' + minM + '%): ما رح يتنفّذ تلقائياً. ارفع السعر أو غيّر الحد.' }));
     } else row.append(el('div', { class: 'sm', text: 'غير مربوط' }));
     const t = el('div', { class: 'tools' }, el('button', { 'data-spact': 'choose', 'data-id': n.id, text: n.supplier ? '✏️ تغيير' : '🔗 ربط' }));
-    if(n.supplier){ t.append(el('button', { 'data-spact': 'cost', 'data-id': n.id, text: '🔄 حدّث التكلفة' }), el('button', { 'data-spact': 'val', 'data-id': n.id, text: '🆔 لعبة التحقق' }), el('button', { 'data-spact': 'unlink', 'data-id': n.id, text: '✂️ فك الربط' })); }
+    if(n.supplier){ t.append(el('button', { 'data-spact': 'cost', 'data-id': n.id, text: '🔄 حدّث التكلفة والسعر' }), el('button', { 'data-spact': 'val', 'data-id': n.id, text: '🆔 لعبة التحقق' }), el('button', { 'data-spact': 'unlink', 'data-id': n.id, text: '✂️ فك الربط' })); }
     row.append(t);
     if(SP.ch && SP.ch.id === n.id) row.append(renderChooser(n));
     box.append(row);
@@ -1197,10 +1198,9 @@ $('spItems').addEventListener('click', async e => {
     if(act === 'valsave'){ NODES = (await storeApi({ action: 'supplier_link', id, link: { ...n.supplier, validateCategoryId: SP.ch.vmatch || '' } })).nodes; SP.ch = null; renderSpItems(); $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = 'انحفظت لعبة التحقق ✓'; return; }
     if(act === 'unlink'){ if(!window.confirm('فك ربط "' + n.name + '" مع FazerCards؟')) return; NODES = (await storeApi({ action: 'supplier_link', id, link: null })).nodes; renderSpItems(); return; }
     if(act === 'cost'){
-      const j = await storeApi({ action: 'supplier_offers', categoryId: n.supplier.categoryId }), o = j.offers.find(x => x.offerId === n.supplier.offerId);
-      if(!o){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = 'هالخيار ما عاد موجود عند FazerCards. اختار غيره.'; return; }
-      NODES = (await storeApi({ action: 'supplier_link', id, link: { ...n.supplier, offerName: o.name, costUsd: o.priceUsd } })).nodes; renderSpItems();
-      $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = 'تحدّثت التكلفة: ' + usd4(o.priceUsd);
+      const before = n.supplier.costUsd, j = await storeApi({ action: 'reprice_one', id }); NODES = j.nodes; renderSpItems();
+      const m = NODES.find(x => x.id === id), c = m && m.supplier ? m.supplier.costUsd : before;
+      $('spMsg').style.color = 'var(--ok, #4caf50)'; $('spMsg').textContent = c === before ? 'التكلفة ما تغيّرت (' + usd4(c) + ').' : 'تحدّثت التكلفة من ' + usd4(before) + ' لـ' + usd4(c) + '، والأسعار تعدّلت بنفس الهامش.';
     }
   }catch(err){ $('spMsg').style.color = 'var(--err)'; $('spMsg').textContent = err.message; }
 });

@@ -1263,7 +1263,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), noPlayer: n.type === "item" && n.noPlayer === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0 } : null };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), priceHold: n.supplier.priceHold && Number(n.supplier.priceHold.costUsd) > 0 ? { costUsd: Number(n.supplier.priceHold.costUsd), at: Number(n.supplier.priceHold.at) || 0 } : null, categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), noPlayer: n.type === "item" && n.noPlayer === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0, priceHold: n.card.priceHold && Number(n.card.priceHold.costUsd) > 0 ? { costUsd: Number(n.card.priceHold.costUsd), at: Number(n.card.priceHold.at) || 0 } : null } : null };
 }
 // ===== الكتالوج السريع: كل العناصر بمستند واحد (قراءة وحدة بدل مئات) =====
 // مستندات storeNodes/* تبقى هي الأصل (كل تعديل بيكتب فيها وبيحدّث النسخة السريعة بنفس العملية). فيك ترجع للوضع القديم بأي وقت.
@@ -1428,7 +1428,7 @@ async function storeCatalogPurge(request) {
 async function handleAdminStore(request, env) {            // غلاف: بعد أي تعديل على الكتالوج بنمسح نسخة الكاش الطازجة (حتى يبين التعديل فوراً)
   let act = ""; try { act = String((await request.clone().json()).action || ""); } catch (e) { /* بدون جسم */ }
   const res = await handleAdminStoreInner(request, env);
-  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply", "ai_enable"].includes(act)) await storeCatalogPurge(request);
+  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply", "reprice_one", "ai_enable"].includes(act)) await storeCatalogPurge(request);
   return res;
 }
 async function handleAdminStoreInner(request, env) {
@@ -1436,7 +1436,7 @@ async function handleAdminStoreInner(request, env) {
   let b = {}; try { b = await request.json(); } catch (e) {}
   try {
     // الكتالوج (حتى 350 مستند) بيتحمّل بس للإجراءات اللي بتحتاجه. قبل هيك كل إجراء (حتى عدّاد الطلبات كل دقيقة) كان يقراه كله.
-    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "save", "delete", "move", "reorder", "ai_pending", "ai_enable"].includes(b.action) ? await storeAllNodes(env) : [];
+    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "reprice_one", "save", "delete", "move", "reorder", "ai_pending", "ai_enable"].includes(b.action) ? await storeAllNodes(env) : [];
     const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(n => ({ ...storeNodeOut(n), ai: n.ai === true })), max: { depth: STORE_MAX_DEPTH, nodes: storeNodeLimit(nodes) } }, 200);
     if (b.action === "list") return out(nodes);
     if (b.action === "vip_get") { const v = await storeLoadVipSizes(env); return jsonResponse({ ok: true, ...v }, 200); }
@@ -1609,10 +1609,14 @@ async function handleAdminStoreInner(request, env) {
       for (const it of plan) {
         if (it.status !== "ok") { skipped.push({ id: it.id, reason: it.status }); continue; }
         const node = nodes.find(n => n.id === it.id), prices = storeParsePrices(it.proposed);
-        writes.push({ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ prices, supplier: { ...node.supplier, costUsd: it.costUsd }, updatedAt: at }) }, updateMask: { fieldPaths: ["prices", "supplier", "updatedAt"] }, currentDocument: { exists: true } });
+        writes.push({ update: { name: docName(env, "storeNodes/" + it.id), fields: objToFields({ prices, supplier: { ...node.supplier, costUsd: it.costUsd, priceHold: null }, updatedAt: at }) }, updateMask: { fieldPaths: ["prices", "supplier", "updatedAt"] }, currentDocument: { exists: true } });
       }
       if (writes.length) await fsCommitNodes(env, writes);
       return jsonResponse({ ok: true, applied: writes.length, skipped }, 200);
+    }
+    if (b.action === "reprice_one") {              // زر "🔄 حدّث التكلفة والسعر": بيطبّق تكلفة FazerCards الحالية على منتج واحد (حتى لو القفزة كبيرة: إنت شفتها ووافقت)
+      const it = nodes.find(n => n.id === String(b.id || "")); if (!it || it.type !== "item") throw new ApiError("not_found", "هالمنتج مو موجود.", 404);
+      const r = await storeAutoReprice(env, { id: it.id, force: true }); return out(await storeAllNodes(env), { reprice: r });
     }
     if (b.action === "supplier_link") {            // ربط منتج بخيار عند FazerCards (أو فك الربط)؛ بره محرّر المنتج حتى ما ينمسح بالغلط
       const it = nodes.find(n => n.id === String(b.id || ""));
@@ -2366,6 +2370,40 @@ async function storePricePlan(env, nodes, params, minMargin, onlyIds) {
     if (!(offer.priceUsd > 0)) return { ...base, status: "bad_cost", costUsd: 0, proposed: [] };
     return { ...base, status: "ok", costUsd: offer.priceUsd, proposed: storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, minMargin) };
   }).sort((a, b) => (a.path + "|" + a.name).localeCompare(b.path + "|" + b.name));
+}
+// ===== تحديث الأسعار تلقائياً (كل ساعة): لما FazerCards تغيّر تكلفتها، سعر البيع بيتغيّر بنفس النسبة لكل مستوى VIP (يعني نفس هامشك) =====
+// الأساس (autoBase) = آخر تكلفة وأسعار حطّيتها إنت؛ منحسب منه دايماً حتى ما يتراكم التقريب. أي تعديل يدوي للسعر بيصير هو الأساس الجديد.
+// قفزة أكبر من 20% (طلوع أو نزول) ما بتتطبّق لحالها: بتنعلّم (priceHold) وبتستناك (والتنفيذ التلقائي أصلاً بيوقف إذا الهامش نزل تحت حدّك).
+const STORE_REPRICE_MAX_JUMP = 0.2;
+const storeCeil2 = (x) => Math.max(0.01, Math.round(Math.ceil(x * 100 - 1e-6)) / 100);
+function storeRepriceOne(prices, src, newCost, force) {
+  const cur = (Array.isArray(prices) ? prices : []).map(Number), oldCost = Number(src.costUsd) || 0;
+  if (cur.length !== STORE_VIP_LEVELS || cur.some(p => !(p > 0)) || !(oldCost > 0) || !(newCost > 0)) return { skip: "bad" };
+  const ab = src.autoBase && Array.isArray(src.autoBase.prices) && Array.isArray(src.autoBase.wrote) && src.autoBase.wrote.length === cur.length && src.autoBase.wrote.every((p, i) => Math.abs(Number(p) - cur[i]) < 1e-9) && Number(src.autoBase.cost) > 0 ? src.autoBase : { cost: oldCost, prices: cur };
+  if (Math.abs(newCost - oldCost) < 1e-9) return { skip: "same" };
+  if (!force && Math.abs(newCost - oldCost) / oldCost > STORE_REPRICE_MAX_JUMP) return { hold: true };
+  const out = []; for (let k = 0; k < cur.length; k++) { let p = storeCeil2(newCost * Number(ab.prices[k]) / Number(ab.cost)); if (k > 0) p = Math.min(p, out[k - 1]); out.push(p); }
+  return { prices: out, autoBase: { cost: Number(ab.cost), prices: ab.prices.map(Number), wrote: out } };
+}
+async function storeAutoReprice(env, opts) {
+  if (!env.FAZER_API_KEY) return { skipped: "no_key" };
+  const onlyId = opts && opts.id, force = !!(opts && opts.force), nodes = await storeAllNodes(env), at = Date.now();
+  const items = nodes.filter(n => n.type === "item" && (!onlyId || n.id === onlyId) && ((n.supplier && n.supplier.offerId) || (n.card && n.card.cardId)));
+  const cats = new Map(), stats = { checked: 0, changed: 0, held: 0, errors: 0 }, writes = [];
+  for (const n of items) {
+    const isCard = !(n.supplier && n.supplier.offerId), src = isCard ? n.card : n.supplier, cid = String(src.categoryId || ""), key = (isCard ? "g:" : "t:") + cid;
+    if (!cats.has(key)) { try { cats.set(key, isCard ? (await storeSupplierSectionOffers(env, "giftcards", cid)).map(o => ({ offerId: o.id, priceUsd: o.priceUsd })) : (await storeSupplierOffers(env, cid)).offers); } catch (e) { cats.set(key, null); } }
+    const offers = cats.get(key); if (!offers) { stats.errors++; continue; }
+    const offer = offers.find(o => o.offerId === (isCard ? src.cardId : src.offerId)); stats.checked++; if (!offer) continue;
+    const r = storeRepriceOne(n.prices, src, Number(offer.priceUsd), force), field = isCard ? "card" : "supplier";
+    if (r.skip === "same" && src.priceHold) writes.push({ update: { name: docName(env, "storeNodes/" + n.id), fields: objToFields({ [field]: { ...src, priceHold: null } }) }, updateMask: { fieldPaths: [field] }, currentDocument: { exists: true } });
+    if (r.skip) continue;
+    if (r.hold) { stats.held++; if (!src.priceHold || Number(src.priceHold.costUsd) !== Number(offer.priceUsd)) writes.push({ update: { name: docName(env, "storeNodes/" + n.id), fields: objToFields({ [field]: { ...src, priceHold: { costUsd: Number(offer.priceUsd), at } } }) }, updateMask: { fieldPaths: [field] }, currentDocument: { exists: true } }); continue; }
+    stats.changed++;
+    writes.push({ update: { name: docName(env, "storeNodes/" + n.id), fields: objToFields({ prices: storeParsePrices(r.prices), [field]: { ...src, costUsd: Number(offer.priceUsd), autoBase: r.autoBase, priceHold: null }, updatedAt: at }) }, updateMask: { fieldPaths: ["prices", field, "updatedAt"] }, currentDocument: { exists: true } });
+  }
+  for (let i = 0; i < writes.length; i += 200) await fsCommitNodes(env, writes.slice(i, i + 200));
+  return stats;
 }
 // ===== رابط الذكاء الاصطناعي (MCP): موصّل بمدة محدودة، بيضيف منتجات مخفية ويربطها ويحسب أسعارها، وما بيلمس الفلوس ولا الزبائن =====
 // الرابط سرّي (توكن بآخره)، بيتخزّن مشفّر (SHA-256)، بيتجدد وبينلغى من الأدمن، وكل استعمال بينسجّل. اللي بيضيفه الذكاء الاصطناعي بيطلع مخفي لحد ما توافق عليه.
@@ -3914,6 +3952,7 @@ export default {
   async scheduled(event, env, ctx) {
     if (event && event.cron === "*/5 * * * *") {         // كل 5 دقايق: متابعة طلبات FazerCards (إعادة المحاولة بنفس المفتاح + سؤال عن الحالة + تنبيه التأخير)
       ctx.waitUntil(storeAutoSweep(env).then(r => console.info({ message: "auto sweep", ...r })).catch(e => console.error({ message: "auto sweep failed", error: String(e && e.message || e) })));
+      if (new Date().getUTCMinutes() < 5) ctx.waitUntil(storeAutoReprice(env).then(r => console.info({ message: "auto reprice", ...r })).catch(e => console.error({ message: "auto reprice failed", error: String(e && e.message || e) })));      // مرة بالساعة
       ctx.waitUntil(storeChainSweep(env, { full: new Date().getUTCMinutes() < 5 }).then(r => console.info({ message: "chain sweep", ...r })).catch(e => console.error({ message: "chain sweep failed", error: String(e && e.message || e) })));
       return;
     }
