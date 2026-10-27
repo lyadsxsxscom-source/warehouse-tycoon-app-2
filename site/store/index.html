@@ -266,7 +266,7 @@ async function load(){
   const box = $('catalog'); box.textContent = '';
   const g = el('div', { class: 'grid', id: 'loading' }); for(let i = 0; i < 4; i++) g.append(el('div', { class: 'skel' })); box.append(g);
   try{
-    const res = await fetch(API + '/store/catalog'); const j = await res.json();
+    const res = await fetch(API + '/store/catalog', { cache: 'no-cache' }); const j = await res.json();
     if(!res.ok || !j.ok || !Array.isArray(j.items)) throw new Error('bad');
     TREE = j.items; if(j.wallet && Number(j.wallet.pointsPerUsd) > 0) WALLET.pointsPerUsd = Number(j.wallet.pointsPerUsd);
     render();

@@ -1354,6 +1354,7 @@ async function handleStoreCatalog(env) {
   const { cfg: wcfg } = await storeLoadWallet(env);
   const r = jsonResponse({ ok: true, items: tree, methods, wallet: { pointsPerUsd: wcfg.pointsPerUsd } }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
 }
+// (s-maxage=60: المسح بعد تعديل الأدمن بيصير بمركز Cloudflare واحد بس، فالمراكز التانية بتتحدّث لحالها خلال دقيقة)
 // الكتالوج (نفسه لكل الزوار) بينخزّن بكاش Cloudflare دقيقة: ما بيقرا من Firestore إلا مرة بالدقيقة بدل كل زيارة
 async function storeCatalogCached(request, env, ctx) {
   if (request.method !== "GET" || typeof caches === "undefined" || !caches.default) return handleStoreCatalog(env);
@@ -1361,7 +1362,7 @@ async function storeCatalogCached(request, env, ctx) {
   try { const hit = await caches.default.match(key); if (hit) return hit; } catch (e) { /* بنكمّل بدون كاش */ }
   try {
     const res = await handleStoreCatalog(env);
-    if (res.status === 200) { try { const stale = new Response(res.clone().body, res); stale.headers.set("Cache-Control", "public, max-age=86400"); const fresh = new Response(res.clone().body, res); fresh.headers.set("Cache-Control", "public, max-age=60, s-maxage=300"); ctx.waitUntil(Promise.all([caches.default.put(key, fresh), caches.default.put(keyStale, stale)]).catch(() => {})); } catch (e) { /* مو مهم */ } }
+    if (res.status === 200) { try { const stale = new Response(res.clone().body, res); stale.headers.set("Cache-Control", "public, max-age=86400"); const fresh = new Response(res.clone().body, res); fresh.headers.set("Cache-Control", "public, max-age=30, s-maxage=60"); ctx.waitUntil(Promise.all([caches.default.put(key, fresh), caches.default.put(keyStale, stale)]).catch(() => {})); } catch (e) { /* مو مهم */ } }
     return res;
   } catch (e) {
     // قاعدة البيانات واقفة (مثلاً وصلت الحد اليومي): بنعرض آخر كتالوج انحفظ (لحد يوم) ليضل المتجر قابل للتصفّح
