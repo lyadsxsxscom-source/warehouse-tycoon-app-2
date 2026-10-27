@@ -1313,6 +1313,8 @@ function storeTree(nodes) {
 }
 // طرق الدفع: كل طريقة إلها سعر صرف (وحدات من عملتها لكل 1 دولار) + نسبة إضافية اختيارية. بتتغيّر من الأدمن لما السعر يتقلّب، والصفحة العامة بتحسب منه.
 async function storeLoadMethods(env) { const d = await fsGetDoc(env, "config/storePayments"); return d.exists && d.data && Array.isArray(d.data.methods) ? d.data.methods : []; }
+// صورة طريقة الدفع (شعار شام كاش مثلاً): بمستند لحاله storeImages/pm_{id}، والرابط بيتغيّر مع كل صورة جديدة (v=)
+const storeMethodImg = (m) => Number(m.imageVer) > 0 ? "/store/img/pm_" + m.id + "?v=" + Number(m.imageVer) : "";
 function storeParseMethods(raw) {
   if (!Array.isArray(raw) || raw.length > 8) throw new ApiError("bad_methods", "الحد الأقصى 8 طرق دفع.");
   const seen = new Set();
@@ -1343,7 +1345,7 @@ function storeParseMethods(raw) {
 }
 async function handleStoreCatalog(env) {
   const tree = storeTree(await storeAllNodes(env));
-  const methods = (await storeLoadMethods(env)).filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, rate: m.rate, decimals: m.decimals, feePct: m.feePct, auto: !!m.autoVerify }));
+  const methods = (await storeLoadMethods(env)).filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, rate: m.rate, decimals: m.decimals, feePct: m.feePct, auto: !!m.autoVerify, imageUrl: storeMethodImg(m) }));
   const { cfg: wcfg } = await storeLoadWallet(env);
   const r = jsonResponse({ ok: true, items: tree, methods, wallet: { pointsPerUsd: wcfg.pointsPerUsd } }, 200); r.headers.set("Cache-Control", "public, max-age=60"); return r;
 }
@@ -1711,12 +1713,23 @@ async function handleAdminStoreInner(request, env) {
         } catch (e) { if (!e.conflict || attempt === 2) throw e; }
       }
     }
-    if (b.action === "payments_get") { const d = await fsGetDoc(env, "config/storePayments"); return jsonResponse({ ok: true, methods: await storeLoadMethods(env), updatedAt: d.exists && d.data ? Number(d.data.updatedAt) || 0 : 0 }, 200); }
+    if (b.action === "payments_get") { const d = await fsGetDoc(env, "config/storePayments"); return jsonResponse({ ok: true, methods: (await storeLoadMethods(env)).map(m => ({ ...m, imageUrl: storeMethodImg(m) })), updatedAt: d.exists && d.data ? Number(d.data.updatedAt) || 0 : 0 }, 200); }
     if (b.action === "payments_save") {
-      const methods = storeParseMethods(b.methods), at = Date.now();
+      const methods = storeParseMethods(b.methods), at = Date.now(), old = await storeLoadMethods(env);
       for (const m of methods) if (m.autoVerify === "trc20" && !(await tronAddrToHex20(m.account))) throw new ApiError("bad_method", `"${m.name}": عنوان TRC20 غير صحيح (فشل فحص الخانات الأخيرة). تأكد من نسخه كامل.`);
-      await fsCommit(env, [{ update: { name: docName(env, "config/storePayments"), fields: objToFields({ methods, updatedAt: at }) } }]);
-      return jsonResponse({ ok: true, methods, updatedAt: at }, 200);
+      for (const m of methods) { const o = old.find(x => x.id === m.id); m.imageVer = o && Number(o.imageVer) > 0 ? Number(o.imageVer) : 0; }      // الصورة بتنحفظ من زرها لحالها، والحفظ العادي ما بيلمسها
+      const gone = old.filter(o => Number(o.imageVer) > 0 && !methods.some(m => m.id === o.id)).map(o => ({ delete: docName(env, "storeImages/pm_" + o.id) }));
+      await fsCommit(env, [{ update: { name: docName(env, "config/storePayments"), fields: objToFields({ methods, updatedAt: at }) } }, ...gone]);
+      return jsonResponse({ ok: true, methods: methods.map(m => ({ ...m, imageUrl: storeMethodImg(m) })), updatedAt: at }, 200);
+    }
+    if (b.action === "payment_image") {             // صورة لطريقة دفع محفوظة ("" = حذف الصورة)
+      const id = String(b.id || ""), img = b.image === "" || b.image === null ? "" : b.image;
+      if (img && !(typeof img === "string" && img.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(img))) throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير.");
+      const d = await fsGetDoc(env, "config/storePayments"), methods = d.exists && d.data && Array.isArray(d.data.methods) ? d.data.methods : [], m = methods.find(x => x.id === id);
+      if (!m) throw new ApiError("not_found", "احفظ طريقة الدفع أول، وبعدين ضيف صورتها.", 404);
+      const at = Date.now(); m.imageVer = img ? at : 0;
+      await fsCommit(env, [{ update: { name: docName(env, "config/storePayments"), fields: objToFields({ methods, updatedAt: Number(d.data.updatedAt) || at }) } }, img ? { update: { name: docName(env, "storeImages/pm_" + id), fields: objToFields({ data: img, ver: at }) } } : { delete: docName(env, "storeImages/pm_" + id) }]);
+      return jsonResponse({ ok: true, id, imageVer: m.imageVer, imageUrl: storeMethodImg(m) }, 200);
     }
     const now = Date.now();
     if (b.action === "save") {
@@ -2600,7 +2613,7 @@ function storeVisibleItem(nodes, id) {
 function storeItemPath(nodes, id) { const by = new Map(nodes.map(n => [n.id, n])), out = []; let c = by.get(id), g = 0; while (c && g++ < 12) { out.unshift(String(c.name || "")); c = by.get(String(c.parentId || "")); } return out.join(" › "); }
 function storeQuoteFor(item, vip, methods) {
   const pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1];
-  return { priceUsd, methods: methods.filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, decimals: m.decimals, amount: storeRound(priceUsd * m.rate * (1 + (Number(m.feePct) || 0) / 100), m.decimals) })) };
+  return { priceUsd, methods: methods.filter(m => m.enabled !== false).map(m => ({ id: m.id, name: m.name, currency: m.currency, decimals: m.decimals, imageUrl: storeMethodImg(m), amount: storeRound(priceUsd * m.rate * (1 + (Number(m.feePct) || 0) / 100), m.decimals) })) };
 }
 function storeClosingCheck(data) { if (data && data.closing && data.closing.code) throw new ApiError("account_closing", "حسابك قيد الحذف (طلب " + data.closing.code + "). ما بتقدر تعمل طلبات أو إيداعات جديدة. بتقدر تلغي طلب الحذف من لوحة الحساب."); }
 async function storeCustomerCtx(env, uid, forWrite) {

@@ -674,7 +674,15 @@ function renderMethods(){
     const up = el('button', { 'data-pm': 'up', 'data-i': i, text: '▲' }); if(i === 0) up.disabled = true;
     const down = el('button', { 'data-pm': 'down', 'data-i': i, text: '▼' }); if(i === METHODS.length - 1) down.disabled = true;
     const tools = el('div', { class: 'tools' }, el('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:.9rem;' }, en, 'مفعّلة'), el('div', { style: 'display:flex;gap:6px;' }, up, down, el('button', { 'data-pm': 'del', 'data-i': i, text: '🗑' })));
-    box.append(el('div', { class: 'pm', 'data-pmrow': i }, g, el('div', { class: 'prev', 'data-prev': i, text: pmPreview(m) }), m.autoVerify ? el('div', { class: 'sm', 'data-avnote': i, text: '⛓ تأكيد تلقائي: الزبون بيحوّل مبلغ مميّز (آخر أرقامه فريدة) ويلصق رقم العملية، والسيرفر بيتحقق من الشبكة العلنية. العملة لازم USDT وسعر الصرف 1، والعنوان لازم يكون عنوانك أنت. أي شك بيضل لإيدك.' }) : '', tools));
+    const imgBox = el('div', { class: 'pmimg', 'data-pmimgbox': i, style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;' });
+    if(!m.id) imgBox.append(el('span', { class: 'sm', text: '🖼️ احفظ طريقة الدفع أول، وبعدين بتقدر تضيف صورتها.' }));
+    else {
+      if(m.imageUrl) imgBox.append(el('img', { src: API + m.imageUrl, alt: '', 'data-pmimgprev': i, style: 'width:40px;height:40px;object-fit:contain;border-radius:8px;background:#fff;' }));
+      const fi = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', 'data-pmimg': i, id: 'pmImg' + i, style: 'display:none;' });
+      imgBox.append(fi, el('label', { for: 'pmImg' + i, class: 'ghost', style: 'cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:5px 10px;margin:0;', text: m.imageUrl ? '🖼️ غيّر الصورة' : '🖼️ ضيف صورة' }));
+      if(m.imageUrl) imgBox.append(el('button', { 'data-pm': 'imgdel', 'data-i': i, text: '🗑 احذف الصورة' }));
+    }
+    box.append(el('div', { class: 'pm', 'data-pmrow': i }, g, imgBox, el('div', { class: 'prev', 'data-prev': i, text: pmPreview(m) }), m.autoVerify ? el('div', { class: 'sm', 'data-avnote': i, text: '⛓ تأكيد تلقائي: الزبون بيحوّل مبلغ مميّز (آخر أرقامه فريدة) ويلصق رقم العملية، والسيرفر بيتحقق من الشبكة العلنية. العملة لازم USDT وسعر الصرف 1، والعنوان لازم يكون عنوانك أنت. أي شك بيضل لإيدك.' }) : '', tools));
   });
 }
 async function loadMethods(){
@@ -689,9 +697,18 @@ $('pmList').addEventListener('input', e => {
   const m = METHODS[Number(t.dataset.i)]; m[t.dataset.f] = t.type === 'checkbox' ? t.checked : (t.tagName === 'SELECT' && t.dataset.f === 'decimals' ? Number(t.value) : t.value);
   const pv = document.querySelector('[data-prev="' + t.dataset.i + '"]'); if(pv) pv.textContent = pmPreview(m);
 });
-$('pmList').addEventListener('change', e => { if(e.target.tagName === 'SELECT' || e.target.type === 'checkbox') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+$('pmList').addEventListener('change', async e => {
+  if(e.target.dataset.pmimg !== undefined){
+    const i = Number(e.target.dataset.pmimg), f = e.target.files && e.target.files[0]; if(!f) return; $('pmMsg').textContent = '';
+    try{ const url = await fileToDataUrl(f), j = await storeApi({ action: 'payment_image', id: METHODS[i].id, image: url }); METHODS[i].imageVer = j.imageVer; METHODS[i].imageUrl = j.imageUrl; renderMethods(); $('pmMsg').style.color = 'var(--ok, #4caf50)'; $('pmMsg').textContent = 'انحفظت الصورة ✓'; }
+    catch(err){ $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = err.message; }
+    return;
+  }
+  if(e.target.tagName === 'SELECT' || e.target.type === 'checkbox') e.target.dispatchEvent(new Event('input', { bubbles: true }));
+});
 $('pmList').addEventListener('click', e => {
   const b = e.target.closest('button[data-pm]'); if(!b) return; const i = Number(b.dataset.i);
+  if(b.dataset.pm === 'imgdel'){ if(!window.confirm('احذف صورة "' + (METHODS[i].name || 'طريقة الدفع') + '"؟')) return; storeApi({ action: 'payment_image', id: METHODS[i].id, image: '' }).then(j => { METHODS[i].imageVer = 0; METHODS[i].imageUrl = ''; renderMethods(); }).catch(err => { $('pmMsg').style.color = 'var(--err)'; $('pmMsg').textContent = err.message; }); return; }
   if(b.dataset.pm === 'del'){ if(!window.confirm('احذف "' + (METHODS[i].name || 'طريقة الدفع') + '"؟')) return; METHODS.splice(i, 1); }
   else { const j = b.dataset.pm === 'up' ? i - 1 : i + 1; [METHODS[i], METHODS[j]] = [METHODS[j], METHODS[i]]; }
   renderMethods();
