@@ -10,13 +10,13 @@ const read = p => fs.readFileSync(path.join(ROOT, p), "utf8");
 const pubHtml = read("site/store/index.html");
 const pub = new JSDOM(pubHtml).window.document;
 ok(pub.documentElement.lang === "ar" && pub.documentElement.dir === "rtl", "public page: Arabic, right-to-left");
-ok(pub.title === "Yardova Card" && pub.querySelector("h1").textContent === "Yardova Card" && !/متجر شحن الألعاب|متجر الشدات/.test(pub.querySelector(".tag").textContent), "public page: is called Yardova Card (heading and browser tab)");
-ok(/noindex/.test(pub.querySelector('meta[name="robots"]').content), "public page: kept out of search engines until it is ready");
+ok(/^Yardova Card/.test(pub.title) && pub.querySelector("h1").textContent === "Yardova Card" && !/متجر شحن الألعاب|متجر الشدات/.test(pub.querySelector(".tag").textContent), "public page: is called Yardova Card (heading and browser tab)");
+ok(!pub.querySelector('meta[name="robots"]') && /^https:\/\/yardova\.ly-ad\.de\/store\/$/.test(pub.querySelector('link[rel="canonical"]').href) && (pub.querySelector('meta[name="description"]').content || "").length > 50 && pub.querySelector('meta[property="og:image"]'), "public page: open to search engines, with its own address, description and share image");
 ok(!!pub.getElementById("catalog") && !!pub.getElementById("crumbs"), "public page: has the catalog area and the path bar");
 ok([...pub.querySelectorAll("a")].some(a => a.getAttribute("href") === "/"), "public page: has a way back to the site");
 const pubScripts = [...pub.querySelectorAll("script")]; ok(pubScripts.length === 3 && pubScripts.filter(x => !x.src).length === 1 && pubScripts.filter(x => x.src).every(x => x.src.startsWith("https://www.gstatic.com/firebasejs/10.12.2/")) && pub.querySelectorAll("form, input, [onclick]").length === 0, "public page: its own inline script plus only the two Firebase sign-in scripts from Google, no forms");
 ok(!/undefined|null|\[object/.test(pub.querySelector("main").textContent), "public page: no leftover template text");
-ok(!/\/store/.test(read("site/index.html")) && !/\/store/.test(read("site/sitemap.xml")), "public page: not linked from the home page and not in the sitemap");
+{ const sm = read("site/sitemap.xml"); ok(sm.includes("<loc>https://yardova.ly-ad.de/store/</loc>") && sm.includes("/store/terms/") && sm.includes("/store/privacy/") && !/store-admin/.test(sm), "public page: the store, its terms and its privacy page are in the sitemap (never the admin page)"); }
 ok(/href="\/icon-192\.png"/.test(pubHtml) && fs.existsSync(path.join(ROOT, "site/icon-192.png")) && fs.existsSync(path.join(ROOT, "site/favicon.ico")), "public page: its icons exist");
 
 /* ---- صفحة الأدمن ---- */

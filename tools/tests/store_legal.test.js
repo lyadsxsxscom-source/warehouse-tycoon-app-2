@@ -13,7 +13,7 @@ const doc = h => new JSDOM(h).window.document;
   /* ---- both pages ---- */
   for (const [name, h] of Object.entries(pages)) {
     const d = doc(h), t = text(h);
-    ok(d.documentElement.lang === "ar" && d.documentElement.dir === "rtl" && /noindex/.test(d.querySelector('meta[name="robots"]').content) && /Yardova Card/.test(d.title) && d.querySelectorAll("h1").length === 1 && !d.querySelector("script"), name + ": Arabic, right-to-left, hidden from search engines until launch, one title, and no scripts at all");
+    ok(d.documentElement.lang === "ar" && d.documentElement.dir === "rtl" && !d.querySelector('meta[name="robots"]') && /\/store\//.test(d.querySelector('link[rel="canonical"]').href) && /Yardova Card/.test(d.title) && d.querySelectorAll("h1").length === 1 && !d.querySelector("script"), name + ": Arabic, right-to-left, open to search engines with its own address, one title, and no scripts at all");
     ok(d.querySelector('a[href="/store/"]') && d.querySelector('a[href="https://t.me/IBRAHEEM932"]') && d.querySelector('a[href="https://wa.me/963932867131"]') && gameTerms.includes("https://t.me/IBRAHEEM932") && gameTerms.includes("https://wa.me/963932867131"), name + ": a way back to the store and your contact details (the same ones as the game's privacy page)");
     ok([...d.querySelectorAll('a[target="_blank"]')].every(a => /noopener/.test(a.rel)) && /آخر تحديث: 22 تشرين الأول 2026/.test(t), name + ": external links open safely and the page shows when it was last updated");
     ok(d.querySelectorAll("h2").length >= 8 && /\d\)/.test(d.querySelector("h2").textContent), name + ": organised in numbered sections");

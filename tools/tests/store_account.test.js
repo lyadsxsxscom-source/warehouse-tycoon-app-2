@@ -91,6 +91,6 @@ function open(opts = {}) {
     ok(/تعذّر تحميل تسجيل الدخول/.test(h.$("accMsg").textContent) && !h.$("btnGoogle"), "if the sign-in library cannot load the panel says so");
     h.$("btnCloseDrawer").click(); ok(h.d.querySelectorAll("#catalog .card").length === 1, "and the store itself still works"); }
   /* ---- static ---- */
-  ok(!/innerHTML|document\.write|eval\(/.test(html0) && /firebase-app-compat\.js/.test(html0) && /firebasejs\/10\.12\.2\//.test(html0) && /noindex/.test(html0), "no raw HTML insertion; Firebase 10.12.2 from Google; still hidden from search engines");
+  ok(!/innerHTML|document\.write|eval\(/.test(html0) && /firebase-app-compat\.js/.test(html0) && /firebasejs\/10\.12\.2\//.test(html0) && !/noindex/.test(html0), "no raw HTML insertion; Firebase 10.12.2 from Google; open to search engines");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });

@@ -83,6 +83,6 @@ const crumbs = (d) => d.getElementById("crumbs").textContent.replace(/\s+/g, "")
     h.setMode("ok"); h.d.getElementById("btnRetry").click(); await sleep(100); ok(cards(h.d).length === 3 && !h.d.getElementById("errState"), "retry loads the store"); }
   { const h = open({ mode: "bad" }); await sleep(100); ok(h.d.getElementById("errState"), "a bad answer from the server is an error state, not a blank page"); }
   /* ---- static ---- */
-  ok(!/innerHTML|document\.write|eval\(/.test(html) && /noindex/.test(html), "the page never inserts HTML, and stays hidden from search engines until you decide to launch");
+  ok(!/innerHTML|document\.write|eval\(/.test(html) && !/noindex/.test(html), "the page never inserts HTML, and is open to search engines");
   console.log(fails ? "FAILS " + fails : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })().catch(e => { console.log("CRASH", e); process.exit(1); });

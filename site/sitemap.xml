@@ -72,4 +72,16 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://yardova.ly-ad.de/en/verify/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://yardova.ly-ad.de/verify/"/>
   </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/store/</loc>
+    <lastmod>2026-10-28</lastmod>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/store/terms/</loc>
+    <lastmod>2026-10-28</lastmod>
+  </url>
+  <url>
+    <loc>https://yardova.ly-ad.de/store/privacy/</loc>
+    <lastmod>2026-10-28</lastmod>
+  </url>
 </urlset>
