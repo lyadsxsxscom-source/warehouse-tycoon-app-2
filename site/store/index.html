@@ -228,6 +228,7 @@ function folderCard(n){
   return b;
 }
 function itemCard(n){
+  if(n.quote) return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), el('div', { class: 'price', 'data-quote': n.id, text: '💬 السعر عند التواصل' }), el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: 'اطلب' })));
   const mine = PRICES && PRICES[n.id] !== undefined ? PRICES[n.id] : n.priceUsd, pb = priceBox(mine);
   if(PRICES && mine !== n.priceUsd) pb.append(el('span', { class: 'vipnote', text: 'سعرك VIP ' + PRICE_VIP }));
   return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), pb, el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: 'اطلب' })));
@@ -408,11 +409,11 @@ function renderCta(){
 }
 renderCta();
 // ===== المحفظة (رصيد بالدولار + عرض $ أو نقاط) + الشراء من الرصيد + إيداع الرصيد =====
-const ORDER_ST = { awaiting_payment: 'بانتظار الدفع', processing: 'قيد التنفيذ', payment_submitted: 'دفعك قيد المراجعة', done: 'تم التنفيذ ✅', rejected: 'مرفوض', cancelled: 'ملغى', expired: 'انتهت صلاحيته', refunded: 'مسترجع' };
+const ORDER_ST = { quote_requested: 'بانتظار السعر 💬', quote_offered: 'السعر جاهز 💬', awaiting_payment: 'بانتظار الدفع', processing: 'قيد التنفيذ', payment_submitted: 'دفعك قيد المراجعة', done: 'تم التنفيذ ✅', rejected: 'مرفوض', cancelled: 'ملغى', expired: 'انتهت صلاحيته', refunded: 'مسترجع' };
 let WALLET = { pointsPerUsd: 1000, minTopupUsd: 5, maxTopupUsd: 1000 };
 let UNIT = (() => { try{ return localStorage.getItem('store_unit') === 'pts' ? 'pts' : 'usd'; }catch(e){ return 'usd'; } })();      // وحدة العرض: دولار أو نقاط (المخزّن دايماً دولار)
 let MY = [], MY_STATE = 'idle', QUOTE = null, TQ = null, ORD = null, ordTriggerSel = '', tqTimer = null;      // ordTriggerSel: الزر اللي فتح النافذة (بنرجّع له التركيز حتى لو انرسم من جديد)
-const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', zone: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false, sn: '', sk: '', snote: '' });
+const freshSheet = (step) => ({ step, item: null, methodId: '', pid: '', zone: '', amt: '', msg: '', ok: '', busy: false, rid: '', img: undefined, ref: '', timer: null, idRes: null, idSupported: null, del: null, dm: '', da: '', dc: false, sn: '', sk: '', snote: '', qe: '', qa: '', qc: '', qn: '' });
 let idTimer = null;
 let SH = freshSheet('closed');
 const rate = () => Number(WALLET.pointsPerUsd) || 1000;
@@ -578,6 +579,21 @@ async function openSuggest(){
   if(!(await needAccount('سجّل دخول عشان تقترح.'))) return;
   closeDrawerQuiet(); SH = freshSheet('sform'); showSheet(); renderSheet(); $('osClose').focus();
 }
+// "السعر عند التواصل" (متل كلاش أوف كلانس): إيميل الحساب + رقم تواصل، وبنحدد السعر وإنت بتوافق
+function renderQuoteForm(b){
+  const ap = (k, t) => el('button', { class: 'chip', type: 'button', role: 'radio', 'data-qapp': k, 'aria-checked': SH.qa === k ? 'true' : 'false', 'aria-pressed': SH.qa === k ? 'true' : 'false', text: t });
+  const em = el('input', { class: 'tx', id: 'osQEmail', type: 'email', maxlength: '100', autocomplete: 'email', dir: 'ltr', placeholder: 'name@gmail.com' }); em.value = SH.qe;
+  const ct = el('input', { class: 'tx', id: 'osQContact', type: 'text', maxlength: '33', autocomplete: 'tel', dir: 'ltr', placeholder: SH.qa === 'telegram' ? '@username' : '+963...' }); ct.value = SH.qc;
+  const nt = el('input', { class: 'tx', id: 'osQNote', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: 'اختياري: أي تفصيل' }); nt.value = SH.qn;
+  b.append(el('div', { class: 'warn', id: 'osQHint', role: 'note', text: '💬 السعر بيختلف حسب بلدك وحسابك، فما في سعر ثابت. ابعتلنا إيميل حسابك ورقم تواصل، منتواصل معك ومنحدد السعر، وبعدها بتوافق وبتدفع من رصيدك. ما بينخصم شي هلق.' }),
+    el('label', { class: 'f', for: 'osQEmail', text: 'إيميل حسابك (Supercell ID)' }), em,
+    el('div', { class: 'f', text: 'نتواصل معك على' }), el('div', { class: 'methods', id: 'osQApp', role: 'radiogroup', 'aria-label': 'التواصل' }, ap('whatsapp', 'واتساب'), ap('telegram', 'تلغرام')),
+    el('label', { class: 'f', for: 'osQContact', text: SH.qa === 'telegram' ? 'يوزر التلغرام أو رقمك' : 'رقمك مع رمز البلد' }), ct,
+    el('label', { class: 'f', for: 'osQNote', text: 'ملاحظة (اختياري)' }), nt,
+    el('div', { class: 'hint', id: 'osQSafe', text: '🔒 ما رح نطلب منك كلمة السر أبداً. إذا وصلك كود على إيميلك، منطلبه منك وقت الشحن بس.' }),
+    msgBox(), el('button', { class: 'btn-main', id: 'osQSend', type: 'button', text: '📨 أرسل الطلب' }));
+  if(SH.busy) b.querySelector('#osQSend').disabled = true;
+}
 function renderSuggestForm(b){
   $('osTitle').textContent = '💡 اقترح لعبة أو تطبيق';
   const kb = (k, t) => { const x = el('button', { class: 'chip', type: 'button', role: 'radio', 'data-sk': k, 'aria-checked': SH.sk === k ? 'true' : 'false', 'aria-pressed': SH.sk === k ? 'true' : 'false', text: t }); return x; };
@@ -673,6 +689,7 @@ async function checkPlayerId(){
 // ---- الشراء من الرصيد
 function renderForm(b){
   const it = SH.item, q = QUOTE; $('osTitle').textContent = 'اطلب: ' + it.name;
+  if(q && q.quoteMode){ renderQuoteForm(b); return; }
   b.append(el('div', { class: 'sum' }, el('div', { id: 'osPrice', text: 'سعرك حسب مستواك VIP ' + q.vip + ': ' + money(q.priceUsd) }), el('div', { id: 'osBal', text: 'رصيدك: ' + money(q.balanceUsd) }), q.enough ? el('div', { id: 'osAfter', text: 'بعد الشراء: ' + money(q.balanceUsd - q.priceUsd) }) : document.createTextNode('')));
   const nt = noteFor(it.id); if(nt) b.append(el('div', { class: 'warn', id: 'osNote', role: 'note', text: 'ℹ️ ' + nt }));
   if(noPlayer()) b.append(el('div', { class: 'warn', id: 'osCardHint', role: 'note', text: '🎫 بطاقة إلكترونية: ما بتحتاج Player ID. بعد التنفيذ بيوصلك الكود بـ"طلباتي" (من ☰)، وبيوصلك إشعار.' }));
@@ -732,12 +749,25 @@ function renderPay(b){
   const pill = el('span', { class: 'stat', id: 'osStatus', text: ORDER_ST[st] || st });
   const sum = el('div', { class: 'sum' }, el('div', { style: 'font-weight:700;word-break:break-word;', text: o.itemPath || o.itemName }));
   if(isTop) sum.append(el('div', { text: 'بيزيد رصيدك: ' + money(o.priceUsd) }), el('div', { text: 'المبلغ المطلوب: ' + orderAmount(o) + ' (عبر ' + o.method.name + ')' }));
+  else if(isOrd && o.quote) sum.append(el('div', { dir: 'auto', text: '📧 ' + o.quote.email }), el('div', { text: (o.quote.app === 'whatsapp' ? 'واتساب: ' : 'تلغرام: ') + o.quote.contact }), el('div', { text: o.priceUsd ? 'السعر: ' + money(o.priceUsd) + (o.quote.paid ? ' · انخصم من رصيدك' : '') : 'السعر: بنحدده لما نتواصل معك' }));
   else if(isOrd) sum.append(el('div', { text: o.noPlayer ? '🎫 بطاقة إلكترونية' : 'Player ID: ' + o.playerId + (o.zoneId ? ' (Zone ' + o.zoneId + ')' : '') }), el('div', { text: 'السعر: ' + money(o.priceUsd) + ' · انخصم من رصيدك' }));
   else sum.append(el('div', { text: 'Player ID: ' + o.playerId }), el('div', { text: 'المبلغ: ' + orderAmount(o) + ' (عبر ' + o.method.name + ') · ' + fmtUsd(o.priceUsd) }));
   sum.append(el('div', {}, pill)); b.append(sum);
+  if(isOrd && o.quote && (st === 'quote_requested' || st === 'quote_offered' || st === 'cancelled' || (st === 'rejected' && !o.quote.paid))){
+    if(st === 'quote_requested') b.append(el('div', { class: 'warn', id: 'osFinal', text: 'وصل طلبك ✅ رح نتواصل معك على ' + (o.quote.app === 'whatsapp' ? 'الواتساب' : 'التلغرام') + ' ونحدد السعر، وبيوصلك إشعار لما يجهز. ما انخصم شي من رصيدك.' }));
+    else if(st === 'quote_offered'){
+      const bal = CUSTOMER ? Number(CUSTOMER.balanceUsd) || 0 : 0, enough = bal + 1e-9 >= o.priceUsd;
+      b.append(el('div', { class: 'big', id: 'osQPrice', text: money(o.priceUsd) }), el('div', { class: 'warn', id: 'osFinal', text: 'السعر جاهز 💬 إذا موافق، بينخصم من رصيدك ومنبلّش بالشحن.' }), el('div', { class: 'hint', id: 'osNewBal', text: 'رصيدك هلق: ' + money(bal) }), msgBox());
+      b.append(enough ? el('button', { class: 'btn-main', id: 'osQAccept', type: 'button', text: '✅ موافق، ادفع ' + money(o.priceUsd) + ' من رصيدي' }) : el('button', { class: 'btn-main', id: 'osQTopup', type: 'button', text: '➕ اشحن رصيدك (ناقصك ' + money(o.priceUsd - bal) + ')' }));
+      if(SH.busy && b.querySelector('#osQAccept')) b.querySelector('#osQAccept').disabled = true;
+    }
+    else b.append(el('div', { class: 'warn', id: 'osFinal', text: st === 'cancelled' ? 'ألغيت هالطلب.' : 'انرفض طلبك.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : '') + ' ما انخصم شي من رصيدك.' }));
+    if(st === 'quote_requested' || st === 'quote_offered') b.append(el('button', { class: 'btn-ghost', id: 'osQCancel', type: 'button', text: '❌ ما بدي، ألغي الطلب' }), el('button', { class: 'btn-ghost', id: 'osRefresh', type: 'button', text: '🔄 تحديث حالة الطلب' }));
+    b.append(el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return;
+  }
   if(isOrd){
     const lines = { processing: 'تم طلبك ✅ قيد التنفيذ، رح نبلّغك لما يخلص.', done: 'تم تنفيذ طلبك ✅ تأكد من حسابك باللعبة.', rejected: 'انرفض طلبك.' + (o.rejectReason ? ' السبب: ' + o.rejectReason : '') + ' ورجع المبلغ لرصيدك.', refunded: 'تم استرجاع طلبك ورجع المبلغ لرصيدك.' };
-    b.append(el('div', { class: 'warn', id: 'osFinal', text: o.noPlayer && st === 'done' ? 'تم تنفيذ طلبك ✅ هاد كود البطاقة:' : o.noPlayer && st === 'processing' ? 'تم طلبك ✅ قيد التنفيذ، الكود بيظهر هون لما يخلص، ورح نبلّغك.' : lines[st] || '' }));
+    b.append(el('div', { class: 'warn', id: 'osFinal', text: o.quote && st === 'processing' ? 'تم الدفع ✅ رح نتواصل معك ونشحن حسابك، وبيوصلك إشعار لما يخلص.' : o.quote && st === 'done' ? 'تم تنفيذ طلبك ✅ تأكد من حسابك باللعبة.' : o.noPlayer && st === 'done' ? 'تم تنفيذ طلبك ✅ هاد كود البطاقة:' : o.noPlayer && st === 'processing' ? 'تم طلبك ✅ قيد التنفيذ، الكود بيظهر هون لما يخلص، ورح نبلّغك.' : lines[st] || '' }));
     if(o.delivery) b.append(el('div', { class: 'accbox', id: 'osCode', style: 'direction:ltr;user-select:all;', text: o.delivery }), el('button', { class: 'dr-close', type: 'button', id: 'osCopyCode', 'data-copy': o.delivery, text: '📋 نسخ الكود' }), el('div', { class: 'hint', text: 'الكود سرّي: لا تشاركه مع حدا.' }));
     if(CUSTOMER) b.append(el('div', { class: 'hint', id: 'osNewBal', text: 'رصيدك هلق: ' + money(CUSTOMER.balanceUsd || 0) }));
     b.append(el('button', { class: 'btn-ghost', id: 'osRefresh', type: 'button', text: '🔄 تحديث حالة الطلب' }), el('button', { class: 'btn-ghost', id: 'osDone', type: 'button', text: 'إغلاق' })); return;
@@ -793,6 +823,9 @@ $('osBody').addEventListener('input', e => {
   if(e.target.id === 'osRef') SH.ref = e.target.value;
   if(e.target.id === 'osDelMethod') SH.dm = e.target.value;
   if(e.target.id === 'osSugName') SH.sn = e.target.value;
+  if(e.target.id === 'osQEmail') SH.qe = e.target.value;
+  if(e.target.id === 'osQContact') SH.qc = e.target.value;
+  if(e.target.id === 'osQNote') SH.qn = e.target.value;
   if(e.target.id === 'osSugNote') SH.snote = e.target.value;
   if(e.target.id === 'osDelAcct') SH.da = e.target.value;
   if(e.target.id === 'tqAmount'){ SH.amt = e.target.value; updateTopupPts(); clearTimeout(tqTimer); tqTimer = setTimeout(loadTopupQuote, 350); }
@@ -809,6 +842,29 @@ $('osBody').addEventListener('click', async e => {
   if(b.dataset.preset){ SH.amt = b.dataset.preset; const i = $('tqAmount'); if(i) i.value = SH.amt; updateTopupPts(); clearTimeout(tqTimer); loadTopupQuote(); return; }
   if(b.dataset.mid){ SH.methodId = b.dataset.mid; if(SH.step === 'tform') renderTopupDynamic(); else renderSheet(); return; }
   if(b.id === 'osDone'){ closeSheet(); return; }
+  if(b.dataset.qapp){ SH.qa = b.dataset.qapp; SH.msg = ''; renderSheet(); const nb = $('osBody').querySelector('[data-qapp="' + SH.qa + '"]'); if(nb) nb.focus(); return; }
+  if(b.id === 'osQSend'){
+    SH.msg = ''; const email = SH.qe.trim(), contact = SH.qc.trim();
+    if(!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)){ SH.msg = 'اكتب إيميل حسابك (Supercell ID) بشكل صحيح.'; renderSheet(); $('osQEmail').focus(); return; }
+    if(!SH.qa){ SH.msg = 'اختار واتساب ولا تلغرام.'; renderSheet(); return; }
+    if(contact.length < 5){ SH.msg = SH.qa === 'telegram' ? 'اكتب يوزر التلغرام (@...) أو رقمك.' : 'اكتب رقم الواتساب مع رمز البلد.'; renderSheet(); $('osQContact').focus(); return; }
+    SH.busy = true; renderSheet();
+    try{ const j = await apiAuth('/store/order', { itemId: SH.item.id, reqId: SH.rid, email, contactApp: SH.qa, contact, note: SH.qn.trim() }); ORD = j.order; SH.step = 'pay'; SH.busy = false; renderSheet(); loadMyOrders(); $('osClose').focus(); }
+    catch(err){ SH.busy = false; SH.msg = err.message; renderSheet(); }
+    return;
+  }
+  if(b.id === 'osQAccept'){
+    SH.msg = ''; SH.busy = true; renderSheet();
+    try{ const j = await apiAuth('/store/order/accept', { orderId: ORD.id, priceUsd: ORD.priceUsd }); ORD = j.order; if(CUSTOMER && typeof j.balanceUsd === 'number') CUSTOMER.balanceUsd = j.balanceUsd; SH.busy = false; renderSheet(); renderWallet(); renderDrawer(); loadMyOrders(); }
+    catch(err){ SH.busy = false; SH.msg = err.message; if(err.code === 'price_changed' || err.code === 'bad_status'){ try{ await reloadOrder(); }catch(e2){} } renderSheet(); }
+    return;
+  }
+  if(b.id === 'osQTopup'){ openTopup(Math.max(0, (Number(ORD.priceUsd) || 0) - (CUSTOMER ? Number(CUSTOMER.balanceUsd) || 0 : 0))); return; }
+  if(b.id === 'osQCancel'){
+    if(!window.confirm('ألغي هالطلب؟')) return; SH.msg = '';
+    try{ const j = await apiAuth('/store/order/cancel', { orderId: ORD.id }); ORD = j.order; renderSheet(); loadMyOrders(); }catch(err){ SH.msg = err.message; renderSheet(); }
+    return;
+  }
   if(b.dataset.sk){ SH.sk = b.dataset.sk; SH.msg = ''; renderSheet(); const k = b.dataset.sk; const nb = $('osBody').querySelector('[data-sk="' + k + '"]'); if(nb) nb.focus(); return; }
   if(b.id === 'osSugGo'){
     SH.msg = ''; const name = SH.sn.trim();

@@ -327,6 +327,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         <div style="margin-top:8px;"><button class="ghost" id="edImgDel" type="button">حذف الصورة</button></div>
       </div>
     </div>
+    <label id="edQuoteRow" style="display:flex;align-items:center;gap:8px;color:var(--ink);margin-top:14px;"><input type="checkbox" id="edQuote"> 💬 السعر عند التواصل (متل كلاش أوف كلانس: الزبون بيكتب إيميله ورقمه، وإنت بتحدد السعر)</label>
     <label id="edNoPlayerRow" style="display:flex;align-items:center;gap:8px;color:var(--ink);margin-top:14px;"><input type="checkbox" id="edNoPlayer"> 🎫 بطاقة إلكترونية (بدون Player ID، بتبعت الكود عند التنفيذ)</label>
     <label style="display:flex;align-items:center;gap:8px;color:var(--ink);margin-top:14px;"><input type="checkbox" id="edEnabled"> ظاهر بالمتجر</label>
     <div id="edMsg" role="alert"></div>
@@ -546,6 +547,7 @@ function openEditor(n, type){
   $('edVipBox').open = pr.some((x, i) => i > 0 && x !== pr[i - 1]);
   $('edEnabled').checked = n ? n.enabled : true;
   $('edNoPlayerRow').hidden = isFolder; $('edNoPlayer').checked = !!(n && n.noPlayer);
+  $('edQuoteRow').hidden = isFolder; $('edQuote').checked = !!(n && n.quote);
   $('edFile').value = ''; $('edMsg').textContent = '';
   showPreview(n && n.hasImage ? API + n.imageUrl : '');
   if(MV){ MV = null; $('mover').hidden = true; }
@@ -588,8 +590,9 @@ $('edSave').onclick = async () => {
   if(!name){ $('edMsg').textContent = 'اكتب اسم.'; return; }
   const body = { action: 'save', name, enabled: $('edEnabled').checked, note: $('edNote').value.trim() };
   if(EDIT.type === 'item'){
-    if($('edPrice').value === ''){ $('edMsg').textContent = 'اكتب سعر VIP 1 بالدولار.'; return; }
-    body.prices = [Number($('edPrice').value)]; body.noPlayer = $('edNoPlayer').checked;
+    body.quote = $('edQuote').checked;
+    if($('edPrice').value === '' && !body.quote){ $('edMsg').textContent = 'اكتب سعر VIP 1 بالدولار (أو علّم "السعر عند التواصل").'; return; }
+    body.prices = [$('edPrice').value === '' ? '' : Number($('edPrice').value)]; body.noPlayer = $('edNoPlayer').checked;
     for(let k = 2; k <= 10; k++){ const v = $('edVip' + k).value; body.prices.push(v === '' ? null : Number(v)); }
   }
   if(EDIT.id) body.id = EDIT.id; else { body.type = EDIT.type; body.parentId = CUR; }
@@ -893,11 +896,11 @@ $('custList').addEventListener('click', async e => {
 });
 
 // ===== الطلبات =====
-const ST_LABEL = { awaiting_payment: 'بانتظار الدفع', processing: 'قيد التنفيذ', payment_submitted: 'دفع مرسل', done: 'منفّذ', rejected: 'مرفوض', cancelled: 'ملغى', refunded: 'مسترجع', expired: 'منتهي' };
-const FILTER_COUNT = { waiting: c => (c.payment_submitted || 0) + (c.processing || 0), processing: c => c.processing || 0, payment_submitted: c => c.payment_submitted || 0, open: c => (c.payment_submitted || 0) + (c.awaiting_payment || 0) + (c.processing || 0), all: (c, t) => t, done: c => c.done || 0, rejected: c => c.rejected || 0, refunded: c => c.refunded || 0, cancelled: c => c.cancelled || 0, expired: c => c.expired || 0 };
+const ST_LABEL = { quote_requested: 'بانتظار سعرك 💬', quote_offered: 'بانتظار موافقة الزبون', awaiting_payment: 'بانتظار الدفع', processing: 'قيد التنفيذ', payment_submitted: 'دفع مرسل', done: 'منفّذ', rejected: 'مرفوض', cancelled: 'ملغى', refunded: 'مسترجع', expired: 'منتهي' };
+const FILTER_COUNT = { waiting: c => (c.payment_submitted || 0) + (c.processing || 0) + (c.quote_requested || 0), processing: c => c.processing || 0, payment_submitted: c => c.payment_submitted || 0, open: c => (c.payment_submitted || 0) + (c.awaiting_payment || 0) + (c.processing || 0) + (c.quote_requested || 0) + (c.quote_offered || 0), all: (c, t) => t, done: c => c.done || 0, rejected: c => c.rejected || 0, refunded: c => c.refunded || 0, cancelled: c => c.cancelled || 0, expired: c => c.expired || 0 };
 let ORDERS = [], ORD_TIMER = null;
 function amountText(o){ const d = Number(o.method.decimals) || 0; return Number(o.amount).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + o.method.currency; }
-function updateOrderBadge(counts){ const n = counts ? (counts.payment_submitted || 0) + (counts.processing || 0) : 0, b = $('ordBadge'); b.textContent = String(n); b.hidden = !n; }
+function updateOrderBadge(counts){ const n = counts ? (counts.payment_submitted || 0) + (counts.processing || 0) + (counts.quote_requested || 0) : 0, b = $('ordBadge'); b.textContent = String(n); b.hidden = !n; }
 function updateFilterLabels(counts, total){
   [...$('ordFilter').options].forEach(o => { const base = o.dataset.base || (o.dataset.base = o.textContent); const f = FILTER_COUNT[o.value]; o.textContent = base + ' (' + (f ? f(counts, total) : 0) + ')'; });
 }
@@ -910,6 +913,14 @@ async function loadOrders(){
 }
 async function refreshOrderBadge(){ if(document.hidden) return; try{ const j = await storeApi({ action: 'orders_badge' }); updateOrderBadge(j.counts); }catch(e){} }      // عدّ خفيف، وما بيشتغل والتبويب مخفي
 document.addEventListener('visibilitychange', () => { if(!document.hidden && window.__ordTick) refreshOrderBadge(); });
+// طلب "السعر عند التواصل": إيميل الحساب ورقم التواصل (مع رابط يفتح المحادثة)
+function qInfo(o){
+  const q = o.quote, digits = q.contact.replace(/[^0-9]/g, ''), href = q.app === 'whatsapp' ? 'https://wa.me/' + digits : (/^@/.test(q.contact) ? 'https://t.me/' + q.contact.slice(1) : '');
+  const w = el('div', { class: 'sm', 'data-quote': o.id }, '💬 السعر عند التواصل · 📧 ', el('bdi', { text: q.email }), ' · ' + (q.app === 'whatsapp' ? 'واتساب' : 'تلغرام') + ': ');
+  w.append(href ? el('a', { href, target: '_blank', rel: 'noopener', text: q.contact }) : el('bdi', { text: q.contact }));
+  if(q.note) w.append(el('div', { text: 'ملاحظة الزبون: ' + q.note }));
+  return w;
+}
 function renderOrders(){
   const box = $('ordList'); box.textContent = '';
   if(!ORDERS.length){ box.append(el('div', { class: 'empty', id: 'ordEmpty', text: 'ما في طلبات هون.' })); return; }
@@ -918,8 +929,8 @@ function renderOrders(){
     const card = el('div', { class: 'ord', 'data-ord': o.id },
       el('div', { class: 'top' }, el('span', { class: 'code', text: o.code }), el('span', { class: 'pill ' + o.status, text: o.kind === 'refund' && o.status === 'processing' ? 'بانتظار إرسال الرصيد' : (ST_LABEL[o.status] || o.status) })),
       el('div', { class: 'nm', style: 'margin-top:4px;font-weight:700;word-break:break-word;', text: (o.kind === 'topup' ? '📥 ' : o.kind === 'refund' ? '💸 ' : '') + (o.itemPath || o.itemName) }),
-      o.kind === 'topup' || o.kind === 'refund' ? '' : o.noPlayer ? sub('🎫 بطاقة إلكترونية' + (o.delivery ? ' · الكود المُرسل: ' + o.delivery : ' · لازم تبعت الكود عند التنفيذ')) : sub('Player ID: ' + o.playerId + (o.zoneId ? ' (Zone ' + o.zoneId + ')' : '')), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
-      o.kind === 'refund' ? sub('المبلغ المطلوب إرساله: ' + usd(o.priceUsd) + ' (محجوز من رصيده)') : o.kind === 'topup' ? sub('الإيداع: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name) : o.kind === 'order' ? sub('السعر: ' + usd(o.priceUsd) + ' · انخصم من رصيده') : sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
+      o.kind === 'topup' || o.kind === 'refund' ? '' : o.quote ? qInfo(o) : o.noPlayer ? sub('🎫 بطاقة إلكترونية' + (o.delivery ? ' · الكود المُرسل: ' + o.delivery : ' · لازم تبعت الكود عند التنفيذ')) : sub('Player ID: ' + o.playerId + (o.zoneId ? ' (Zone ' + o.zoneId + ')' : '')), sub('الزبون: ' + o.name + ' · ' + (o.email || o.uid) + ' · VIP ' + o.vip),
+      o.kind === 'refund' ? sub('المبلغ المطلوب إرساله: ' + usd(o.priceUsd) + ' (محجوز من رصيده)') : o.kind === 'topup' ? sub('الإيداع: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name) : o.kind === 'order' ? sub(o.status === 'quote_requested' ? 'السعر: لسا ما حددته' : o.status === 'quote_offered' ? 'السعر اللي حددته: ' + usd(o.priceUsd) + ' · بانتظار موافقة الزبون (ما انخصم شي)' : o.quote && !o.quote.paid ? 'السعر: ' + (o.priceUsd ? usd(o.priceUsd) : '—') + ' · ما انخصم شي' : 'السعر: ' + usd(o.priceUsd) + ' · انخصم من رصيده') : sub('السعر: ' + usd(o.priceUsd) + ' · المطلوب: ' + amountText(o) + ' عبر ' + o.method.name),
       sub('أُنشئ: ' + new Date(o.createdAt).toLocaleString('en-GB') + (o.doneAt ? ' · نُفّذ: ' + new Date(o.doneAt).toLocaleString('en-GB') : '')));
     if(o.kind === 'refund' && o.payout && (o.payout.method || o.payout.account)) card.append(el('div', { class: 'sm', 'data-payout': o.id }, 'الاستلام: ' + o.payout.method + ' · ', el('bdi', { text: o.payout.account })));
     if(o.chainInfo){
@@ -954,6 +965,7 @@ function renderOrders(){
     if(o.kind === 'order' && o.status === 'processing' && o.supplierOrderId) t.append(el('button', { 'data-oact': 'autosync', 'data-id': o.id, text: '🔄 تحقق من FazerCards' }));
     if(o.kind === 'refund' && o.status === 'processing' && o.payout && o.payout.account) t.append(el('button', { 'data-oact': 'copy', 'data-id': o.id, text: '📋 نسخ الحساب' }));
     if(['awaiting_payment', 'payment_submitted', 'expired', 'processing'].includes(o.status)){ t.append(el('button', { 'data-oact': 'done', 'data-id': o.id, text: o.kind === 'topup' ? '✅ تأكيد الإيداع' : o.kind === 'refund' ? '✅ تم إرسال الرصيد وحذف الحساب' : '✅ تم التنفيذ' }), el('button', { 'data-oact': 'reject', 'data-id': o.id, text: o.kind === 'refund' ? '❌ رفض (بيرجع الرصيد)' : '❌ رفض' })); }
+    if(o.status === 'quote_requested' || o.status === 'quote_offered'){ t.append(el('input', { type: 'number', step: '0.01', min: '0.01', inputmode: 'decimal', 'data-qprice': o.id, placeholder: 'السعر $', style: 'width:110px;' }, ), el('button', { 'data-oact': 'qprice', 'data-id': o.id, text: o.status === 'quote_offered' ? '💲 غيّر السعر' : '💲 حدد السعر' }), el('button', { 'data-oact': 'reject', 'data-id': o.id, text: '❌ رفض' })); }
     if(o.kind === 'refund' && o.status === 'done' && o.finalizePending) t.append(el('button', { 'data-oact': 'finish', 'data-id': o.id, text: '🧹 إكمال حذف الحساب' }));
     if(o.status === 'done' && o.kind !== 'refund') t.append(el('button', { 'data-oact': 'refund', 'data-id': o.id, text: o.kind === 'topup' ? '↩️ استرجاع الإيداع' : '↩️ استرجاع' }));
     t.append(el('button', { 'data-oact': 'events', 'data-id': o.id, text: '📜 السجل' }));
@@ -984,6 +996,10 @@ $('ordList').addEventListener('click', async e => {
     }catch(err){ $('ordMsg').style.color = 'var(--err)'; $('ordMsg').textContent = err.message; }
   } else if(b.dataset.oact === 'copy'){
     try{ await navigator.clipboard.writeText(o.payout.account); $('ordMsg').style.color = 'var(--ok, #4caf50)'; $('ordMsg').textContent = 'اننسخ الحساب ✓'; }catch(err){ $('ordMsg').style.color = 'var(--err)'; $('ordMsg').textContent = 'تعذّر النسخ. انسخه يدوياً: ' + o.payout.account; }
+  } else if(b.dataset.oact === 'qprice'){
+    const v = card.querySelector('[data-qprice]').value.trim(), p = Number(v);
+    if(!v || !(p > 0)){ $('ordMsg').style.color = 'var(--err)'; $('ordMsg').textContent = 'اكتب السعر بالدولار.'; return; }
+    try{ await storeApi({ action: 'quote_price', id, priceUsd: p }); await loadOrders(); $('ordMsg').style.color = 'var(--ok, #4caf50)'; $('ordMsg').textContent = 'انبعت السعر للزبون ✓ (' + usd(p) + ')'; }catch(err){ $('ordMsg').style.color = 'var(--err)'; $('ordMsg').textContent = err.message; }
   } else if(b.dataset.oact === 'finish'){
     if(!window.confirm('إكمال حذف حساب ' + o.code + '؟')) return;
     try{ await storeApi({ action: 'order_finish_deletion', id }); await loadOrders(); $('ordMsg').style.color = 'var(--ok, #4caf50)'; $('ordMsg').textContent = 'اكتمل حذف الحساب ✓'; }catch(err){ $('ordMsg').style.color = 'var(--err)'; $('ordMsg').textContent = err.message; }
@@ -996,14 +1012,14 @@ $('ordList').addEventListener('click', async e => {
     }catch(err){ $('ordMsg').textContent = err.message; }
   } else if(b.dataset.oact === 'events'){
     const box = card.querySelector('[data-ev]'); if(box.textContent){ box.textContent = ''; return; }
-    const EV = { created: 'أُنشئ', proof: 'أرسل إيصال', cancelled: 'ألغى الزبون', done: 'تم التنفيذ', rejected: 'رُفض', refunded: 'استرجاع' };
+    const EV = { created: 'أُنشئ', quoted: 'حدّدت السعر', accepted: 'وافق ودفع', proof: 'أرسل إيصال', cancelled: 'ألغى الزبون', done: 'تم التنفيذ', rejected: 'رُفض', refunded: 'استرجاع' };
     (o.events || []).slice().reverse().forEach(x => box.append(el('div', { text: new Date(x.at).toLocaleString('en-GB') + ' · ' + (EV[x.action] || x.action) + ' (' + (x.by === 'admin' ? 'إنت' : 'الزبون') + ')' + (x.note ? ' · ' + x.note : '') })));
     if(!box.textContent) box.textContent = 'ما في سجل.';
   } else {
     if(card.querySelector('form')){ card.querySelector('form').remove(); return; }
     const act = b.dataset.oact, isReject = act === 'reject';
     const input = el('input', { type: 'text', maxlength: '200', 'data-f': 'note', placeholder: isReject ? 'سبب الرفض (إجباري، بيوصل للزبون)' : 'ملاحظة (اختياري)' });
-    const codeIn = act === 'done' && o.noPlayer ? el('input', { type: 'text', maxlength: '500', 'data-f': 'delivery', autocomplete: 'off', placeholder: 'كود البطاقة (إجباري، بيوصل للزبون)' }) : null;
+    const codeIn = act === 'done' && o.noPlayer && !o.quote ? el('input', { type: 'text', maxlength: '500', 'data-f': 'delivery', autocomplete: 'off', placeholder: 'كود البطاقة (إجباري، بيوصل للزبون)' }) : null;
     const f = el('form', {}, ...(codeIn ? [codeIn] : []), input, el('button', { type: 'submit', text: act === 'done' ? (o.kind === 'topup' ? 'تأكيد الإيداع' : 'تأكيد التنفيذ') : isReject ? 'رفض' : 'استرجاع' }), el('div', { 'data-f': 'err', style: 'grid-column:1/-1;color:var(--err);font-size:.85rem;' }));
     f.addEventListener('submit', async ev => {
       ev.preventDefault(); const note = input.value.trim(), errEl = f.querySelector('[data-f="err"]'); errEl.textContent = '';
