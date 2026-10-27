@@ -1268,7 +1268,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), priceHold: n.supplier.priceHold && Number(n.supplier.priceHold.costUsd) > 0 ? { costUsd: Number(n.supplier.priceHold.costUsd), at: Number(n.supplier.priceHold.at) || 0 } : null, categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), wm: n.wm === true, noPlayer: n.type === "item" && n.noPlayer === true, quote: n.type === "item" && n.quote === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0, priceHold: n.card.priceHold && Number(n.card.priceHold.costUsd) > 0 ? { costUsd: Number(n.card.priceHold.costUsd), at: Number(n.card.priceHold.at) || 0 } : null } : null };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), priceHold: n.supplier.priceHold && Number(n.supplier.priceHold.costUsd) > 0 ? { costUsd: Number(n.supplier.priceHold.costUsd), at: Number(n.supplier.priceHold.at) || 0 } : null, categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), wm: n.wm === true, oos: n.type === "item" && (n.oos === "gone" || n.oos === "oos") ? String(n.oos) : "", noPlayer: n.type === "item" && n.noPlayer === true, quote: n.type === "item" && n.quote === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0, priceHold: n.card.priceHold && Number(n.card.priceHold.costUsd) > 0 ? { costUsd: Number(n.card.priceHold.costUsd), at: Number(n.card.priceHold.at) || 0 } : null } : null };
 }
 // ===== الكتالوج السريع: كل العناصر بمستند واحد (قراءة وحدة بدل مئات) =====
 // مستندات storeNodes/* تبقى هي الأصل (كل تعديل بيكتب فيها وبيحدّث النسخة السريعة بنفس العملية). فيك ترجع للوضع القديم بأي وقت.
@@ -1310,8 +1310,8 @@ function storeTree(nodes) {
   const kids = new Map();
   for (const n of nodes) { if (n.enabled === false) continue; const k = String(n.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(n); }
   const build = (pid) => storeSorted(kids.get(pid) || []).map(n => {
-    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier; delete o.card; delete o.wm;
-    if (n.type === "item") { if (n.quote === true) { o.quote = true; o.priceUsd = 0; return o; } const pr = storePricesOf(n); if (!pr.length) return null; o.priceUsd = pr[0]; return o; }      // "السعر عند التواصل": بيبين بدون سعر      // السعر العام = VIP 1، وأسعار VIP الباقية ما بتنعرض للعامة
+    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier; delete o.card; delete o.wm; if (!o.oos) delete o.oos;
+    if (n.type === "item") { if (n.oos === "gone" || n.oos === "oos") o.oos = true; if (n.quote === true) { o.quote = true; o.priceUsd = 0; return o; } const pr = storePricesOf(n); if (!pr.length) return null; o.priceUsd = pr[0]; return o; }      // "السعر عند التواصل": بيبين بدون سعر      // السعر العام = VIP 1، وأسعار VIP الباقية ما بتنعرض للعامة
     const children = build(n.id); return children.length ? { ...o, children } : null;      // مجلد فاضي ما بينعرض بالصفحة العامة
   }).filter(Boolean);
   return build("");
@@ -2044,7 +2044,7 @@ async function storeSupplierSearch(env, q) {
 async function storeSupplierSectionOffers(env, section, id) {
   if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) throw new ApiError("bad_request", "طلب غلط.");
   if (section === "topups") { const o = await storeSupplierOffers(env, id); return o.offers.map(x => ({ id: x.offerId, name: x.name, priceUsd: x.priceUsd, note: "" })); }
-  if (section === "giftcards") { const j = await fzrCall(env, "GET", "/giftcards/cards?category_id=" + encodeURIComponent(id)); return (Array.isArray(j.offers) ? j.offers : []).map(x => ({ id: String(x.card_id || ""), name: cleanText(x.name, 80), priceUsd: fzrNum(x.price_usd), note: x.stock !== undefined ? "مخزون " + (Number(x.stock) || 0) : "" })).filter(x => x.id && x.priceUsd !== null); }
+  if (section === "giftcards") { const j = await fzrCall(env, "GET", "/giftcards/cards?category_id=" + encodeURIComponent(id)); return (Array.isArray(j.offers) ? j.offers : []).map(x => ({ id: String(x.card_id || ""), name: cleanText(x.name, 80), priceUsd: fzrNum(x.price_usd), stock: x.stock === undefined || x.stock === null ? null : Number(x.stock) || 0, note: x.stock !== undefined ? "مخزون " + (Number(x.stock) || 0) : "" })).filter(x => x.id && x.priceUsd !== null); }
   if (section === "manual") { const j = await fzrCall(env, "GET", "/manual-services/" + encodeURIComponent(id) + "/offers"); return (Array.isArray(j.items) ? j.items : []).map(x => ({ id: String(x.id || ""), name: cleanText(x.name, 80), priceUsd: fzrNum(x.price_usd), note: Number(x.delivery_minutes) > 0 ? "تسليم خلال " + Number(x.delivery_minutes) + " دقيقة" : "" })).filter(x => x.id && x.priceUsd !== null); }
   throw new ApiError("bad_request", "طلب غلط.");
 }
@@ -2439,12 +2439,15 @@ async function storeAutoReprice(env, opts) {
   if (!env.FAZER_API_KEY) return { skipped: "no_key" };
   const onlyId = opts && opts.id, force = !!(opts && opts.force), nodes = await storeAllNodes(env), at = Date.now();
   const items = nodes.filter(n => n.type === "item" && (!onlyId || n.id === onlyId) && ((n.supplier && n.supplier.offerId) || (n.card && n.card.cardId)));
-  const cats = new Map(), stats = { checked: 0, changed: 0, held: 0, errors: 0 }, writes = [];
+  const cats = new Map(), stats = { checked: 0, changed: 0, held: 0, errors: 0, gone: 0, back: 0 }, writes = [];
   for (const n of items) {
     const isCard = !(n.supplier && n.supplier.offerId), src = isCard ? n.card : n.supplier, cid = String(src.categoryId || ""), key = (isCard ? "g:" : "t:") + cid;
-    if (!cats.has(key)) { try { cats.set(key, isCard ? (await storeSupplierSectionOffers(env, "giftcards", cid)).map(o => ({ offerId: o.id, priceUsd: o.priceUsd })) : (await storeSupplierOffers(env, cid)).offers); } catch (e) { cats.set(key, null); } }
+    if (!cats.has(key)) { try { cats.set(key, isCard ? (await storeSupplierSectionOffers(env, "giftcards", cid)).map(o => ({ offerId: o.id, priceUsd: o.priceUsd, stock: o.stock })) : (await storeSupplierOffers(env, cid)).offers); } catch (e) { cats.set(key, null); } }
     const offers = cats.get(key); if (!offers) { stats.errors++; continue; }
-    const offer = offers.find(o => o.offerId === (isCard ? src.cardId : src.offerId)); stats.checked++; if (!offer) continue;
+    const offer = offers.find(o => o.offerId === (isCard ? src.cardId : src.offerId)); stats.checked++;
+    const soldOut = !offer ? "gone" : (offer.stock !== undefined && offer.stock !== null && offer.stock <= 0 ? "oos" : "");
+    if ((n.oos || "") !== soldOut) { if (soldOut) stats.gone++; else stats.back++; writes.push({ update: { name: docName(env, "storeNodes/" + n.id), fields: objToFields({ oos: soldOut, oosAt: soldOut ? at : 0 }) }, updateMask: { fieldPaths: ["oos", "oosAt"] }, currentDocument: { exists: true } }); }
+    if (!offer) continue;
     const r = storeRepriceOne(n.prices, src, Number(offer.priceUsd), force), field = isCard ? "card" : "supplier";
     if (r.skip === "same" && src.priceHold) writes.push({ update: { name: docName(env, "storeNodes/" + n.id), fields: objToFields({ [field]: { ...src, priceHold: null } }) }, updateMask: { fieldPaths: [field] }, currentDocument: { exists: true } });
     if (r.skip) continue;
@@ -2670,6 +2673,10 @@ async function storeQuoteRequest(env, uid, user, nodes, item, b, now) {
   await fsCommit(env, [ctr.write, { update: { name: docName(env, "storeOrders/" + id), fields: objToFields(order) }, currentDocument: { exists: false } }]);
   return jsonResponse({ ok: true, order: storeOrderOut(id, order, now, false) }, 200);
 }
+// منتج انحذف من FazerCards أو خلص مخزونه: ما بينطلب (وبيبين عليه شريط "غير متوفر" بالمتجر)
+function storeStockCheck(item) {
+  if (item.oos === "gone" || item.oos === "oos") throw new ApiError("out_of_stock", "هالمنتج غير متوفر حالياً. جرّب غيره أو تواصل معنا.", 409);
+}
 function storeClosingCheck(data) { if (data && data.closing && data.closing.code) throw new ApiError("account_closing", "حسابك قيد الحذف (طلب " + data.closing.code + "). ما بتقدر تعمل طلبات أو إيداعات جديدة. بتقدر تلغي طلب الحذف من لوحة الحساب."); }
 async function storeCustomerCtx(env, uid, forWrite) {
   const cur = await fsGetDoc(env, "storeCustomers/" + uid);
@@ -2740,6 +2747,7 @@ async function handleStoreOrderApi(request, env, action, ctx) {
     if (action === "quote") {                      // سعر منتج بمستوى الزبون + رصيده
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
+      storeStockCheck(item);
       if (item.quote === true) { const { cur, vip } = await storeCustomerCtx(env, uid); return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), quoteMode: true, zone: false, noPlayer: true, vip, priceUsd: 0, balanceUsd: r4(Number(cur.data.balanceUsd) || 0), enough: true, shortUsd: 0 } }, 200); }
       const { cur, vip } = await storeCustomerCtx(env, uid), pr = storePricesOf(item), priceUsd = pr[Math.min(vip, pr.length) - 1], bal = r4(Number(cur.data.balanceUsd) || 0);
       return jsonResponse({ ok: true, quote: { itemId: item.id, name: String(item.name), zone: !!(item.supplier && item.supplier.offerId && item.supplier.zoneField) && item.noPlayer !== true, noPlayer: item.noPlayer === true, vip, priceUsd, balanceUsd: bal, enough: bal + 1e-9 >= priceUsd, shortUsd: r4(Math.max(0, priceUsd - bal)) } }, 200);
@@ -2747,6 +2755,7 @@ async function handleStoreOrderApi(request, env, action, ctx) {
     if (action === "order") {                      // شراء من الرصيد: بيخصم فوراً، والأدمن بينفّذ
       const nodes = await storeAllNodes(env), item = storeVisibleItem(nodes, String(b.itemId || ""));
       if (!item) throw new ApiError("no_item", "هالمنتج مو متوفر هلق.", 404);
+      storeStockCheck(item);
       if (item.quote === true) return await storeQuoteRequest(env, uid, user, nodes, item, b, now);
       const noPlayer = item.noPlayer === true, playerId = noPlayer ? "" : String(b.playerId == null ? "" : b.playerId).trim();       // بطاقة إلكترونية: ما في Player ID، الكود بيوصل بعد التنفيذ
       if (!noPlayer && (playerId.length < 3 || playerId.length > 40 || !/^[\p{L}\p{N}_#@.\- ]+$/u.test(playerId))) throw new ApiError("bad_player", "اكتب معرّف اللاعب (Player ID) بشكل صحيح (3 لـ40 خانة، أرقام وأحرف).");

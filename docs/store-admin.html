@@ -419,8 +419,9 @@ function renderCatalog(){
     const name = el('div', { class: 'nm', text: n.name });
     if(!n.enabled) name.append(el('span', { class: 'badge', text: 'مخفي' }));
     if(n.note) name.append(el('span', { class: 'badge', 'data-note': n.id, title: n.note, text: '📝 ملاحظة' }));
+    if(n.oos) name.append(el('span', { class: 'badge spbad', 'data-oosb': n.id, title: n.oos === 'oos' ? 'خلص مخزونه عند FazerCards' : 'ما عاد موجود عند FazerCards', text: '🚫 غير متوفر' }));
     const pr = n.prices || [];
-    const sub = el('div', { class: 'sub', text: n.type === 'folder' ? ('مجلد · ' + childrenOf(n.id).length + ' عنصر') : (pr.length ? ('منتج · ' + fmtUsd(pr[0]) + (pr[pr.length - 1] < pr[0] ? ' · VIP 10: ' + fmtUsd(pr[pr.length - 1]) : '')) : 'منتج · بدون سعر ⚠️') });
+    const sub = el('div', { class: 'sub', text: n.type === 'folder' ? ('مجلد · ' + childrenOf(n.id).length + ' عنصر') : (pr.length ? ('منتج · ' + fmtUsd(pr[0]) + (pr[pr.length - 1] < pr[0] ? ' · VIP 10: ' + fmtUsd(pr[pr.length - 1]) : '')) : n.quote ? 'منتج · 💬 السعر عند التواصل' : 'منتج · بدون سعر ⚠️') });
     const info = el('div', { class: 'info', 'data-open': n.id }, name, sub);
     const up = el('button', { 'data-act': 'up', 'data-id': n.id, title: 'فوق', text: '▲' }); if(i === 0) up.disabled = true;
     const down = el('button', { 'data-act': 'down', 'data-id': n.id, title: 'تحت', text: '▼' }); if(i === kids.length - 1) down.disabled = true;
@@ -1210,7 +1211,7 @@ $('btnSpCheck').onclick = async () => {
   $('btnSpCheck').disabled = false;
 };
 // تبويب FazerCards: تصفّح بالمجلدات (متل الكتالوج) بدل لستة طويلة، وبحث بالاسم بيعرض كل النتايج
-function spWarn(n){ if(n.type !== 'item') return false; if(!n.supplier) return !n.card; const minM = Number(SP.cfg.minMarginPct) || 0, p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1, m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd); return !!n.supplier.priceHold || (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM); }
+function spWarn(n){ if(n.type !== 'item') return false; if(n.oos) return true; if(!n.supplier) return !n.card; const minM = Number(SP.cfg.minMarginPct) || 0, p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1, m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd); return !!n.supplier.priceHold || (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM); }
 function spSubtree(id){ const out = []; const walk = pid => NODES.filter(x => x.parentId === pid).forEach(x => { out.push(x); if(x.type === 'folder') walk(x.id); }); walk(id); return out; }
 function renderSpNav(){
   const nav = $('spNav'); if(!nav) return; nav.textContent = '';
@@ -1240,6 +1241,7 @@ function renderSpItems(){
       const m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd), low = (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM);
       row.append(el('div', { class: 'sm', 'data-link': n.id, text: '🔗 ' + (n.supplier.offerName || n.supplier.offerId) + ' · تكلفتهم ' + (n.supplier.costUsd ? usd4(n.supplier.costUsd) : 'غير معروفة') + ' · هامش VIP 1: ' + pctTxt(m1) + ' · VIP 10: ' + pctTxt(m10) }));
       row.append(el('div', { class: 'sm', 'data-val': n.id, text: valStatus(n) }));
+      if(n.oos) row.append(el('div', { class: 'sm spbad', 'data-oos': n.id, text: n.oos === 'oos' ? '🚫 خلص مخزونه عند FazerCards: ظاهر بالمتجر مع شريط "غير متوفر" وما حدا بيقدر يطلبه.' : '🚫 ما عاد موجود عند FazerCards: ظاهر بالمتجر مع شريط "غير متوفر" وما حدا بيقدر يطلبه.' }));
       if(n.supplier.priceHold) row.append(el('div', { class: 'sm spbad', 'data-hold': n.id, text: '⚠️ FazerCards غيّرت التكلفة من ' + usd4(n.supplier.costUsd) + ' لـ' + usd4(n.supplier.priceHold.costUsd) + ' (أكتر من 20%): ما تعدّل السعر تلقائياً. إذا السعر صح، اضغط 🔄 حدّث التكلفة والسعر.' }));
       if(low) row.append(el('div', { class: 'sm spbad', 'data-low': n.id, text: '⚠️ الهامش تحت الحد (' + minM + '%): ما رح يتنفّذ تلقائياً. ارفع السعر أو غيّر الحد.' }));
     } else row.append(el('div', { class: 'sm', text: 'غير مربوط' }));

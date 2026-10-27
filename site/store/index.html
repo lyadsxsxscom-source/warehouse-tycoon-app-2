@@ -63,6 +63,12 @@ button.card:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--shado
 /* صعّب حفظ الصور: بلا ضغط مطوّل (حفظ الصورة) ولا سحب ولا تحديد */
 .card .pic,.card .pic img{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
 .card .pic img{pointer-events:none}
+/* شريط "غير متوفر": أحمر مائل بزاوية الصورة */
+.card .pic{position:relative;overflow:hidden}
+.oos-rib{position:absolute;top:0;inset-inline-start:0;background:#C0392B;color:#fff;font-weight:800;font-size:.78rem;padding:4px 34px;transform:translate(-28%,42%) rotate(-45deg);transform-origin:center;box-shadow:0 2px 8px rgba(0,0,0,.45);pointer-events:none;white-space:nowrap;z-index:2}
+.card.is-oos .pic .art img{filter:grayscale(1) brightness(.72)}
+.card.is-oos .price{opacity:.6}
+.order-btn[disabled]{opacity:.55;cursor:not-allowed}
 .card .pic .brand{flex:0 0 22px;writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:center;font-family:var(--f-stencil);font-weight:800;font-size:.72rem;letter-spacing:.16em;line-height:1;border-radius:8px;background:rgba(5,16,12,.55);color:#F4F8F5;text-transform:uppercase;pointer-events:none}
 .card .body{padding:12px 10px 14px;border-top:3px solid var(--edge)}
 .card .nm{font-family:var(--f-text);font-weight:700;font-size:1.12rem;line-height:1.45;color:var(--ink);word-break:break-word}
@@ -223,6 +229,7 @@ document.addEventListener('contextmenu', e => { if(e.target.closest && e.target.
 document.addEventListener('dragstart', e => { if(e.target && e.target.tagName === 'IMG') e.preventDefault(); });
 function pic(n, icon){
   const box = el('div', { class: 'pic' }), art = el('div', { class: 'art' });
+  if(n.oos) box.append(el('span', { class: 'oos-rib', 'data-oos': n.id, 'aria-hidden': 'true', text: 'غير متوفر' }));
   const src = imgSrc(n.imageUrl);
   if(src){ const im = el('img', { src, alt: '', loading: 'lazy' }); im.onerror = () => { art.textContent = icon; }; art.append(im); } else art.textContent = icon;
   box.append(art, el('span', { class: 'brand', 'aria-hidden': 'true', text: 'Yardova Card' }));          // الإطار: بيتحط تلقائياً على كل صورة
@@ -232,11 +239,16 @@ function folderCard(n){
   const b = el('button', { class: 'card', type: 'button', 'data-go': n.id, 'aria-label': n.name }, pic(n, '📁'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name })));
   return b;
 }
+function orderBtn(n){
+  const b = el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: n.oos ? 'غير متوفر' : 'اطلب' });
+  if(n.oos){ b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
+  return b;
+}
 function itemCard(n){
-  if(n.quote) return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), el('div', { class: 'price', 'data-quote': n.id, text: '💬 السعر عند التواصل' }), el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: 'اطلب' })));
+  if(n.quote) return el('div', { class: 'card' + (n.oos ? ' is-oos' : ''), 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), el('div', { class: 'price', 'data-quote': n.id, text: n.oos ? 'غير متوفر حالياً' : '💬 السعر عند التواصل' }), orderBtn(n)));
   const mine = PRICES && PRICES[n.id] !== undefined ? PRICES[n.id] : n.priceUsd, pb = priceBox(mine);
   if(PRICES && mine !== n.priceUsd) pb.append(el('span', { class: 'vipnote', text: 'سعرك VIP ' + PRICE_VIP }));
-  return el('div', { class: 'card', 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), pb, el('button', { class: 'order-btn', type: 'button', 'data-order': n.id, text: 'اطلب' })));
+  return el('div', { class: 'card' + (n.oos ? ' is-oos' : ''), 'data-item': n.id }, pic(n, '🎮'), el('div', { class: 'body' }, el('div', { class: 'nm', text: n.name }), pb, orderBtn(n)));
 }
 function render(){
   const box = $('catalog'), cr = $('crumbs'); box.textContent = ''; cr.textContent = '';
@@ -549,6 +561,7 @@ async function needAccount(msg){
 async function openOrder(itemId){
   const item = findItem(TREE || [], itemId); if(!item) return;
   ordTriggerSel = '[data-order="' + itemId + '"]';
+  if(item.oos){ SH = freshSheet('error'); SH.item = item; SH.msg = 'هالمنتج غير متوفر حالياً. جرّب غيره أو تواصل معنا.'; showSheet(); renderSheet(); $('osClose').focus(); return; }
   if(!(await needAccount('سجّل دخول عشان تطلب.'))) return;
   if(closedGuard()) return;
   SH = freshSheet('loading'); SH.item = item; SH.rid = newRid();
