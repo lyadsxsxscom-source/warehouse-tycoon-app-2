@@ -81,8 +81,11 @@ const click = async (el) => { el.click(); await sleep(80); };
   $("spMargin").value = "5"; $("spCap").value = "100"; $("spEnabled").checked = false; await click($("btnSpSave"));
 
   /* ---- the products and their margin ---- */
-  const rows = [...d.querySelectorAll("#spItems .sprow")]; ok(rows.length === 3 && !d.querySelector('[data-sp="nP"]'), "only products are listed (not folders)");
-  ok(/PUBG › 660 UC/.test(row("i660").textContent) && /VIP 1 \$10\.18 · VIP 10 \$9\.26/.test(row("i660").textContent) && /غير مربوط/.test(row("i660").textContent), "each product shows its path, its VIP 1 and VIP 10 prices, and whether it is linked");
+  ok(/📁 PUBG/.test(d.querySelector('[data-spf="nP"]').textContent) && /3 منتج/.test(d.querySelector('[data-spf="nP"]').textContent) && !row("i660"), "the tab shows folders first (📁 PUBG · 3 products), not a long list of products");
+  ok(/⚠️ [23]/.test(d.querySelector('#spItems [data-spf="nP"]').textContent), "the folder shows how many products need a look (not linked / margin under the limit)");
+  await click(d.querySelector('#spItems [data-spf="nP"]')); ok(/🏠 الكل/.test($("spNav").textContent) && $("spHere").textContent === "PUBG", "opening the folder shows where you are");
+  const rows = [...d.querySelectorAll("#spItems .sprow")]; ok(rows.length === 3 && !d.querySelector('[data-sp="nP"]'), "inside the folder its products are listed");
+  ok(/660 UC/.test(row("i660").textContent) && /VIP 1 \$10\.18 · VIP 10 \$9\.26/.test(row("i660").textContent) && /غير مربوط/.test(row("i660").textContent), "each product shows its path, its VIP 1 and VIP 10 prices, and whether it is linked");
   ok(/🔗 60 UC · تكلفتهم \$0\.88 · هامش VIP 1: 16\.2% · VIP 10: 2\.2%/.test(row("i60").textContent) && !!row("i60").querySelector(`[data-low="i60"]`) && /تحت الحد \(5%\)/.test(row("i60").textContent), "a linked product shows their cost and BOTH margins; VIP 10's margin (2.2%) is under your 5% limit, so it is flagged as not going automatic");
   ok(/هامش VIP 1: 2\.7% · VIP 10: -1\.9%|هامش VIP 1: 2\.7% · VIP 10: -1\.9%/.test(row("iLow").textContent.replace(/−/g, "-")) || /VIP 10: -/.test(row("iLow").textContent), "a margin below zero (selling at a loss) is shown with its minus sign");
   ok(!!row("iLow").querySelector('[data-low="iLow"]'), "and flagged too");

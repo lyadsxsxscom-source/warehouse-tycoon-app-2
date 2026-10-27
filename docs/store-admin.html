@@ -110,6 +110,10 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
 .spbox ol{margin:6px 0;padding-inline-start:20px;line-height:1.9;font-size:.9rem}
 .spwarn{border:1px solid var(--tape);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:.9rem;line-height:1.8}
 .spbad{color:#ffd48a;font-weight:700}
+.spfold{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:start;background:#12281F;border:1px solid var(--line);color:var(--ink);font-weight:700;border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
+.spfold .sm{font-weight:400}
+#spNav{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:8px}
+#spNav button{padding:4px 10px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
 .sprow .tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .sprow .tools button,.spch button.opt{padding:5px 10px;background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:400}
 .spch{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
@@ -245,6 +249,8 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <hr style="border:0;border-top:1px solid var(--line);margin:16px 0;">
       <div class="h">ربط المنتجات مع FazerCards</div>
       <div class="hint">لكل منتج: اختار القسم والخيار عندهم (مثلاً PUBG Mobile ← 660 UC). بتشوف <b>الهامش</b> قبل ما تربط. الربط ما بيغيّر ولا بيشتري شي.</div>
+      <input type="search" id="spFind" placeholder="🔎 ابحث عن منتج بالاسم (مثلاً 660)" autocomplete="off" style="margin:8px 0;">
+      <div id="spNav"></div>
       <div id="spItems"></div>
     </div>
     <div class="card" id="viewOrders" hidden>
@@ -1005,7 +1011,7 @@ $('ordList').addEventListener('click', async e => {
 });
 
 // ===== FazerCards: الاتصال، الإعدادات، وربط المنتجات (قراءة فقط) =====
-let SP = { hasKey: false, cfg: { enabled: false, minMarginPct: 5, dailyCapUsd: 100 }, ch: null, validators: null };
+let SP = { hasKey: false, cfg: { enabled: false, minMarginPct: 5, dailyCapUsd: 100 }, ch: null, validators: null, cur: '', find: '' };
 const fzrNorm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // نفس مطابقة السيرفر: نفس الاسم أول، وإلا الأدق اللي جوّا الاسم (مثلاً "PUBG Mobile (Auto)" ← "PUBG Mobile")، وإذا غامض ما منخمّن
 function fzrMatchValidator(items, name){
@@ -1133,12 +1139,32 @@ $('btnSpCheck').onclick = async () => {
   }catch(e){ box.style.color = 'var(--err)'; box.textContent = e.message; }
   $('btnSpCheck').disabled = false;
 };
+// تبويب FazerCards: تصفّح بالمجلدات (متل الكتالوج) بدل لستة طويلة، وبحث بالاسم بيعرض كل النتايج
+function spWarn(n){ if(n.type !== 'item') return false; if(!n.supplier) return !n.card; const minM = Number(SP.cfg.minMarginPct) || 0, p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1, m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd); return !!n.supplier.priceHold || (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM); }
+function spSubtree(id){ const out = []; const walk = pid => NODES.filter(x => x.parentId === pid).forEach(x => { out.push(x); if(x.type === 'folder') walk(x.id); }); walk(id); return out; }
+function renderSpNav(){
+  const nav = $('spNav'); if(!nav) return; nav.textContent = '';
+  if(SP.find){ nav.append(el('span', { class: 'sm', id: 'spFindInfo', text: 'نتايج البحث عن "' + SP.find + '"' })); return; }
+  if(SP.cur && !NODES.some(x => x.id === SP.cur)) SP.cur = '';
+  nav.append(el('button', { type: 'button', 'data-spf': '', text: '🏠 الكل' }));
+  pathOf(SP.cur).slice(0, -1).forEach(x => nav.append(el('span', { text: '›' }), el('button', { type: 'button', 'data-spf': x.id, text: x.name })));
+  if(SP.cur){ const me = NODES.find(x => x.id === SP.cur); nav.append(el('span', { text: '›' }), el('b', { id: 'spHere', text: me ? me.name : '' })); }
+}
 function renderSpItems(){
-  const box = $('spItems'); if(!box) return; box.textContent = '';
-  const items = NODES.filter(n => n.type === 'item'); if(!items.length){ box.append(el('div', { class: 'empty', id: 'spEmpty', text: 'ما في منتجات. ضيف منتجات بتبويب الكتالوج.' })); return; }
-  const minM = Number(SP.cfg.minMarginPct) || 0;
+  const box = $('spItems'); if(!box) return; box.textContent = ''; renderSpNav();
+  const all = NODES.filter(n => n.type === 'item'); if(!all.length){ box.append(el('div', { class: 'empty', id: 'spEmpty', text: 'ما في منتجات. ضيف منتجات بتبويب الكتالوج.' })); return; }
+  const minM = Number(SP.cfg.minMarginPct) || 0, q = SP.find.toLowerCase();
+  let items;
+  if(q){ items = all.filter(n => (pathOf(n.id).map(x => x.name).join(' ') + ' ' + n.name).toLowerCase().includes(q)).slice(0, 100); if(!items.length) box.append(el('div', { class: 'empty', id: 'spNoFind', text: 'ما في منتج بهالاسم.' })); }
+  else {
+    NODES.filter(x => x.type === 'folder' && (x.parentId || '') === SP.cur).forEach(f => {
+      const sub = spSubtree(f.id).filter(x => x.type === 'item'), warn = sub.filter(spWarn).length;
+      box.append(el('button', { type: 'button', class: 'spfold', 'data-spf': f.id }, el('span', { text: '📁 ' + f.name }), el('span', { class: 'sm' + (warn ? ' spbad' : ''), text: sub.length + ' منتج' + (warn ? ' · ⚠️ ' + warn : '') })));
+    });
+    items = all.filter(n => (n.parentId || '') === SP.cur);
+  }
   items.forEach(n => {
-    const p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1, path = pathOf(n.id).map(x => x.name).join(' › ');
+    const p1 = (n.prices || [])[0], p10 = (n.prices || [])[9] || p1, path = q ? pathOf(n.id).map(x => x.name).join(' › ') : n.name;
     const row = el('div', { class: 'cust sprow', 'data-sp': n.id }, el('div', { class: 'nm', text: path }), el('div', { class: 'sm', text: 'سعرك: VIP 1 ' + (p1 ? usd4(p1) : '—') + ' · VIP 10 ' + (p10 ? usd4(p10) : '—') }));
     if(n.supplier){
       const m1 = marginOf(p1, n.supplier.costUsd), m10 = marginOf(p10, n.supplier.costUsd), low = (m10 !== null && m10 < minM) || (m1 !== null && m1 < minM);
@@ -1172,7 +1198,10 @@ function renderChooser(n){
   return wrap;
 }
 $('spItems').addEventListener('change', e => { if(e.target.id === 'spValSel' && SP.ch) SP.ch.vmatch = e.target.value; });
+$('spFind').addEventListener('input', e => { SP.find = e.target.value.trim(); SP.ch = null; renderSpItems(); });
+$('spNav').addEventListener('click', e => { const b = e.target.closest('button[data-spf]'); if(!b) return; SP.cur = b.dataset.spf; SP.ch = null; renderSpItems(); });
 $('spItems').addEventListener('click', async e => {
+  const f = e.target.closest('button[data-spf]'); if(f){ SP.cur = f.dataset.spf; SP.ch = null; renderSpItems(); if($('spNav').scrollIntoView) $('spNav').scrollIntoView({ block: 'nearest' }); return; }
   const b = e.target.closest('button[data-spact]'); if(!b) return; const act = b.dataset.spact, id = b.dataset.id, n = NODES.find(x => x.id === id);
   $('spMsg').textContent = '';
   try{
