@@ -83,6 +83,7 @@ const lastSave = () => calls.filter(c => c.body.action === "save").pop();
   $("edCancel").click();
 
   /* ---- images ---- */
+  dom.window.watermarkUrl = async (src) => src;          // العلامة المائية إلها اختبار لحالها (store_admin_wm)
   const pickFile = (type) => { const input = $("edFile"); const f = new dom.window.File(["x"], "a." + type.split("/")[1], { type }); Object.defineProperty(input, "files", { value: [f], configurable: true }); input.dispatchEvent(new dom.window.Event("change")); };
   rows()[0].querySelector('[data-act="edit"]').click(); canvasCalls = [];
   pickFile("image/png"); await sleep(60);

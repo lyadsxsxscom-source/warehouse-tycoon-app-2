@@ -1268,7 +1268,7 @@ function storeParsePrices(raw) {
   return out;
 }
 function storeNodeOut(n) {
-  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), priceHold: n.supplier.priceHold && Number(n.supplier.priceHold.costUsd) > 0 ? { costUsd: Number(n.supplier.priceHold.costUsd), at: Number(n.supplier.priceHold.at) || 0 } : null, categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), noPlayer: n.type === "item" && n.noPlayer === true, quote: n.type === "item" && n.quote === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0, priceHold: n.card.priceHold && Number(n.card.priceHold.costUsd) > 0 ? { costUsd: Number(n.card.priceHold.costUsd), at: Number(n.card.priceHold.at) || 0 } : null } : null };
+  return { supplier: n.type === "item" && n.supplier && n.supplier.offerId ? { provider: "fazercards", categoryId: String(n.supplier.categoryId || ""), offerId: String(n.supplier.offerId || ""), playerField: String(n.supplier.playerField || "player_id"), zoneField: String(n.supplier.zoneField || ""), priceHold: n.supplier.priceHold && Number(n.supplier.priceHold.costUsd) > 0 ? { costUsd: Number(n.supplier.priceHold.costUsd), at: Number(n.supplier.priceHold.at) || 0 } : null, categoryName: String(n.supplier.categoryName || ""), validateCategoryId: String(n.supplier.validateCategoryId || ""), offerName: String(n.supplier.offerName || ""), costUsd: Number(n.supplier.costUsd) || 0 } : null, id: n.id, parentId: String(n.parentId || ""), type: n.type === "item" ? "item" : "folder", name: String(n.name || ""), prices: n.type === "item" ? storePricesOf(n) : [], enabled: n.enabled !== false, sort: Number(n.sort) || 0, hasImage: Number(n.imageVer) > 0, imageUrl: Number(n.imageVer) > 0 ? "/store/img/" + n.id + "?v=" + Number(n.imageVer) : "", note: String(n.note || ""), wm: n.wm === true, noPlayer: n.type === "item" && n.noPlayer === true, quote: n.type === "item" && n.quote === true, card: n.type === "item" && n.card && n.card.cardId ? { categoryId: String(n.card.categoryId || ""), cardId: String(n.card.cardId || ""), name: String(n.card.name || ""), costUsd: Number(n.card.costUsd) || 0, priceHold: n.card.priceHold && Number(n.card.priceHold.costUsd) > 0 ? { costUsd: Number(n.card.priceHold.costUsd), at: Number(n.card.priceHold.at) || 0 } : null } : null };
 }
 // ===== الكتالوج السريع: كل العناصر بمستند واحد (قراءة وحدة بدل مئات) =====
 // مستندات storeNodes/* تبقى هي الأصل (كل تعديل بيكتب فيها وبيحدّث النسخة السريعة بنفس العملية). فيك ترجع للوضع القديم بأي وقت.
@@ -1310,7 +1310,7 @@ function storeTree(nodes) {
   const kids = new Map();
   for (const n of nodes) { if (n.enabled === false) continue; const k = String(n.parentId || ""); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(n); }
   const build = (pid) => storeSorted(kids.get(pid) || []).map(n => {
-    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier; delete o.card;
+    const o = storeNodeOut(n); delete o.parentId; delete o.enabled; delete o.sort; delete o.hasImage; delete o.prices; delete o.supplier; delete o.card; delete o.wm;
     if (n.type === "item") { if (n.quote === true) { o.quote = true; o.priceUsd = 0; return o; } const pr = storePricesOf(n); if (!pr.length) return null; o.priceUsd = pr[0]; return o; }      // "السعر عند التواصل": بيبين بدون سعر      // السعر العام = VIP 1، وأسعار VIP الباقية ما بتنعرض للعامة
     const children = build(n.id); return children.length ? { ...o, children } : null;      // مجلد فاضي ما بينعرض بالصفحة العامة
   }).filter(Boolean);
@@ -1369,12 +1369,20 @@ async function storeCatalogCached(request, env, ctx) {
     return jsonResponse({ ok: false, error: "unavailable", message: "المتجر مشغول مؤقتاً. جرّب بعد شوي." }, 503);
   }
 }
-async function handleStoreImage(env, id) {
+// منع عرض صورنا بمواقع تانية (hotlink): إذا الطلب جاي من صفحة موقع غريب بنرفض. بدون Referer (تطبيقات، تصفّح خاص) بنسمح.
+const STORE_IMG_HOSTS = ["lyadsxsxscom-source.github.io", "ly-ad.de", "localhost", "127.0.0.1"];
+function storeImgRefererOk(request) {
+  const ref = request && request.headers ? request.headers.get("Referer") : ""; if (!ref) return true;
+  let h = ""; try { h = new URL(ref).hostname.toLowerCase(); } catch (e) { return false; }
+  return STORE_IMG_HOSTS.some(a => h === a || h.endsWith("." + a));
+}
+async function handleStoreImage(env, id, request) {
+  if (!storeImgRefererOk(request)) return new Response("Forbidden", { status: 403, headers: { "Cache-Control": "no-store", ...corsHeaders() } });
   const d = id ? await fsGetDoc(env, "storeImages/" + id) : { exists: false };
   const m = d.exists && d.data ? /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(d.data.data || "")) : null;
   if (!m) return new Response("Not found", { status: 404, headers: corsHeaders() });
   const bin = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
-  return new Response(bin, { status: 200, headers: { "Content-Type": m[1], "Cache-Control": "public, max-age=604800, immutable", "X-Content-Type-Options": "nosniff", ...corsHeaders() } });
+  return new Response(bin, { status: 200, headers: { "Content-Type": m[1], "Cache-Control": "public, max-age=604800, immutable", "X-Content-Type-Options": "nosniff", "Vary": "Referer", "Content-Disposition": "inline", ...corsHeaders() } });
 }
 // ===== تغيير حالة طلب (تنفيذ / رفض مع استرجاع / مرتجع): نفس المنطق للأدمن وللتنفيذ التلقائي (by = "admin" | "auto") =====
 async function storeOrderAction(env, action, id, note, by, extra) {
@@ -1435,7 +1443,7 @@ async function storeCatalogPurge(request) {
 async function handleAdminStore(request, env) {            // غلاف: بعد أي تعديل على الكتالوج بنمسح نسخة الكاش الطازجة (حتى يبين التعديل فوراً)
   let act = ""; try { act = String((await request.clone().json()).action || ""); } catch (e) { /* بدون جسم */ }
   const res = await handleAdminStoreInner(request, env);
-  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply", "reprice_one", "ai_enable"].includes(act)) await storeCatalogPurge(request);
+  if (res.status === 200 && ["save", "delete", "move", "reorder", "supplier_link", "prices_apply", "reprice_one", "image_wm", "ai_enable"].includes(act)) await storeCatalogPurge(request);
   return res;
 }
 async function handleAdminStoreInner(request, env) {
@@ -1443,7 +1451,7 @@ async function handleAdminStoreInner(request, env) {
   let b = {}; try { b = await request.json(); } catch (e) {}
   try {
     // الكتالوج (حتى 350 مستند) بيتحمّل بس للإجراءات اللي بتحتاجه. قبل هيك كل إجراء (حتى عدّاد الطلبات كل دقيقة) كان يقراه كله.
-    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "reprice_one", "save", "delete", "move", "reorder", "ai_pending", "ai_enable"].includes(b.action) ? await storeAllNodes(env) : [];
+    const nodes = ["list", "prices_preview", "prices_apply", "supplier_link", "reprice_one", "image_wm", "save", "delete", "move", "reorder", "ai_pending", "ai_enable"].includes(b.action) ? await storeAllNodes(env) : [];
     const out = (list) => jsonResponse({ ok: true, nodes: storeSorted(list).map(n => ({ ...storeNodeOut(n), ai: n.ai === true })), max: { depth: STORE_MAX_DEPTH, nodes: storeNodeLimit(nodes) } }, 200);
     if (b.action === "list") return out(nodes);
     if (b.action === "vip_get") { const v = await storeLoadVipSizes(env); return jsonResponse({ ok: true, ...v }, 200); }
@@ -1758,6 +1766,8 @@ async function handleAdminStoreInner(request, env) {
         else if (typeof b.image === "string" && b.image.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image)) image = b.image;
         else throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير.");
       }
+      let imageOrig = "";                     // النسخة الأصلية بدون العلامة المائية: محفوظة للأدمن بس (ما بتنعرض)
+      if (image && b.imageOrig !== undefined && b.imageOrig !== "" && b.imageOrig !== null) { if (typeof b.imageOrig === "string" && b.imageOrig.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.imageOrig)) imageOrig = b.imageOrig; else throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير."); }
       const kind = existing ? existing.type : (b.type === "item" ? "item" : b.type === "folder" ? "folder" : null);
       if (!kind) throw new ApiError("bad_type", "النوع لازم مجلد أو منتج.");
       const quoteMode = kind === "item" && (b.quote === true || (b.quote === undefined && existing && existing.quote === true)), prices = kind === "item" ? (quoteMode && (!Array.isArray(b.prices) || b.prices[0] === "" || b.prices[0] === undefined || b.prices[0] === null) ? [] : storeParsePrices(b.prices)) : null;      // "السعر عند التواصل": بدون سعر ثابت
@@ -1778,9 +1788,20 @@ async function handleAdminStoreInner(request, env) {
       }
       if (image !== undefined) {
         const ver = image ? now : 0;
-        writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ imageVer: ver }) }, updateMask: { fieldPaths: ["imageVer"] } });
+        writes.push({ update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ imageVer: ver, wm: !!(image && imageOrig) }) }, updateMask: { fieldPaths: ["imageVer", "wm"] } });
         writes.push(image ? { update: { name: docName(env, "storeImages/" + id), fields: objToFields({ data: image, ver }) } } : { delete: docName(env, "storeImages/" + id) });
+        writes.push(imageOrig ? { update: { name: docName(env, "storeImagesOrig/" + id), fields: objToFields({ data: imageOrig, ver }) } } : { delete: docName(env, "storeImagesOrig/" + id) });
       }
+      await fsCommitNodes(env, writes);
+      return out(await storeAllNodes(env));
+    }
+    if (b.action === "image_wm") {                 // صورة قديمة بدون علامة: بنحفظ الأصلية (من السيرفر نفسه) وبنحط المعلّمة مكانها
+      const id = validId(String(b.id || "")), n = nodes.find(x => x.id === id), img = b.image;
+      if (!n || !(Number(n.imageVer) > 0)) throw new ApiError("not_found", "هالعنصر ما إله صورة.", 404);
+      if (!(typeof img === "string" && img.length <= STORE_IMG_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(img))) throw new ApiError("bad_image", "الصورة لازم تكون PNG أو JPEG أو WebP وحجمها صغير.");
+      const cur = await fsGetDoc(env, "storeImages/" + id), orig = await fsGetDoc(env, "storeImagesOrig/" + id), ver = Date.now(), writes = [];
+      if (!orig.exists) { if (!cur.exists) throw new ApiError("not_found", "هالعنصر ما إله صورة.", 404); writes.push({ update: { name: docName(env, "storeImagesOrig/" + id), fields: objToFields({ data: String(cur.data.data || ""), ver }) }, currentDocument: { exists: false } }); }
+      writes.push({ update: { name: docName(env, "storeImages/" + id), fields: objToFields({ data: img, ver }) } }, { update: { name: docName(env, "storeNodes/" + id), fields: objToFields({ imageVer: ver, wm: true }) }, updateMask: { fieldPaths: ["imageVer", "wm"] }, currentDocument: { exists: true } });
       await fsCommitNodes(env, writes);
       return out(await storeAllNodes(env));
     }
@@ -1788,7 +1809,7 @@ async function handleAdminStoreInner(request, env) {
       const id = validId(String(b.id || "")); const n = nodes.find(x => x.id === id);
       if (!n) throw new ApiError("not_found", "هالعنصر مو موجود.", 404);
       if (nodes.some(x => String(x.parentId || "") === id)) throw new ApiError("has_children", "المجلد مش فاضي. احذف اللي جواته أول.");
-      await fsCommitNodes(env, [{ delete: docName(env, "storeNodes/" + id) }, { delete: docName(env, "storeImages/" + id) }]);
+      await fsCommitNodes(env, [{ delete: docName(env, "storeNodes/" + id) }, { delete: docName(env, "storeImages/" + id) }, { delete: docName(env, "storeImagesOrig/" + id) }]);
       return out(nodes.filter(x => x.id !== id));
     }
     if (b.action === "move") {                    // نقل مجلد أو منتج لمجلد تاني (أو للرئيسية)
@@ -4014,7 +4035,7 @@ export default {
     if (url.pathname.startsWith("/ai/mcp/")) return handleAiMcp(request, env, url.pathname.slice(8));
     if (url.pathname === "/supplier/fazer/webhook" && request.method === "POST") return handleFazerWebhook(request, env);
     if (url.pathname === "/store/catalog" && (request.method === "GET" || request.method === "POST")) return storeCatalogCached(request, env, ctx);
-    if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)));
+    if (url.pathname.startsWith("/store/img/") && request.method === "GET") return handleStoreImage(env, validId(url.pathname.slice(11)), request);
     if (url.pathname === "/admin/inactivity" && request.method === "POST") return handleAdminInactivity(request, env);
     if (url.pathname === "/admin/wallet-reindex" && request.method === "POST") return handleAdminWalletReindex(request, env);
     if (url.pathname === "/admin/shop-orders" && request.method === "POST") return handleAdminShopOrders(request, env);
