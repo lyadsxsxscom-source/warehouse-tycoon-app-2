@@ -1429,7 +1429,7 @@ async function storeOrderAction(env, action, id, note, by, extra) {
             try { await storeAnonymizeCustomer(env, o.uid, id); upd.finalizePending = false; upd.uid = ""; upd.name = "حساب محذوف"; upd.email = ""; upd.payout = { method: "", account: "" }; }
             catch (e) { console.error({ message: "store deletion incomplete", code: np.code, error: String(e && e.message || e) }); warning = "انبعت الرصيد لكن تعذّر إكمال حذف الحساب. اضغط 🧹 إكمال الحذف."; }
           }
-          else if (action === "order_done") await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : upd.delivery ? { ...np, card: true } : np);
+          else if (action === "order_done") { await storeNotify(env, o.uid, kind === "topup" ? "store_topup_done" : "store_done", kind === "topup" ? { ...np, amount: price } : upd.delivery ? { ...np, card: true } : np); if (kind === "order") await stPostOrderToChannel(env, o); }
           else if (action === "order_reject") await storeNotify(env, o.uid, "store_rejected", { ...np, reason: note });
           else await storeNotify(env, o.uid, "store_refunded", { ...np, note });
           return { warning, order: storeOrderOut(id, { ...o, ...upd }, now2, true) };
@@ -1544,6 +1544,7 @@ async function handleAdminStoreInner(request, env) {
       await storeNotify(env, o.uid, "store_quote", { code: String(o.code || ""), item: String(o.itemName || ""), price: price.toFixed(2) });
       return jsonResponse({ ok: true, order: storeOrderOut(id, { ...o, ...upd }, at, true) }, 200);
     }
+    if (b.action === "tg_status" || b.action === "tg_setup" || b.action === "tg_save" || b.action === "tg_test") return await handleStoreTgAdmin(request, env, b);
     if (b.action === "suggestions_list") {                 // اقتراحات الزباين (الأحدث أول)
       const rows = (await fsRunQuery(env, "storeSuggestions", null, 500, 0)).map(r => ({ id: r.id, name: String(r.data.name || ""), kind: r.data.kind === "app" ? "app" : "game", note: String(r.data.note || ""), custName: String(r.data.custName || ""), email: String(r.data.email || ""), status: r.data.status === "done" ? "done" : "new", createdAt: Number(r.data.createdAt) || 0 })).sort((a, c2) => c2.createdAt - a.createdAt);
       return jsonResponse({ ok: true, newCount: rows.filter(x => x.status === "new").length, suggestions: rows.slice(0, 300) }, 200);
@@ -2421,6 +2422,152 @@ async function storePricePlan(env, nodes, params, minMargin, onlyIds) {
     return { ...base, status: "ok", costUsd: offer.priceUsd, proposed: storeProposePrices(offer.priceUsd, params.m1, params.m10, params.step, minMargin) };
   }).sort((a, b) => (a.path + "|" + a.name).localeCompare(b.path + "|" + b.name));
 }
+
+// ===== بوت المتجر على تلغرام + قناة المتجر (توكن مستقل عن بوت اللعبة: STORE_BOT_TOKEN) =====
+// البوت ما بيبيع جوا تلغرام: زر "افتح المتجر" بيفتح نفس صفحة المتجر كـMini App، فما في متجرين لازم نصلّحهم مرتين.
+const STORE_TG_URL = "https://yardova.ly-ad.de/store/";
+const stHasBot = (env) => !!env.STORE_BOT_TOKEN;
+function stToken(env) {
+  if (!env.STORE_BOT_TOKEN) throw new ApiError("no_store_bot", "توكن بوت المتجر مو مضاف بـCloudflare (STORE_BOT_TOKEN).", 503);
+  return env.STORE_BOT_TOKEN;
+}
+async function stApi(env, method, payload) {
+  const r = await fetch(`https://api.telegram.org/bot${stToken(env)}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
+  return r.json().catch(() => ({ ok: false }));
+}
+const stSend = (env, chatId, text, extra) => stApi(env, "sendMessage", { chat_id: chatId, text, disable_web_page_preview: true, ...(extra || {}) }).catch(e => console.warn({ message: "store bot send failed", error: String(e.message || e) }));
+async function stCfg(env) { const d = await fsGetDoc(env, "config/storeTg"); const c = d.exists && d.data ? d.data : {}; return { channel: String(c.channel || ""), autoPost: c.autoPost === true, updatedAt: Number(c.updatedAt) || 0 }; }
+function stMenu(env, cfg) {
+  const rows = [[{ text: "🛒 افتح المتجر", web_app: { url: STORE_TG_URL } }], [{ text: "💰 رصيدي", callback_data: "bal" }, { text: "📦 طلباتي", callback_data: "ord" }]];
+  const last = [{ text: "💬 الدعم", url: "https://t.me/IBRAHEEM932" }];
+  if (cfg.channel) last.push({ text: "📣 قناتنا", url: "https://t.me/" + cfg.channel.replace(/^@/, "") });
+  rows.push(last); return { inline_keyboard: rows };
+}
+const ST_WELCOME = "أهلاً فيك بـYardova Card 👋\n\nشحن ألعاب وتطبيقات وبطاقات إلكترونية، بأسعار VIP وتنفيذ تلقائي.\n\nاضغط \"افتح المتجر\" وسجّل دخولك مرة وحدة، وبعدها بتوصلك إشعارات طلباتك هون.";
+const ST_NOT_LINKED = "ما قدرنا نعرف حسابك 🙃\nافتح المتجر من الزر وسجّل دخولك مرة وحدة، وبعدها جرّب كمان مرة.";
+// نص إشعارات الزبون بتلغرام (نفس مناسبات إشعار التطبيق)
+const ST_NOTIFY = {
+  store_done: (p) => `✅ تم تنفيذ طلبك ${p.code}\n🎮 ${p.item}` + (p.card ? "\n\nالكود جاهز بـ\"طلباتي\" بالمتجر." : "\n\nتأكد من حسابك باللعبة."),
+  store_quote: (p) => `💬 سعر طلبك ${p.code} جاهز: ${p.price}$\n🎮 ${p.item}\n\nافتح المتجر ← طلباتي لتوافق وتدفع من رصيدك.`,
+  store_rejected: (p) => `❌ انرفض طلبك ${p.code}` + (p.reason ? `\nالسبب: ${p.reason}` : "") + "\n\nإذا كنت دفعت، رجّعنا المبلغ لرصيدك.",
+  store_refunded: (p) => `↩️ رجّعنا مبلغ طلبك ${p.code} لرصيدك.`,
+  store_topup_done: (p) => `💰 انشحن رصيدك: ${p.amount}$\nصار جاهز للشراء.`,
+};
+async function stCustomerByChat(env, chatId) {
+  const rows = await fsRunQuery(env, "storeCustomers", null, 3, 0, { field: "tgChatId", value: String(chatId) });
+  return rows.length ? rows[0] : null;
+}
+async function stNotify(env, uid, type, params) {           // بيتنده من storeNotify: إشعار تلغرام جنب إشعار التطبيق
+  if (!stHasBot(env) || !ST_NOTIFY[type]) return;
+  const c = await fsGetDoc(env, "storeCustomers/" + uid);
+  const chatId = c.exists ? String(c.data.tgChatId || "") : "";
+  if (!chatId) return;
+  const cfg = await stCfg(env);
+  await stSend(env, chatId, ST_NOTIFY[type](params || {}), { reply_markup: stMenu(env, cfg) });
+}
+async function stPostOrderToChannel(env, o) {              // نشر الطلبات المنفّذة بالقناة (بدون أي معلومة عن الزبون)
+  try {
+    if (!stHasBot(env)) return;
+    const cfg = await stCfg(env); if (!cfg.autoPost || !cfg.channel) return;
+    const mins = Math.max(1, Math.round((Date.now() - (Number(o.createdAt) || Date.now())) / 60000));
+    const when = mins < 60 ? mins + " دقيقة" : Math.round(mins / 60) + " ساعة";
+    const text = `✅ طلب تنفّذ\n🎮 ${String(o.itemName || "")}\n⏱️ خلال ${when}\n\nاطلب إنت كمان من Yardova Card 👇`;
+    await stApi(env, "sendMessage", { chat_id: cfg.channel, text, disable_web_page_preview: true, reply_markup: { inline_keyboard: [[{ text: "🛒 المتجر", url: STORE_TG_URL }]] } });
+  } catch (e) { console.warn({ message: "store channel post failed", error: String(e.message || e) }); }
+}
+// التحقق من initData تبع Mini App (توقيع تلغرام) ← بيثبت إنه الزبون فاتح المتجر من جوا تلغرام
+async function stCheckInitData(env, initData) {
+  const p = new URLSearchParams(String(initData || "")); const hash = p.get("hash") || ""; p.delete("hash");
+  if (!/^[a-f0-9]{64}$/i.test(hash)) return null;
+  const authDate = Number(p.get("auth_date")) || 0;
+  if (!authDate || Date.now() / 1000 - authDate > 86400) return null;                  // ما منقبل توقيع أقدم من يوم
+  const data = [...p.entries()].map(([k, v]) => k + "=" + v).sort().join("\n");
+  const secretKey = await crypto.subtle.importKey("raw", new TextEncoder().encode("WebAppData"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const secret = await crypto.subtle.sign("HMAC", secretKey, new TextEncoder().encode(stToken(env)));
+  const key = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  const hex = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, "0")).join("");
+  if (!safeEqual(hex, hash.toLowerCase())) return null;
+  let user = null; try { user = JSON.parse(p.get("user") || "null"); } catch (e) { return null; }
+  return user && user.id ? { chatId: String(user.id), name: cleanText(user.first_name, 40) } : null;
+}
+async function handleStoreTgLink(request, env) {           // المتجر لما ينفتح جوا تلغرام: بيربط الحساب بالشات لتوصله الإشعارات
+  try {
+    const user = await requireUser(request);
+    const uid = validId(String(user.sub || "")); if (!uid) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+    let b = {}; try { b = await request.json(); } catch (e) {}
+    const who = await stCheckInitData(env, b.initData);
+    if (!who) return jsonResponse({ ok: false, error: "bad_init" }, 400);
+    const c = await fsGetDoc(env, "storeCustomers/" + uid);
+    if (!c.exists) return jsonResponse({ ok: false, error: "no_account" }, 404);
+    if (String(c.data.tgChatId || "") === who.chatId) return jsonResponse({ ok: true, linked: true }, 200);
+    const others = await fsRunQuery(env, "storeCustomers", null, 5, 0, { field: "tgChatId", value: who.chatId });
+    const writes = others.filter(r => r.id !== uid).map(r => ({ update: { name: docName(env, "storeCustomers/" + r.id), fields: objToFields({ tgChatId: "", tgName: "" }) }, updateMask: { fieldPaths: ["tgChatId", "tgName"] } }));
+    writes.push({ update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ tgChatId: who.chatId, tgName: who.name }) }, updateMask: { fieldPaths: ["tgChatId", "tgName"] } });
+    await fsCommit(env, writes);
+    return jsonResponse({ ok: true, linked: true }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "store tg link error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
+async function handleStoreTgWebhook(request, env) {
+  try {
+    if (!safeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "", await hmacHex(stToken(env), "yardova:store:webhook"))) return new Response("forbidden", { status: 401 });
+    let update = null; try { update = await request.json(); } catch (e) { return new Response("ok", { status: 200 }); }
+    await stProcessUpdate(env, update);
+  } catch (e) { console.error({ message: "store bot webhook error", error: String(e.message || e) }); }
+  return new Response("ok", { status: 200 });
+}
+async function stProcessUpdate(env, update) {
+  const cfg = await stCfg(env);
+  const cb = update && update.callback_query;
+  if (cb) {
+    const chatId = cb.message && cb.message.chat ? cb.message.chat.id : 0;
+    await stApi(env, "answerCallbackQuery", { callback_query_id: cb.id }).catch(() => {});
+    if (!chatId) return;
+    const row = await stCustomerByChat(env, chatId);
+    if (!row) return stSend(env, chatId, ST_NOT_LINKED, { reply_markup: stMenu(env, cfg) });
+    if (cb.data === "bal") {
+      const { sizes } = await storeLoadVipSizes(env), c = storeCustomerOut(row.id, row.data, sizes);
+      return stSend(env, chatId, `💰 رصيدك: ${c.balanceUsd}$\n⭐ مستواك: VIP ${c.vip}`, { reply_markup: stMenu(env, cfg) });
+    }
+    if (cb.data === "ord") {
+      const rows = (await fsRunQuery(env, "storeOrders", null, 50, 0, { field: "uid", value: row.id })).sort((a, b) => Number(b.data.createdAt) - Number(a.data.createdAt)).slice(0, 5);
+      if (!rows.length) return stSend(env, chatId, "ما عندك طلبات لسا. افتح المتجر وجرّب 🙂", { reply_markup: stMenu(env, cfg) });
+      const txt = rows.map(r => `${ST_STATUS[r.data.status] || r.data.status} · ${String(r.data.code || "")} · ${String(r.data.itemName || "")}`).join("\n");
+      return stSend(env, chatId, "📦 آخر طلباتك:\n" + txt + "\n\nالتفاصيل والأكواد بالمتجر ← طلباتي.", { reply_markup: stMenu(env, cfg) });
+    }
+    return;
+  }
+  const msg = update && update.message;
+  if (!msg || !msg.chat || msg.chat.type !== "private" || !msg.from || msg.from.is_bot) return;
+  return stSend(env, msg.chat.id, ST_WELCOME, { reply_markup: stMenu(env, cfg) });
+}
+const ST_STATUS = { processing: "⏳ قيد التنفيذ", done: "✅ تنفّذ", rejected: "❌ انرفض", refunded: "↩️ انرجع", cancelled: "✖️ ملغي", quote_requested: "💬 بانتظار السعر", quote_offered: "💬 السعر جاهز", awaiting_payment: "⏳ بانتظار الدفع", payment_submitted: "⏳ عم ندقق الدفع" };
+async function handleStoreTgAdmin(request, env, b) {        // بطاقة البوت والقناة بأدمن المتجر
+  if (!stHasBot(env)) return jsonResponse({ ok: true, hasBot: false, ...(await stCfg(env)) }, 200);
+  const cfg = await stCfg(env);
+  if (b.action === "tg_save") {
+    const channel = String(b.channel || "").trim();
+    if (channel && !/^@[A-Za-z0-9_]{4,32}$/.test(channel)) throw new ApiError("bad_channel", "اسم القناة لازم يبلّش بـ@ (مثلاً ‎@YardovaCard‎).");
+    await fsCommit(env, [{ update: { name: docName(env, "config/storeTg"), fields: objToFields({ channel, autoPost: b.autoPost === true, updatedAt: Date.now() }) }, updateMask: { fieldPaths: ["channel", "autoPost", "updatedAt"] } }]);
+  }
+  const hookUrl = new URL(request.url).origin + "/store/telegram/webhook";
+  let setRes = null;
+  if (b.action === "tg_setup") setRes = await stApi(env, "setWebhook", { url: hookUrl, secret_token: await hmacHex(stToken(env), "yardova:store:webhook"), allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
+  if (b.action === "tg_test") {
+    const c2 = await stCfg(env);
+    if (!c2.channel) throw new ApiError("no_channel", "اكتب اسم القناة واحفظ أول.");
+    const r = await stApi(env, "sendMessage", { chat_id: c2.channel, text: "✅ تجربة من أدمن Yardova Card: البوت قادر ينشر بالقناة." });
+    if (!r || !r.ok) throw new ApiError("post_failed", "ما قدر ينشر: " + String((r && r.description) || "") + " — تأكد إنه البوت أدمن بالقناة.");
+  }
+  const [me, info] = await Promise.all([stApi(env, "getMe", {}), stApi(env, "getWebhookInfo", {})]);
+  const wh = (info && info.result) || {};
+  const out2 = await stCfg(env);
+  return jsonResponse({ ok: true, hasBot: true, username: me && me.result ? me.result.username || "" : "", webhookOk: wh.url === hookUrl, webhookUrl: wh.url || "", lastError: wh.last_error_message || "", setupOk: setRes ? !!setRes.ok : null, setupMessage: setRes && !setRes.ok ? String(setRes.description || "") : "", ...out2 }, 200);
+}
 // ===== تحديث الأسعار تلقائياً (كل ساعة): لما FazerCards تغيّر تكلفتها، سعر البيع بيتغيّر بنفس النسبة لكل مستوى VIP (يعني نفس هامشك) =====
 // الأساس (autoBase) = آخر تكلفة وأسعار حطّيتها إنت؛ منحسب منه دايماً حتى ما يتراكم التقريب. أي تعديل يدوي للسعر بيصير هو الأساس الجديد.
 // قفزة أكبر من 20% (طلوع أو نزول) ما بتتطبّق لحالها: بتنعلّم (priceHold) وبتستناك (والتنفيذ التلقائي أصلاً بيوقف إذا الهامش نزل تحت حدّك).
@@ -2697,7 +2844,7 @@ function storeOrderOut(id, o, now, admin) {
   return out;
 }
 const storeEvent = (o, action, by, note, at) => [...(Array.isArray(o.events) ? o.events : []), { at, action, by, note: note || "" }].slice(-20);
-async function storeNotify(env, uid, type, params) { try { await sendPush(env, uid, type, params); } catch (e) { console.warn({ message: "store notify failed", type, error: String(e.message || e) }); } }
+async function storeNotify(env, uid, type, params) { try { await sendPush(env, uid, type, params); } catch (e) { console.warn({ message: "store notify failed", type, error: String(e.message || e) }); } try { await stNotify(env, uid, type, params); } catch (e) { console.warn({ message: "store telegram notify failed", type, error: String(e.message || e) }); } }
 const storeAmountText = (o) => Number(o.amount).toLocaleString("en-US", { minimumFractionDigits: Number(o.decimals) || 0, maximumFractionDigits: Number(o.decimals) || 0 }) + " " + String(o.currency || "");
 // ===== حذف حساب المتجر (الخطوة 8): بدون رصيد بينحذف فوراً، ومع رصيد بيتحوّل لطلب سحب (R-1001) والأدمن بيرسل الرصيد ثم بينحذف الحساب =====
 // الحذف = مسح الاسم والإيميل ومعرّفات اللاعب والإيصالات، وتحويل سجلات الطلبات والمبالغ لسجلات بدون اسم (للمحاسبة). حساب Firebase وحساب اللعبة ما بيتأثروا.
@@ -4021,6 +4168,8 @@ export default {
     if (url.pathname === "/" && request.method === "POST") return handlePostback(request, env, ctx);
     if (url.pathname === "/sign" && request.method === "POST") return handleSign(request, env);
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
+    if (url.pathname === "/store/telegram/webhook" && request.method === "POST") return handleStoreTgWebhook(request, env);
+    if (url.pathname === "/store/tg/link" && request.method === "POST") return handleStoreTgLink(request, env);
     if (url.pathname === "/telegram/webhook" && request.method === "POST") return handleTelegramWebhook(request, env);
     if (url.pathname === "/auth/telegram/start" && request.method === "POST") return handleTelegramStart(request, env);
     if (url.pathname === "/auth/telegram/poll" && request.method === "POST") return handleTelegramPoll(request, env);

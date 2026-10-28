@@ -9,3 +9,7 @@
 
 /favicon.ico
   Cache-Control: public, max-age=604800
+
+/store/*
+  ! X-Frame-Options
+  Content-Security-Policy: frame-ancestors 'self' https://web.telegram.org https://*.telegram.org

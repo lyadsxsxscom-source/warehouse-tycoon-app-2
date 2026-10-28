@@ -150,6 +150,7 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
       <button class="tab" id="tabCustomers">👥 الزباين وVIP</button>
       <button class="tab" id="tabSupplier">🔗 FazerCards</button>
       <button class="tab" id="tabSuggest">💡 الاقتراحات <span id="sugBadge" hidden></span></button>
+      <button class="tab" id="tabTg">🤖 بوت المتجر</button>
     </div>
     <div class="card" id="viewCatalog">
       <div class="crumbs" id="crumbs"></div>
@@ -194,6 +195,21 @@ button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--li
         </div>
         <details id="aiLogBox" style="margin-top:8px;"><summary>📜 السجل (آخر العمليات)</summary><div id="aiLog" class="sm"></div></details>
       </div>
+    </div>
+    <div class="card" id="viewTg" hidden>
+      <div class="sm" style="margin-bottom:8px;">بوت تلغرام للمتجر: الزبون بيفتح المتجر من جوا تلغرام، وبتوصله إشعارات طلباته. والقناة بتنشر كل طلب بتنفّذه (بدون أي معلومة عن الزبون).</div>
+      <div id="tgMsg" role="alert"></div>
+      <div id="tgState" class="sm"></div>
+      <label class="f" for="tgChannel">قناة المتجر (بتبلّش بـ@)</label>
+      <input type="text" id="tgChannel" dir="ltr" placeholder="@YardovaCard" autocomplete="off">
+      <label style="display:flex;align-items:center;gap:8px;color:var(--ink);margin-top:12px;"><input type="checkbox" id="tgAuto"> انشر كل طلب بتنفّذه بالقناة تلقائياً</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button id="btnTgSave">💾 حفظ</button>
+        <button id="btnTgSetup">🔗 ثبّت الويبهوك</button>
+        <button id="btnTgTest">📣 جرّب نشر بالقناة</button>
+        <button id="btnTgRefresh">🔄 فحص</button>
+      </div>
+      <div class="sm" style="margin-top:12px;">الخطوات: اعمل بوت من <b>@BotFather</b> ← خذ التوكن وحطه بـCloudflare باسم <b>STORE_BOT_TOKEN</b> ← ارجع لهون واضغط "ثبّت الويبهوك" ← اعمل قناة وضيف البوت فيها <b>كأدمن</b> ← اكتب اسمها فوق واحفظ.</div>
     </div>
     <div class="card" id="viewSuggest" hidden>
       <div class="sm" style="margin-bottom:8px;">اقتراحات الزباين (لعبة أو تطبيق ما لقوه). علّم الاقتراح ✔ لما تشوفه أو تضيفه.</div>
@@ -646,16 +662,17 @@ $('edSave').onclick = async () => {
 
 // ===== التبويبات =====
 function showTab(which){
-  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders'; $('viewSupplier').hidden = which !== 'supplier'; $('tabSupplier').classList.toggle('active', which === 'supplier'); $('viewSuggest').hidden = which !== 'suggest'; $('tabSuggest').classList.toggle('active', which === 'suggest');
+  $('viewCatalog').hidden = which !== 'catalog'; $('viewPayments').hidden = which !== 'payments'; $('viewCustomers').hidden = which !== 'customers'; $('viewOrders').hidden = which !== 'orders'; $('viewSupplier').hidden = which !== 'supplier'; $('tabSupplier').classList.toggle('active', which === 'supplier'); $('viewSuggest').hidden = which !== 'suggest'; $('tabSuggest').classList.toggle('active', which === 'suggest'); $('viewTg').hidden = which !== 'tg'; $('tabTg').classList.toggle('active', which === 'tg');
   $('tabCatalog').classList.toggle('active', which === 'catalog'); $('tabPayments').classList.toggle('active', which === 'payments'); $('tabCustomers').classList.toggle('active', which === 'customers'); $('tabOrders').classList.toggle('active', which === 'orders');
   if(which === 'orders') loadOrders();
   if(which === 'suggest') loadSuggestions();
+  if(which === 'tg') loadTg();
   if(which === 'supplier'){ loadSupplier(); loadCatalog().then(renderSpItems); }
   if(which === 'payments'){ loadMethods(); loadWallet(); }
   if(which === 'customers'){ loadWallet(); loadVip(); loadCustomers(); }
 }
 // ===== زر الرجوع: كل تنقل (تبويب أو مجلد) بيدخل بتاريخ المتصفح، والنوافذ (التعديل والنقل) بتسكّر بزر الرجوع =====
-const ROUTES = ['catalog', 'payments', 'customers', 'orders', 'supplier', 'suggest'];
+const ROUTES = ['catalog', 'payments', 'customers', 'orders', 'supplier', 'suggest', 'tg'];
 function parseRoute(){ const m = /^#\/?([a-z]+)(?:\/([A-Za-z0-9_-]+))?$/.exec(location.hash || ''); return { tab: m && ROUTES.includes(m[1]) ? m[1] : 'catalog', folder: m && m[2] ? m[2] : '' }; }
 const routeHash = (tab, folder) => '#' + tab + (tab === 'catalog' && folder ? '/' + folder : '');
 let APPLIED = '';                                                                  // آخر مسار انطبّق (حتى ما ينعمل مرتين لما يجي حدث hashchange)
@@ -667,7 +684,30 @@ function popOverlay(){ if(!OVL) return; OVL = false; if(history.state && history
 function closeOverlaysQuiet(){ OVL = false; $('editor').hidden = true; MV = null; $('mover').hidden = true; }
 window.addEventListener('popstate', () => { if(SKIP_POP){ SKIP_POP = false; return; } if(OVL && !(history.state && history.state.ovl)) closeOverlaysQuiet(); });      // بنسكّر النافذة بس لما يطلع المتصفح من مدخلها (مو لحدث متأخر من تنقّل قبلها)
 window.addEventListener('hashchange', () => { const r = parseRoute(); if(routeHash(r.tab, r.folder) === APPLIED) return; if(OVL) closeOverlaysQuiet(); applyRoute(); });      // لو المسار هو نفسه اللي طبّقناه (حدث من تنقّلنا) ما نعمل شي
-$('tabCatalog').onclick = () => goRoute('catalog', CUR); $('tabPayments').onclick = () => goRoute('payments'); $('tabCustomers').onclick = () => goRoute('customers'); $('tabOrders').onclick = () => goRoute('orders'); $('tabSupplier').onclick = () => goRoute('supplier'); $('tabSuggest').onclick = () => goRoute('suggest');
+$('tabCatalog').onclick = () => goRoute('catalog', CUR); $('tabPayments').onclick = () => goRoute('payments'); $('tabCustomers').onclick = () => goRoute('customers'); $('tabOrders').onclick = () => goRoute('orders'); $('tabSupplier').onclick = () => goRoute('supplier'); $('tabSuggest').onclick = () => goRoute('suggest'); $('tabTg').onclick = () => goRoute('tg');
+
+// ===== بوت المتجر وقناته =====
+function renderTg(j){
+  const s = $('tgState');
+  s.textContent = '';
+  if(!j.hasBot){ s.append(el('div', { class: 'spbad', id: 'tgNoBot', text: '⚠️ توكن البوت مو مضاف. حطه بـCloudflare باسم STORE_BOT_TOKEN وارجع اضغط فحص.' })); }
+  else { s.append(el('div', { id: 'tgOk', text: '🤖 البوت: @' + (j.username || '؟') + ' · ' + (j.webhookOk ? 'الويبهوك مثبّت ✅' : 'الويبهوك مو مثبّت ⚠️ اضغط "ثبّت الويبهوك"') + (j.lastError ? ' · آخر خطأ: ' + j.lastError : '') })); }
+  $('tgChannel').value = j.channel || ''; $('tgAuto').checked = !!j.autoPost;
+}
+async function tgCall(action, extra){
+  $('tgMsg').textContent = '';
+  try{ const j = await storeApi({ action, ...(extra || {}) }); renderTg(j);
+    if(action === 'tg_save'){ $('tgMsg').style.color = 'var(--ok, #4caf50)'; $('tgMsg').textContent = 'انحفظ ✓'; }
+    if(action === 'tg_setup'){ $('tgMsg').style.color = j.setupOk ? 'var(--ok, #4caf50)' : 'var(--err)'; $('tgMsg').textContent = j.setupOk ? 'انثبّت الويبهوك ✓' : ('تعذّر: ' + (j.setupMessage || '')); }
+    if(action === 'tg_test'){ $('tgMsg').style.color = 'var(--ok, #4caf50)'; $('tgMsg').textContent = 'انبعتت رسالة تجربة للقناة ✓'; }
+  }catch(err){ $('tgMsg').style.color = 'var(--err)'; $('tgMsg').textContent = err.message; }
+}
+const loadTg = () => tgCall('tg_status');
+$('btnTgSave').onclick = () => tgCall('tg_save', { channel: $('tgChannel').value.trim(), autoPost: $('tgAuto').checked });
+$('btnTgSetup').onclick = () => tgCall('tg_setup');
+$('btnTgTest').onclick = () => tgCall('tg_test');
+$('btnTgRefresh').onclick = () => tgCall('tg_status');
+
 
 // ===== اقتراحات الزباين =====
 function sugBadge(n){ const bd = $('sugBadge'); bd.hidden = !n; bd.textContent = n ? String(n) : ''; }
