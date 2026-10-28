@@ -2512,6 +2512,23 @@ async function handleStoreTgLink(request, env) {           // المتجر لم�
     return jsonResponse({ ok: false, error: "server_error" }, 500);
   }
 }
+// الدخول جوا تلغرام: نافذة جوجل ممنوعة داخل التطبيقات، فمنسجّله بتوقيع تلغرام نفسها (نفس الحساب إذا كان مربوط من قبل)
+async function handleStoreTgSession(request, env) {
+  try {
+    if (!stHasBot(env)) return jsonResponse({ ok: false, error: "no_store_bot", message: "بوت المتجر مو مفعّل." }, 503);
+    let b = {}; try { b = await request.json(); } catch (e) {}
+    const who = await stCheckInitData(env, b.initData);
+    if (!who) return jsonResponse({ ok: false, error: "bad_init", message: "تعذّر التحقق من تلغرام. سكّر المتجر وافتحه من البوت كمان مرة." }, 400);
+    const rows = await fsRunQuery(env, "storeCustomers", null, 3, 0, { field: "tgChatId", value: who.chatId });
+    const uid = rows.length ? rows[0].id : "tg_" + who.chatId;
+    const customToken = await tgMintCustomToken(env, uid, { tg: true, tgName: who.name });
+    return jsonResponse({ ok: true, customToken }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "store tg session error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
 async function handleStoreTgWebhook(request, env) {
   try {
     if (!safeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "", await hmacHex(stToken(env), "yardova:store:webhook"))) return new Response("forbidden", { status: 401 });
@@ -4170,6 +4187,7 @@ export default {
     if (url.pathname.startsWith("/game/") && request.method === "POST") return handleGame(request, env, url.pathname.slice(6));
     if (url.pathname === "/store/telegram/webhook" && request.method === "POST") return handleStoreTgWebhook(request, env);
     if (url.pathname === "/store/tg/link" && request.method === "POST") return handleStoreTgLink(request, env);
+    if (url.pathname === "/store/tg/session" && request.method === "POST") return handleStoreTgSession(request, env);
     if (url.pathname === "/telegram/webhook" && request.method === "POST") return handleTelegramWebhook(request, env);
     if (url.pathname === "/auth/telegram/start" && request.method === "POST") return handleTelegramStart(request, env);
     if (url.pathname === "/auth/telegram/poll" && request.method === "POST") return handleTelegramPoll(request, env);

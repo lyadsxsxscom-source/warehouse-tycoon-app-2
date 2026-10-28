@@ -324,7 +324,8 @@ function renderDrawer(){
   const b = $('drBody'); b.textContent = '';
   if(!auth){ b.append(el('div', { class: 'msg err', id: 'accMsg', text: 'تعذّر تحميل تسجيل الدخول. حدّث الصفحة وجرّب كمان مرة.' })); return; }
   if(!USER){
-    b.append(el('p', { text: 'سجّل دخول عشان تتابع حسابك ومستوى VIP تبعك.' }), el('button', { class: 'btn-main', id: 'btnGoogle', type: 'button', text: 'الدخول بحساب Google' }), el('p', { class: 'hint', text: 'إذا ما عندك حساب، بيتعمل لك أول ما تدخل.' }), el('p', { class: 'hint', id: 'consent' }, 'بالدخول بتوافق على ', el('a', { href: '/store/terms/', target: '_blank', rel: 'noopener noreferrer', text: 'الشروط' }), ' و', el('a', { href: '/store/privacy/', target: '_blank', rel: 'noopener noreferrer', text: 'سياسة الخصوصية' }), '، وإنك 18 سنة أو أكتر.'), el('div', { class: 'msg' + (ACC_MSG ? ' err' : ''), id: 'accMsg', role: 'alert', text: ACC_MSG }));
+    if(TG_APP) b.append(el('p', { id: 'tgSignin', text: TG_MSG || 'عم نسجّل دخولك عبر تلغرام...' }), el('button', { class: 'btn-ghost', id: 'btnTgRetry', type: 'button', text: '🔄 جرّب كمان مرة' }));
+    else b.append(el('p', { text: 'سجّل دخول عشان تتابع حسابك ومستوى VIP تبعك.' }), el('button', { class: 'btn-main', id: 'btnGoogle', type: 'button', text: 'الدخول بحساب Google' }), el('p', { class: 'hint', text: 'إذا ما عندك حساب، بيتعمل لك أول ما تدخل.' }), el('p', { class: 'hint', id: 'consent' }, 'بالدخول بتوافق على ', el('a', { href: '/store/terms/', target: '_blank', rel: 'noopener noreferrer', text: 'الشروط' }), ' و', el('a', { href: '/store/privacy/', target: '_blank', rel: 'noopener noreferrer', text: 'سياسة الخصوصية' }), '، وإنك 18 سنة أو أكتر.'), el('div', { class: 'msg' + (ACC_MSG ? ' err' : ''), id: 'accMsg', role: 'alert', text: ACC_MSG }));
     return;
   }
   if(ACC === 'loading' || ACC === 'idle'){ b.append(el('p', { id: 'accLoading', text: 'عم نحمّل حسابك...' })); return; }
@@ -413,7 +414,8 @@ $('drBody').addEventListener('click', async e => {
     ACC_MSG = ''; b.disabled = true;
     try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
     catch(err){ ACC_MSG = authMsg(err); renderDrawer(); }
-  } else if(b.id === 'btnMerchant'){ closeDrawer(); $('merchantCta').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctaTg').focus(); }
+  } else if(b.id === 'btnTgRetry'){ TG_MSG = ''; renderDrawer(); tgSignIn(true); }
+  else if(b.id === 'btnMerchant'){ closeDrawer(); $('merchantCta').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctaTg').focus(); }
   else if(b.id === 'btnLogout'){ try{ await auth.signOut(); }catch(err){} }
   else if(b.id === 'btnRetryAcc'){ loadCustomer(); }
   else if(b.id === 'btnDelete'){ openDelete(); }
@@ -845,7 +847,17 @@ async function copyText(t){
 }
 // لما يتفتح المتجر جوا تلغرام (Mini App): منربط الحساب بالشات مرة وحدة لتوصله إشعارات طلباته
 const TG_APP = (() => { try{ const t = window.Telegram && window.Telegram.WebApp; if(!t || !t.initData) return null; t.ready(); t.expand && t.expand(); return t; }catch(e){ return null; } })();
-let tgLinked = false;
+let tgLinked = false, TG_MSG = '', tgTried = false;
+async function tgSignIn(force){                  // جوا تلغرام: دخول تلقائي بتوقيع تلغرام (جوجل ما بتشتغل جوا التطبيقات)
+  if(!TG_APP || !auth || (tgTried && !force) || (auth.currentUser)) return;
+  tgTried = true;
+  try{
+    const r = await fetch(API + '/store/tg/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: TG_APP.initData }) });
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok || !j.ok || !j.customToken) throw new Error(j.message || 'تعذّر الدخول عبر تلغرام.');
+    await auth.signInWithCustomToken(j.customToken);
+  }catch(e){ TG_MSG = (e && e.message) || 'تعذّر الدخول عبر تلغرام.'; renderDrawer(); }
+}
 async function tgLinkOnce(){
   if(!TG_APP || tgLinked || !CUSTOMER) return;
   tgLinked = true;
@@ -985,7 +997,7 @@ $('drBody').addEventListener('click', e => {
   if(e.target.closest('#btnMyOrders')){ navHash('#!orders'); return; }
   if(e.target.closest('#btnDrTopup')){ ordTriggerSel = '#btnMenu'; openTopup(); }
 });
-if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; RESUMED = false; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); } });
+if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; RESUMED = false; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); tgSignIn(); } });
 
 </script>
 </body>

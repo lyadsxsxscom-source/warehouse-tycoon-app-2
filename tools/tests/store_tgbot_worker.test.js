@@ -114,6 +114,15 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(r.status === 200 && get("storeCustomers/u2").tgChatId === "555" && !get("storeCustomers/u1").tgChatId, "the same Telegram account moves to the newest customer (never two accounts on one chat)");
   await callC("/store/tg/link", { initData: initOk }, "u1");
 
+  /* ---- A2) الدخول جوا تلغرام ---- */
+  c.tgMintCustomToken = async (env2, uid, claims) => "TOKEN:" + uid + ":" + (claims && claims.tgName || "");
+  const sess = (init) => W.fetch(new Request("https://x/store/tg/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initData: init }) }), env, {});
+  let sr = await sess(initOk); let sj = await sr.json();
+  ok(sr.status === 200 && sj.customToken === "TOKEN:u1:إبراهيم", "inside Telegram the customer signs in to HIS OWN account (the one already linked), not a new one");
+  sr = await sess("hash=" + "0".repeat(64)); ok(sr.status === 400, "a forged signature gets no session");
+  const fresh = await sign({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: 4242, first_name: "زبون" }) });
+  sj = await (await sess(fresh)).json(); ok(sj.ok && sj.customToken === "TOKEN:tg_4242:زبون", "a new Telegram customer gets an account of his own");
+
   /* ---- B) إشعار الزبون ---- */
   tg.length = 0; await F("storeNotify")(env, "u1", "store_done", { code: "Y-5", item: "660 شدة" });
   const n1 = tg.find(x => x.m === "sendMessage");
