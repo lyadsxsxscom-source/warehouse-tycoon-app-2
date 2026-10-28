@@ -1889,7 +1889,7 @@ function storeVipWithFloor(sizes, spentUsd, floor) {
 }
 function storeCustomerOut(uid, c, sizes, opts = {}) {
   const now = opts.now || Date.now(), sz = sizes || STORE_VIP_DEFAULT_SIZES, ms = storeMerchantState(c.merchant, c.spentUsd, now);
-  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, balanceUsd: r4(Number(c.balanceUsd) || 0), ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
+  const out = { id: uid, name: String(c.name || ""), email: String(c.email || ""), createdAt: Number(c.createdAt) || 0, balanceUsd: r4(Number(c.balanceUsd) || 0), tgLinked: !!String(c.tgChatId || ""), ...storeVipWithFloor(sz, c.spentUsd, ms.floor) };
   if (c.closing && c.closing.code) out.closing = { code: String(c.closing.code), amountUsd: r4(Number(c.closing.amountUsd) || 0), requestedAt: Number(c.closing.requestedAt) || 0 };
   if (opts.admin) out.autoVip = storeVipInfo(sz, c.spentUsd).vip;      // للأدمن بس: مستواه لو ما في نقل يدوي
   const m = c.merchant;
@@ -2500,11 +2500,7 @@ async function handleStoreTgLink(request, env) {           // المتجر لم�
     if (!who) return jsonResponse({ ok: false, error: "bad_init" }, 400);
     const c = await fsGetDoc(env, "storeCustomers/" + uid);
     if (!c.exists) return jsonResponse({ ok: false, error: "no_account" }, 404);
-    if (String(c.data.tgChatId || "") === who.chatId) return jsonResponse({ ok: true, linked: true }, 200);
-    const others = await fsRunQuery(env, "storeCustomers", null, 5, 0, { field: "tgChatId", value: who.chatId });
-    const writes = others.filter(r => r.id !== uid).map(r => ({ update: { name: docName(env, "storeCustomers/" + r.id), fields: objToFields({ tgChatId: "", tgName: "" }) }, updateMask: { fieldPaths: ["tgChatId", "tgName"] } }));
-    writes.push({ update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ tgChatId: who.chatId, tgName: who.name }) }, updateMask: { fieldPaths: ["tgChatId", "tgName"] } });
-    await fsCommit(env, writes);
+    if (String(c.data.tgChatId || "") !== who.chatId) await stSetChat(env, uid, who.chatId, who.name);
     return jsonResponse({ ok: true, linked: true }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
@@ -2513,6 +2509,35 @@ async function handleStoreTgLink(request, env) {           // المتجر لم�
   }
 }
 // الدخول جوا تلغرام: نافذة جوجل ممنوعة داخل التطبيقات، فمنسجّله بتوقيع تلغرام نفسها (نفس الحساب إذا كان مربوط من قبل)
+const STORE_TG_LINK_TTL = 15 * 60 * 1000;
+async function stBotUsername(env) {                      // بيتحفظ بالإعدادات حتى ما نسأل تلغرام كل مرة
+  const cfg = await stCfg(env); if (cfg.username) return cfg.username;
+  const me = await stApi(env, "getMe", {});
+  const u = me && me.result ? String(me.result.username || "") : "";
+  if (u) await fsCommit(env, [{ update: { name: docName(env, "config/storeTg"), fields: objToFields({ username: u }) }, updateMask: { fieldPaths: ["username"] } }]);
+  return u;
+}
+async function stSetChat(env, uid, chatId, name) {        // شات واحد لحساب واحد: إذا كان مربوط بحساب تاني منفكّه
+  const others = await fsRunQuery(env, "storeCustomers", null, 5, 0, { field: "tgChatId", value: String(chatId) });
+  const writes = others.filter(r => r.id !== uid).map(r => ({ update: { name: docName(env, "storeCustomers/" + r.id), fields: objToFields({ tgChatId: "", tgName: "" }) }, updateMask: { fieldPaths: ["tgChatId", "tgName"] } }));
+  writes.push({ update: { name: docName(env, "storeCustomers/" + uid), fields: objToFields({ tgChatId: String(chatId), tgName: String(name || "") }) }, updateMask: { fieldPaths: ["tgChatId", "tgName"] } });
+  await fsCommit(env, writes);
+}
+async function handleStoreTgLinkStart(request, env) {     // زر "اربط تلغرام" بالمتصفح: منعمل رمز وبنفتح البوت فيه
+  try {
+    if (!stHasBot(env)) return jsonResponse({ ok: false, error: "no_store_bot", message: "بوت المتجر مو مفعّل." }, 503);
+    const user = await requireUser(request);
+    const uid = validId(String(user.sub || "")); if (!uid) return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+    const username = await stBotUsername(env); if (!username) return jsonResponse({ ok: false, error: "no_bot", message: "تعذّر الوصول للبوت." }, 503);
+    const nonce = b64urlRandom(16);
+    await fsCommit(env, [{ update: { name: docName(env, "storeTgLinks/" + nonce), fields: objToFields({ uid, createdAt: Date.now(), used: false }) }, currentDocument: { exists: false } }]);
+    return jsonResponse({ ok: true, url: "https://t.me/" + username + "?start=" + nonce }, 200);
+  } catch (e) {
+    if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
+    console.error({ message: "store tg link start error", error: String(e.message || e) });
+    return jsonResponse({ ok: false, error: "server_error" }, 500);
+  }
+}
 async function handleStoreTgSession(request, env) {
   try {
     if (!stHasBot(env)) return jsonResponse({ ok: false, error: "no_store_bot", message: "بوت المتجر مو مفعّل." }, 503);
@@ -2560,6 +2585,15 @@ async function stProcessUpdate(env, update) {
   }
   const msg = update && update.message;
   if (!msg || !msg.chat || msg.chat.type !== "private" || !msg.from || msg.from.is_bot) return;
+  const text = typeof msg.text === "string" ? msg.text.trim() : "";
+  const nonce = text.startsWith("/start") ? (text.split(/\s+/)[1] || "") : "";
+  if (/^[A-Za-z0-9_-]{16,40}$/.test(nonce)) {                     // ربط حساب موجود (اللي سجّل بجوجل من المتصفح)
+    const d = await fsGetDoc(env, "storeTgLinks/" + nonce);
+    if (!d.exists || d.data.used === true || Date.now() - Number(d.data.createdAt) > STORE_TG_LINK_TTL) return stSend(env, msg.chat.id, "رمز الربط منتهي 🙃 ارجع للمتجر واضغط \"اربط تلغرام\" من جديد.", { reply_markup: stMenu(env, cfg) });
+    await stSetChat(env, String(d.data.uid), msg.chat.id, cleanText(msg.from.first_name, 40));
+    await fsCommit(env, [{ update: { name: docName(env, "storeTgLinks/" + nonce), fields: objToFields({ used: true }) }, updateMask: { fieldPaths: ["used"] } }]);
+    return stSend(env, msg.chat.id, "تم الربط ✅\nصار حسابك بالمتجر مربوط بتلغرام، وبتوصلك إشعارات طلباتك هون.", { reply_markup: stMenu(env, cfg) });
+  }
   return stSend(env, msg.chat.id, ST_WELCOME, { reply_markup: stMenu(env, cfg) });
 }
 const ST_STATUS = { processing: "⏳ قيد التنفيذ", done: "✅ تنفّذ", rejected: "❌ انرفض", refunded: "↩️ انرجع", cancelled: "✖️ ملغي", quote_requested: "💬 بانتظار السعر", quote_offered: "💬 السعر جاهز", awaiting_payment: "⏳ بانتظار الدفع", payment_submitted: "⏳ عم ندقق الدفع" };
@@ -4188,6 +4222,7 @@ export default {
     if (url.pathname === "/store/telegram/webhook" && request.method === "POST") return handleStoreTgWebhook(request, env);
     if (url.pathname === "/store/tg/link" && request.method === "POST") return handleStoreTgLink(request, env);
     if (url.pathname === "/store/tg/session" && request.method === "POST") return handleStoreTgSession(request, env);
+    if (url.pathname === "/store/tg/link-start" && request.method === "POST") return handleStoreTgLinkStart(request, env);
     if (url.pathname === "/telegram/webhook" && request.method === "POST") return handleTelegramWebhook(request, env);
     if (url.pathname === "/auth/telegram/start" && request.method === "POST") return handleTelegramStart(request, env);
     if (url.pathname === "/auth/telegram/poll" && request.method === "POST") return handleTelegramPoll(request, env);

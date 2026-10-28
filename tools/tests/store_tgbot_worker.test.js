@@ -123,6 +123,21 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   const fresh = await sign({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: 4242, first_name: "زبون" }) });
   sj = await (await sess(fresh)).json(); ok(sj.ok && sj.customToken === "TOKEN:tg_4242:زبون", "a new Telegram customer gets an account of his own");
 
+  const tgHook = async (update) => W.fetch(new Request("https://x/store/telegram/webhook", { method: "POST", headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": await c.hmacHex(TOKEN, "yardova:store:webhook") }, body: JSON.stringify(update) }), env, {});
+  /* ---- A3) ربط حساب المتصفح (جوجل) بتلغرام برمز ---- */
+  put("storeCustomers/u3", { name: "زبون جوجل", email: "g@x.com", balanceUsd: 12, spentUsd: 0, createdAt: NOW });
+  r = await callC("/store/tg/link-start", {}, "u3"); const url = r.json.url, nonce = url.split("start=")[1];
+  ok(r.status === 200 && /^https:\/\/t\.me\/YardovaCardBot\?start=/.test(url), "the browser asks for a link code and gets a bot link");
+  tg.length = 0; await tgHook({ message: { chat: { id: 777, type: "private" }, from: { id: 777, first_name: "زبون" }, text: "/start " + nonce } });
+  ok(get("storeCustomers/u3").tgChatId === "777" && /تم الربط/.test(tg[tg.length - 1].body.text), "pressing start in the bot links that chat to the SAME browser account");
+  r = await callC("/store/me", {}, "u3"); ok(r.json.customer.tgLinked === true && r.json.customer.balanceUsd === 12, "the store now shows it as linked, with the same balance");
+  tg.length = 0; await tgHook({ message: { chat: { id: 888, type: "private" }, from: { id: 888, first_name: "x" }, text: "/start " + nonce } });
+  ok(get("storeCustomers/u3").tgChatId === "777" && /منتهي/.test(tg[tg.length - 1].body.text), "a code works once only");
+  tg.length = 0; await tgHook({ message: { chat: { id: 888, type: "private" }, from: { id: 888, first_name: "x" }, text: "/start AAAAAAAAAAAAAAAAAAAA" } });
+  ok(/منتهي/.test(tg[tg.length - 1].body.text), "an unknown code is refused");
+  const sj3 = await (await sess(await sign({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: 777, first_name: "زبون" }) }))).json();
+  ok(sj3.customToken === "TOKEN:u3:زبون", "after linking, opening the mini app signs him into his SAME account (no second account)");
+
   /* ---- B) إشعار الزبون ---- */
   tg.length = 0; await F("storeNotify")(env, "u1", "store_done", { code: "Y-5", item: "660 شدة" });
   const n1 = tg.find(x => x.m === "sendMessage");
@@ -143,7 +158,6 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(!/u1|555|@|إبراهيم/.test(post.body.text.replace("@YardovaCard", "")), "the post never shows anything about the customer");
 
   /* ---- D) أزرار البوت ---- */
-  const tgHook = async (update) => W.fetch(new Request("https://x/store/telegram/webhook", { method: "POST", headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": await c.hmacHex(TOKEN, "yardova:store:webhook") }, body: JSON.stringify(update) }), env, {});
   tg.length = 0; let res = await tgHook({ message: { chat: { id: 555, type: "private" }, from: { id: 555, first_name: "إ" }, text: "/start" } });
   ok(res.status === 200 && /Yardova Card/.test(tg[0].body.text) && tg[0].body.reply_markup.inline_keyboard[0][0].web_app, "/start sends the welcome with the store button");
   tg.length = 0; await tgHook({ callback_query: { id: "1", data: "bal", message: { chat: { id: 555 } } } });

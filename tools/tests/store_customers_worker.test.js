@@ -54,7 +54,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   const t0 = Date.now(); r = await me("a");
   ok(r.status === 200 && r.json.ok && r.json.created === true && r.json.customer.id === "ua" && r.json.customer.name === "Ali Salem" && r.json.customer.email === "ali@x.com" && r.json.customer.vip === 1 && r.json.customer.spentUsd === 0 && r.json.customer.progressUsd === 0 && r.json.customer.sizeUsd === 200 && r.json.customer.createdAt >= t0, "the first call creates the account: name and email from the sign-in, VIP 1, nothing spent");
   const doc = get("storeCustomers/ua"); ok(doc && doc.name === "Ali Salem" && doc.spentUsd === 0 && doc.balanceUsd === 0 && !("vip" in doc) && doc.createdAt === r.json.customer.createdAt && doc.lastSeenAt >= t0, "and stores it under the same id as his game account");
-  ok(!("lastSeenAt" in r.json.customer) && Object.keys(r.json.customer).sort().join() === "balanceUsd,createdAt,email,id,name,nextVip,progressUsd,remainingUsd,sizeUsd,spentUsd,vip", "the answer contains only the fields the page needs");
+  ok(!("lastSeenAt" in r.json.customer) && Object.keys(r.json.customer).sort().join() === "balanceUsd,createdAt,email,id,name,nextVip,progressUsd,remainingUsd,sizeUsd,spentUsd,tgLinked,vip", "the answer contains only the fields the page needs");
 
   /* ---- the next sign-ins ---- */
   put("storeCustomers/ua", { ...get("storeCustomers/ua"), spentUsd: 250.456, lastSeenAt: 1 });

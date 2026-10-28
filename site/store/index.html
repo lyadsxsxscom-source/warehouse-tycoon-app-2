@@ -342,6 +342,7 @@ function renderDrawer(){
     closingBox(c),
     el('div', { class: 'acc-row' }, el('span', { text: 'رصيدك' }), el('b', { id: 'accBalance', dir: 'ltr', text: money(c.balanceUsd) })),
     el('button', { class: 'btn-main', id: 'btnDrTopup', type: 'button', style: 'margin-top:10px;', text: '➕ شحن الرصيد' }),
+    tgLinkBox(c),
     el('div', { class: 'acc-row' }, el('span', { text: 'إجمالي الصرف' }), el('b', { id: 'accSpent', dir: 'ltr', text: fmtUsd(c.spentUsd) })),
     ordersLink(),
     el('button', { class: 'btn-ghost', id: 'btnSuggest', type: 'button', text: '💡 اقترح لعبة أو تطبيق' }),
@@ -420,6 +421,7 @@ $('drBody').addEventListener('click', async e => {
   else if(b.id === 'btnRetryAcc'){ loadCustomer(); }
   else if(b.id === 'btnDelete'){ openDelete(); }
   else if(b.id === 'btnSuggest'){ openSuggest(); }
+  else if(b.id === 'btnTgLink'){ tgLinkStart(); }
   else if(b.id === 'btnCancelClose'){ DEL_MSG = ''; const r = await cancelClosing(); if(r === null) return; DEL_MSG = r; renderDrawer(); }
 });
 
@@ -857,6 +859,32 @@ async function tgSignIn(force){                  // جوا تلغرام: دخو�
     if(!r.ok || !j.ok || !j.customToken) throw new Error(j.message || 'تعذّر الدخول عبر تلغرام.');
     await auth.signInWithCustomToken(j.customToken);
   }catch(e){ TG_MSG = (e && e.message) || 'تعذّر الدخول عبر تلغرام.'; renderDrawer(); }
+}
+// ربط حساب المتصفح بتلغرام: نفس الحساب ونفس الرصيد بالطريقتين
+let TGL_MSG = '', tglBusy = false, tglPoll = 0;
+function tgLinkBox(c){
+  if(TG_APP) return '';                                  // جوا تلغرام مربوط أصلاً
+  if(c.tgLinked) return el('div', { class: 'acc-row', id: 'tgLinkedRow' }, el('span', { text: 'تلغرام' }), el('b', { id: 'tgLinkedOk', text: 'مربوط ✅' }));
+  const box = el('div', { style: 'margin-top:10px;' },
+    el('button', { class: 'btn-ghost', id: 'btnTgLink', type: 'button', text: tglBusy ? '… عم نفتح تلغرام' : '🔗 اربط تلغرام' }),
+    el('div', { class: 'hint', id: 'tgLinkHint', text: TGL_MSG || 'اربط حسابك بتلغرام لتوصلك إشعارات طلباتك، وتفتح نفس حسابك ورصيدك من البوت.' }));
+  return box;
+}
+async function tgLinkStart(){
+  if(tglBusy) return; tglBusy = true; TGL_MSG = ''; renderDrawer();
+  try{
+    const j = await apiAuth('/store/tg/link-start');
+    window.open(j.url, '_blank', 'noopener');
+    TGL_MSG = 'افتح تلغرام واضغط "ابدأ" بالبوت، وبعدها ارجع لهون. عم نستنى الربط...';
+    clearInterval(tglPoll);
+    let tries = 0;
+    tglPoll = setInterval(async () => {
+      tries++;
+      try{ const m = await apiAuth('/store/me'); if(m.customer){ CUSTOMER = m.customer; if(m.customer.tgLinked){ clearInterval(tglPoll); tglBusy = false; TGL_MSG = ''; renderDrawer(); return; } renderDrawer(); } }catch(e){}
+      if(tries >= 40){ clearInterval(tglPoll); tglBusy = false; TGL_MSG = 'ما وصلنا ربط. جرّب كمان مرة.'; renderDrawer(); }
+    }, 3000);
+  }catch(err){ tglBusy = false; TGL_MSG = err.message; }
+  renderDrawer();
 }
 async function tgLinkOnce(){
   if(!TG_APP || tgLinked || !CUSTOMER) return;
