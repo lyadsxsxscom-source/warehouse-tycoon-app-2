@@ -851,14 +851,16 @@ async function copyText(t){
 const TG_APP = (() => { try{ const t = window.Telegram && window.Telegram.WebApp; if(!t || !t.initData) return null; t.ready(); t.expand && t.expand(); return t; }catch(e){ return null; } })();
 let tgLinked = false, TG_MSG = '', tgTried = false;
 async function tgSignIn(force){                  // جوا تلغرام: دخول تلقائي بتوقيع تلغرام (جوجل ما بتشتغل جوا التطبيقات)
-  if(!TG_APP || !auth || (tgTried && !force) || (auth.currentUser)) return;
+  if(!TG_APP || !auth || (tgTried && !force)) return;
   tgTried = true;
+  const cur = auth.currentUser ? auth.currentUser.uid : '';
   try{
     const r = await fetch(API + '/store/tg/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: TG_APP.initData }) });
     const j = await r.json().catch(() => ({}));
     if(!r.ok || !j.ok || !j.customToken) throw new Error(j.message || 'تعذّر الدخول عبر تلغرام.');
-    await auth.signInWithCustomToken(j.customToken);
-  }catch(e){ TG_MSG = (e && e.message) || 'تعذّر الدخول عبر تلغرام.'; renderDrawer(); }
+    if(cur && j.uid && cur === j.uid) return;    // داخل أصلاً على نفس الحساب
+    await auth.signInWithCustomToken(j.customToken);     // أول دخول، أو ربط حسابه بعدين فمنحوّله لحسابه الأصلي
+  }catch(e){ if(!cur){ TG_MSG = (e && e.message) || 'تعذّر الدخول عبر تلغرام.'; renderDrawer(); } }
 }
 // ربط حساب المتصفح بتلغرام: نفس الحساب ونفس الرصيد بالطريقتين
 let TGL_MSG = '', tglBusy = false, tglPoll = 0;
@@ -1025,7 +1027,7 @@ $('drBody').addEventListener('click', e => {
   if(e.target.closest('#btnMyOrders')){ navHash('#!orders'); return; }
   if(e.target.closest('#btnDrTopup')){ ordTriggerSel = '#btnMenu'; openTopup(); }
 });
-if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; RESUMED = false; if(!$('osheet').hidden) closeSheet(); if(u) loadCustomer(); else { renderDrawer(); render(); renderWallet(); tgSignIn(); } });
+if(auth) auth.onAuthStateChanged(u => { USER = u; CUSTOMER = null; ACC_MSG = ''; ACC = 'idle'; PRICES = null; MY = []; MY_STATE = 'idle'; RESUMED = false; if(!$('osheet').hidden) closeSheet(); if(u) { loadCustomer(); tgSignIn(); } else { renderDrawer(); render(); renderWallet(); tgSignIn(); } });
 
 </script>
 </body>

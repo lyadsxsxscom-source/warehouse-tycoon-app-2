@@ -2547,7 +2547,7 @@ async function handleStoreTgSession(request, env) {
     const rows = await fsRunQuery(env, "storeCustomers", null, 3, 0, { field: "tgChatId", value: who.chatId });
     const uid = rows.length ? rows[0].id : "tg_" + who.chatId;
     const customToken = await tgMintCustomToken(env, uid, { tg: true, tgName: who.name });
-    return jsonResponse({ ok: true, customToken }, 200);
+    return jsonResponse({ ok: true, uid, customToken }, 200);
   } catch (e) {
     if (e instanceof ApiError) return jsonResponse({ ok: false, error: e.code, message: e.message }, e.status);
     console.error({ message: "store tg session error", error: String(e.message || e) });

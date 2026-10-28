@@ -137,6 +137,7 @@ const env = { FIREBASE_SA: JSON.stringify({ project_id: "proj" }), PENDING_CREDI
   ok(/منتهي/.test(tg[tg.length - 1].body.text), "an unknown code is refused");
   const sj3 = await (await sess(await sign({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: 777, first_name: "زبون" }) }))).json();
   ok(sj3.customToken === "TOKEN:u3:زبون", "after linking, opening the mini app signs him into his SAME account (no second account)");
+  ok(sj3.uid === "u3", "the session also says which account it is, so a mini app already signed into an old account switches to it");
 
   /* ---- B) إشعار الزبون ---- */
   tg.length = 0; await F("storeNotify")(env, "u1", "store_done", { code: "Y-5", item: "660 شدة" });
